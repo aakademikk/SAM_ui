@@ -25,7 +25,6 @@ import type {
   Project,
   SeriesPoint,
   ServiceNode,
-  ServiceState,
   Severity,
   SystemHealthPayload,
   TaskPriority,
@@ -34,9 +33,14 @@ import type {
   VaultQuery,
 } from '@/types/dashboard';
 import { clamp, makeRng } from '@/lib/utils';
+import { sampleHost, sampleDockerService, REAL_SERVICE_BLUEPRINTS } from '@/lib/server/hostMetrics';
+import { scanVault } from '@/lib/server/vaultMetrics';
+import { readTasks } from '@/lib/server/taskMetrics';
 
 const SERIES_LENGTH = 60;
 const SERIES_STEP_MS = 4_000;
+const VAULT_PATH = '/home/col/ai-memory-vault';
+const DOCKER_CHECK_INTERVAL_MS = 4_000;
 
 /* ========================================================================== */
 /* Seed data                                                                  */
@@ -72,17 +76,6 @@ const AGENT_TASKS = [
   'backfilling analytics events',
   'pruning orphaned docker volumes',
   'validating invoice line items',
-];
-
-const SERVICE_BLUEPRINTS: { id: string; name: string; kind: string }[] = [
-  { id: 'svc_n8n', name: 'n8n-orchestrator', kind: 'n8n' },
-  { id: 'svc_docker', name: 'docker-daemon', kind: 'docker' },
-  { id: 'svc_pg', name: 'postgres-primary', kind: 'database' },
-  { id: 'svc_redis', name: 'redis-cache', kind: 'cache' },
-  { id: 'svc_indexer', name: 'vault-indexer', kind: 'worker' },
-  { id: 'svc_embed', name: 'chroma-embed', kind: 'vector' },
-  { id: 'svc_edge', name: 'nginx-edge', kind: 'proxy' },
-  { id: 'svc_backup', name: 'backup-agent', kind: 'worker' },
 ];
 
 const PROJECT_BLUEPRINTS: Omit<Project, 'progress' | 'lastDeploy' | 'openIssues' | 'blockers'>[] = [
@@ -154,40 +147,6 @@ const PROJECT_BLUEPRINTS: Omit<Project, 'progress' | 'lastDeploy' | 'openIssues'
   },
 ];
 
-const VAULT_CLUSTER_NAMES = [
-  'Client Contracts',
-  'System Architecture',
-  'Meeting Notes',
-  'Financial Records',
-  'Agent Playbooks',
-  'Research & Teardowns',
-  'Incident Reports',
-];
-
-const VAULT_QUERY_TEXTS = [
-  'atwood core rate limit policy',
-  'halberd contract termination clause',
-  'q3 burn vs forecast',
-  'postgres failover runbook',
-  'why did we drop the redis queue',
-  'client portal auth decision record',
-  'n8n retry semantics',
-  'embedding model migration notes',
-  'invoice dispute — meridian',
-  'incident 2024-11 postmortem',
-];
-
-const SEED_TASKS: { title: string; priority: TaskPriority; tag: string; origin: DailyTask['origin'] }[] =
-  [
-    { title: 'Sign off Ledger Reconciler QA gate', priority: 'p0', tag: 'ship', origin: 'operator' },
-    { title: 'Review Halberd portal scope creep', priority: 'p1', tag: 'client', origin: 'sam' },
-    { title: 'Rotate expired vault-indexer credentials', priority: 'p0', tag: 'security', origin: 'sam' },
-    { title: 'Approve Q3 infra spend increase', priority: 'p1', tag: 'finance', origin: 'operator' },
-    { title: 'Write postmortem for webhook outage', priority: 'p2', tag: 'ops', origin: 'agent' },
-    { title: 'Cut v3.4.0 release notes', priority: 'p2', tag: 'ship', origin: 'operator' },
-    { title: 'Prune 41 orphaned docker volumes', priority: 'p3', tag: 'ops', origin: 'agent' },
-  ];
-
 /* ========================================================================== */
 /* Simulator                                                                  */
 /* ========================================================================== */
@@ -203,8 +162,11 @@ interface InsightTemplate {
 }
 
 class EstateSimulator {
-  readonly bootedAt = Date.now();
   private lastAdvance = Date.now();
+  private lastDockerCheck = 0;
+  private lastNoteCount = 0;
+  private hostUptimeSec = 0;
+  private hostLoadAvg: [number, number, number] = [0, 0, 0];
   tick = 0;
 
   private rng = makeRng('sam-estate-v1');
@@ -285,16 +247,26 @@ class EstateSimulator {
       };
     });
 
-    this.services = SERVICE_BLUEPRINTS.map((bp, i) => {
-      const state: ServiceState = i === 5 ? 'degraded' : i === 7 ? 'maintenance' : 'operational';
-      return {
-        ...bp,
-        state,
-        latencyMs: Math.round(4 + this.rng() * 90),
-        uptimePct: 99 + this.rng(),
-        incidents24h: state === 'operational' ? 0 : 1 + Math.floor(this.rng() * 3),
-      };
-    });
+    this.services = REAL_SERVICE_BLUEPRINTS.map(sampleDockerService);
+    this.lastDockerCheck = now;
+
+    const hostSample = sampleHost(VAULT_PATH);
+    this.cpuPct = hostSample.cpuPct;
+    this.memPct = hostSample.memPct;
+    this.diskPct = hostSample.diskPct;
+    this.netMbps = hostSample.netMbps;
+    this.hostUptimeSec = hostSample.uptimeSec;
+    this.hostLoadAvg = hostSample.loadAvg;
+
+    const vaultScan = scanVault();
+    this.totalNotes = vaultScan.totalNotes;
+    this.vaultSizeMb = vaultScan.vaultSizeMb;
+    this.lastVaultSync = vaultScan.lastModified;
+    this.pendingIndex = vaultScan.totalNotes;
+    this.indexedNotes = 0;
+    this.embeddings = 0;
+    this.cacheHitRate = 0;
+    this.lastNoteCount = vaultScan.totalNotes;
 
     this.projects = PROJECT_BLUEPRINTS.map((bp) => ({
       ...bp,
@@ -309,19 +281,7 @@ class EstateSimulator {
       lastDeploy: new Date(now - Math.floor(this.rng() * 86_400_000 * 5)).toISOString(),
     }));
 
-    this.tasks = SEED_TASKS.map((t, i) => ({
-      id: `task_seed_${i}`,
-      title: t.title,
-      done: i === 5,
-      priority: t.priority,
-      tag: t.tag,
-      dueAt:
-        i < 3
-          ? new Date(now - (i === 0 ? 7_200_000 : -14_400_000)).toISOString()
-          : new Date(now + 86_400_000 * (i - 1)).toISOString(),
-      createdAt: new Date(now - 86_400_000 * (i + 1)).toISOString(),
-      origin: t.origin,
-    }));
+    this.tasks = readTasks();
 
     this.accounts = [
       {
@@ -371,24 +331,21 @@ class EstateSimulator {
       },
     ];
 
-    this.vaultQueries = VAULT_QUERY_TEXTS.slice(0, 6).map((text, i) => ({
-      id: `vq_seed_${i}`,
-      text,
-      hits: 3 + Math.floor(this.rng() * 24),
-      latencyMs: Math.round(28 + this.rng() * 180),
-      at: new Date(now - i * 47_000 - Math.floor(this.rng() * 20_000)).toISOString(),
-      agent: AGENT_BLUEPRINTS[Math.floor(this.rng() * AGENT_BLUEPRINTS.length)].codename,
-    }));
+    // No real query log exists yet — starts empty and fills only from genuine
+    // operator queries typed into VaultMemoryWidget (see recordVaultQuery).
+    this.vaultQueries = [];
 
-    // Backfill the ring buffers so the first render already has history.
+    // Backfill the ring buffers so the first render already has history. No
+    // real time-series history exists before this process started, so these
+    // are flat lines at the real starting sample rather than fabricated
+    // variance — the chart earns its shape honestly from here forward.
     const totalBalance = this.accounts.reduce((s, a) => s + a.balance, 0);
     for (let i = SERIES_LENGTH; i > 0; i--) {
       const t = now - i * SERIES_STEP_MS;
-      const wave = Math.sin(i / 7) * 8 + Math.sin(i / 3.1) * 4;
-      this.cpuSeries.push({ t, v: clamp(34 + wave + this.rng() * 6, 2, 99) });
-      this.memSeries.push({ t, v: clamp(56 + Math.sin(i / 11) * 6 + this.rng() * 3, 5, 99) });
-      this.netSeries.push({ t, v: clamp(80 + Math.sin(i / 5) * 34 + this.rng() * 18, 0, 400) });
-      this.indexThroughput.push({ t, v: Math.max(0, 42 + Math.sin(i / 4) * 22 + this.rng() * 14) });
+      this.cpuSeries.push({ t, v: this.cpuPct });
+      this.memSeries.push({ t, v: this.memPct });
+      this.netSeries.push({ t, v: this.netMbps });
+      this.indexThroughput.push({ t, v: 0 });
     }
 
     for (let i = 30; i > 0; i--) {
@@ -422,18 +379,14 @@ class EstateSimulator {
 
     const r = this.rng;
 
-    /* --- Host metrics ---------------------------------------------------- */
-    const executing = this.agents.filter((a) => a.status === 'executing').length;
-    const loadPressure = executing / Math.max(1, this.agents.length);
-
-    this.cpuPct = clamp(
-      this.cpuPct + (loadPressure * 70 - this.cpuPct) * 0.08 + (r() - 0.5) * 7,
-      3,
-      99,
-    );
-    this.memPct = clamp(this.memPct + (r() - 0.48) * 2.2, 12, 96);
-    this.diskPct = clamp(this.diskPct + (r() - 0.495) * 0.08, 20, 99);
-    this.netMbps = clamp(this.netMbps + (r() - 0.5) * 26, 2, 480);
+    /* --- Host metrics (real: os() + /proc/net/dev, see hostMetrics.ts) ---- */
+    const hostSample = sampleHost(VAULT_PATH);
+    this.cpuPct = hostSample.cpuPct;
+    this.memPct = hostSample.memPct;
+    this.diskPct = hostSample.diskPct;
+    this.netMbps = hostSample.netMbps;
+    this.hostUptimeSec = hostSample.uptimeSec;
+    this.hostLoadAvg = hostSample.loadAvg;
 
     this.push(this.cpuSeries, { t: now, v: this.cpuPct });
     this.push(this.memSeries, { t: now, v: this.memPct });
@@ -519,35 +472,27 @@ class EstateSimulator {
       }
     }
 
-    /* --- Services -------------------------------------------------------- */
-    for (const service of this.services) {
-      service.latencyMs = Math.max(1, Math.round(service.latencyMs + (r() - 0.5) * 14));
-      if (service.state === 'operational' && r() < 0.004) {
-        service.state = 'degraded';
-        service.incidents24h++;
-      } else if (service.state === 'degraded' && r() < 0.05) {
-        service.state = 'operational';
-      }
+    /* --- Services (real: `docker inspect` on the fixed n8n stack) -------- */
+    if (now - this.lastDockerCheck >= DOCKER_CHECK_INTERVAL_MS) {
+      this.lastDockerCheck = now;
+      this.services = REAL_SERVICE_BLUEPRINTS.map(sampleDockerService);
     }
 
-    /* --- Vault ----------------------------------------------------------- */
-    const ingested = Math.min(this.pendingIndex, Math.round(dt * (0.6 + r() * 1.4)));
-    this.pendingIndex -= ingested;
-    this.indexedNotes += ingested;
-    this.embeddings += ingested * 26;
-    if (r() < 0.14) {
-      const added = 1 + Math.floor(r() * 5);
-      this.totalNotes += added;
-      this.pendingIndex += added;
-      this.vaultSizeMb += added * 0.12;
-      this.lastVaultSync = now;
-    }
-    this.cacheHitRate = clamp(this.cacheHitRate + (r() - 0.5) * 0.01, 0.55, 0.99);
-    this.push(this.indexThroughput, { t: now, v: Math.max(0, ingested * 20 + r() * 12) });
-
-    if (r() < 0.1) {
-      this.recordVaultQuery(VAULT_QUERY_TEXTS[Math.floor(r() * VAULT_QUERY_TEXTS.length)]);
-    }
+    /* --- Vault (real: walks VAULT_PATH, see vaultMetrics.ts) -------------- */
+    const vaultScan = scanVault();
+    this.totalNotes = vaultScan.totalNotes;
+    this.vaultSizeMb = vaultScan.vaultSizeMb;
+    this.lastVaultSync = vaultScan.lastModified;
+    // No embedding pipeline exists yet, so every note is honestly "pending" —
+    // see vaultMetrics.ts. indexThroughput tracks real note-count deltas
+    // instead of a simulated ingest rate.
+    this.pendingIndex = vaultScan.totalNotes;
+    this.indexedNotes = 0;
+    this.embeddings = 0;
+    this.cacheHitRate = 0;
+    const noteDelta = Math.max(0, vaultScan.totalNotes - this.lastNoteCount);
+    this.lastNoteCount = vaultScan.totalNotes;
+    this.push(this.indexThroughput, { t: now, v: noteDelta });
 
     /* --- Projects -------------------------------------------------------- */
     for (const project of this.projects) {
@@ -788,17 +733,16 @@ class EstateSimulator {
   }
 
   getVault(): VaultMemoryPayload {
-    const clusters: VaultCluster[] = VAULT_CLUSTER_NAMES.map((name, i) => {
-      const notes = Math.round((this.totalNotes / VAULT_CLUSTER_NAMES.length) * (0.5 + ((i * 37) % 90) / 60));
-      return {
-        name,
-        notes,
-        weight: 0,
-        driftPct: Math.round(((i * 13) % 22) - 8 + this.rng() * 4),
-      };
-    });
-    const totalClusterNotes = clusters.reduce((s, c) => s + c.notes, 0) || 1;
-    for (const cluster of clusters) cluster.weight = cluster.notes / totalClusterNotes;
+    // Real top-level vault folders, real note counts per folder. driftPct is
+    // an embedding-drift concept with no backing pipeline yet, so it reports 0.
+    const realClusters = scanVault().clusters;
+    const totalClusterNotes = realClusters.reduce((s, c) => s + c.notes, 0) || 1;
+    const clusters: VaultCluster[] = realClusters.map((c) => ({
+      name: c.name,
+      notes: c.notes,
+      weight: c.notes / totalClusterNotes,
+      driftPct: 0,
+    }));
 
     return {
       totalNotes: this.totalNotes,
@@ -838,12 +782,8 @@ class EstateSimulator {
       memPct: this.memPct,
       diskPct: this.diskPct,
       netMbps: this.netMbps,
-      loadAvg: [
-        Number((this.cpuPct / 22).toFixed(2)),
-        Number((this.cpuPct / 26).toFixed(2)),
-        Number((this.cpuPct / 31).toFixed(2)),
-      ],
-      uptimeSec: Math.floor((Date.now() - this.bootedAt) / 1000) + 1_284_400,
+      loadAvg: this.hostLoadAvg,
+      uptimeSec: Math.floor(this.hostUptimeSec),
       services: this.services,
       cpuSeries: [...this.cpuSeries],
       memSeries: [...this.memSeries],
