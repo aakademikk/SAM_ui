@@ -494,6 +494,15 @@ class EstateSimulator {
     this.lastNoteCount = vaultScan.totalNotes;
     this.push(this.indexThroughput, { t: now, v: noteDelta });
 
+    /* --- Tasks (real: reads Active Priorities.md, see taskMetrics.ts) ---- */
+    // File-sourced tasks are fully replaced each tick so edits/deletions in
+    // the file show up live; tasks added via the widget itself (ids outside
+    // the task_priorities_ namespace) are left alone.
+    this.tasks = [
+      ...readTasks(),
+      ...this.tasks.filter((t) => !t.id.startsWith('task_priorities_')),
+    ];
+
     /* --- Projects -------------------------------------------------------- */
     for (const project of this.projects) {
       if (project.health === 'shipped' || project.phase === 'production') continue;
