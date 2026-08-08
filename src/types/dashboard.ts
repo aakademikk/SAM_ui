@@ -13,15 +13,7 @@
 /** Grid footprint of a widget. The grid is 4 columns wide on desktop. */
 export type WidgetSize = 'sm' | 'md-wide' | 'md-tall' | 'lg';
 
-export type WidgetKind =
-  | 'ai-insights'
-  | 'agent-fleet'
-  | 'vault-memory'
-  | 'command-terminal'
-  | 'active-projects'
-  | 'system-health'
-  | 'finance-balance'
-  | 'daily-tasks';
+export type WidgetKind = 'active-projects' | 'system-health' | 'daily-tasks';
 
 export interface WidgetLayoutItem {
   id: WidgetKind;
@@ -85,35 +77,35 @@ export interface ApiEnvelope<T> {
   meta: ApiMeta;
 }
 
-/* ========================================================================== */
-/* AI Insights                                                                */
-/* ========================================================================== */
-
+/**
+ * `Insight`/`SamMood` stay defined here (rather than being deleted with the
+ * widgets that used to render them) because `lib/personalityEngine.ts` still
+ * imports both — `frameInsight`/`moodFor` are dead code post-prune but not
+ * worth unpicking from the tone engine for this pass.
+ */
 export type InsightDomain = 'system' | 'business' | 'security' | 'agents' | 'finance' | 'vault';
 
 export interface Insight {
   id: string;
   severity: Severity;
   domain: InsightDomain;
-  /** Terse headline. Rendered verbatim. */
   headline: string;
-  /** Raw analytical body. `personalityEngine` applies SAM's tone on render. */
   body: string;
-  /** Where SAM got this from — an agent codename, a service, a vault note. */
   source: string;
-  /** Optional supporting number, e.g. "+38%" or "412ms p99". */
   evidence?: string;
   confidence: number;
   createdAt: string;
   acknowledged: boolean;
-  /** Actionable follow-up SAM is willing to execute on request. */
   suggestedAction?: string;
 }
 
-/* ========================================================================== */
-/* Agent Fleet                                                                */
-/* ========================================================================== */
-
+/**
+ * Agent Fleet / Vault Memory / Finance — the widgets that rendered these were
+ * removed (fully mocked, never real). `lib/server/telemetry.ts`'s estate
+ * simulator still generates this data internally for its own tick logic, but
+ * nothing routes it to the client anymore (the API routes were deleted) — so
+ * these types are backend-internal only now, not part of the wire contract.
+ */
 export type AgentStatus = 'executing' | 'idle' | 'blocked' | 'spawning' | 'offline' | 'throttled';
 
 export interface FleetAgent {
@@ -123,7 +115,6 @@ export interface FleetAgent {
   swarm: string;
   status: AgentStatus;
   currentTask: string;
-  /** 0–1 completion of `currentTask`. */
   progress: number;
   cpuPct: number;
   memMb: number;
@@ -144,14 +135,9 @@ export interface AgentFleetPayload {
   supervisorVerdict: string;
 }
 
-/* ========================================================================== */
-/* Vault Memory                                                               */
-/* ========================================================================== */
-
 export interface VaultCluster {
   name: string;
   notes: number;
-  /** 0–1 share of total embedding volume. */
   weight: number;
   driftPct: number;
 }
@@ -180,26 +166,30 @@ export interface VaultMemoryPayload {
   indexThroughput: SeriesPoint[];
 }
 
-/* ========================================================================== */
-/* Command Terminal                                                           */
-/* ========================================================================== */
-
-export type TerminalStreamKind = 'stdin' | 'stdout' | 'stderr' | 'system' | 'sam';
-
-export interface TerminalLine {
+export interface FinanceAccount {
   id: string;
-  kind: TerminalStreamKind;
-  text: string;
-  at: number;
+  label: string;
+  institution: string;
+  balance: number;
+  currency: string;
+  deltaPct: number;
+  kind: 'operating' | 'reserve' | 'tax' | 'credit' | 'escrow';
 }
 
-export interface CommandResult {
-  ok: boolean;
-  exitCode: number;
-  durationMs: number;
-  lines: { kind: TerminalStreamKind; text: string }[];
-  /** SAM's unsolicited editorial on what you just ran. */
-  remark?: string;
+export interface FinancePayload {
+  totalBalance: number;
+  currency: string;
+  deltaPct: number;
+  deltaAbs: number;
+  mrr: number;
+  monthlyBurn: number;
+  runwayDays: number;
+  outstandingInvoices: number;
+  outstandingValue: number;
+  accounts: FinanceAccount[];
+  balanceSeries: SeriesPoint[];
+  inflowSeries: SeriesPoint[];
+  outflowSeries: SeriesPoint[];
 }
 
 /* ========================================================================== */
@@ -259,36 +249,6 @@ export interface SystemHealthPayload {
 }
 
 /* ========================================================================== */
-/* Finance                                                                    */
-/* ========================================================================== */
-
-export interface FinanceAccount {
-  id: string;
-  label: string;
-  institution: string;
-  balance: number;
-  currency: string;
-  deltaPct: number;
-  kind: 'operating' | 'reserve' | 'tax' | 'credit' | 'escrow';
-}
-
-export interface FinancePayload {
-  totalBalance: number;
-  currency: string;
-  deltaPct: number;
-  deltaAbs: number;
-  mrr: number;
-  monthlyBurn: number;
-  runwayDays: number;
-  outstandingInvoices: number;
-  outstandingValue: number;
-  accounts: FinanceAccount[];
-  balanceSeries: SeriesPoint[];
-  inflowSeries: SeriesPoint[];
-  outflowSeries: SeriesPoint[];
-}
-
-/* ========================================================================== */
 /* Daily Tasks                                                                */
 /* ========================================================================== */
 
@@ -313,25 +273,7 @@ export interface DailyTasksPayload {
   overdue: number;
 }
 
-/* ========================================================================== */
-/* Chat                                                                       */
-/* ========================================================================== */
-
-export type ChatRole = 'user' | 'sam' | 'system';
-
-export interface ChatMessage {
-  id: string;
-  role: ChatRole;
-  content: string;
-  at: number;
-  /** True while tokens are still streaming into `content`. */
-  streaming?: boolean;
-  /** Structured side effects SAM performed for this turn. */
-  actions?: { label: string; status: 'ok' | 'failed' | 'pending' }[];
-  severity?: Severity;
-}
-
-/** SAM's outward affect — drives the mechanical eye. */
+/** SAM's outward affect — kept for `personalityEngine.ts`'s `moodFor`. */
 export type SamMood = 'idle' | 'thinking' | 'speaking' | 'alert' | 'annoyed' | 'pleased';
 
 /* ========================================================================== */
@@ -339,11 +281,7 @@ export type SamMood = 'idle' | 'thinking' | 'speaking' | 'alert' | 'annoyed' | '
 /* ========================================================================== */
 
 export interface DashboardBootstrap {
-  insights: Insight[];
-  fleet: AgentFleetPayload;
-  vault: VaultMemoryPayload;
   projects: Project[];
   system: SystemHealthPayload;
-  finance: FinancePayload;
   tasks: DailyTasksPayload;
 }

@@ -7,7 +7,6 @@ import { useUserPreferencesStore } from '@/store/userPreferencesStore';
 import { ParallaxBackground } from '@/components/background/ParallaxBackground';
 import { TopBar } from '@/components/dashboard/TopBar';
 import { StatCardGrid } from '@/components/dashboard/StatCardGrid';
-import { AIChatPanel } from '@/components/chat/AIChatPanel';
 
 /**
  * Console root. Owns the data lifecycle and pushes preference state onto the
@@ -21,9 +20,6 @@ export function DashboardShell() {
   const ambientTheme = useUserPreferencesStore((s) => s.ambientTheme);
   const backgroundIntensity = useUserPreferencesStore((s) => s.backgroundIntensity);
   const gridOverlay = useUserPreferencesStore((s) => s.gridOverlay);
-  const chatOpen = useUserPreferencesStore((s) => s.chatOpen);
-  const chatWidth = useUserPreferencesStore((s) => s.chatWidth);
-  const hydrated = useUserPreferencesStore((s) => s.hydrated);
   const flushLayoutSync = useUserPreferencesStore((s) => s.flushLayoutSync);
 
   /* --- Data lifecycle ----------------------------------------------------- */
@@ -59,10 +55,7 @@ export function DashboardShell() {
     <>
       <ParallaxBackground />
 
-      <div
-        className="relative z-10 min-h-screen transition-[padding] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] sm:pr-[var(--chat-pad,0px)]"
-        style={{ ['--chat-pad' as string]: chatOpen && hydrated ? `${chatWidth}px` : '0px' }}
-      >
+      <div className="relative z-10 min-h-screen">
         <main className="mx-auto w-full max-w-[1680px] px-3 py-3 sm:px-5 sm:py-4">
           <TopBar />
           <StatCardGrid />
@@ -72,13 +65,11 @@ export function DashboardShell() {
               SAM core dashboard · atwood systems
             </span>
             <span className="font-mono text-[9px] tracking-[0.16em] text-slate-700 uppercase">
-              drag any widget to reorder · ⌘K to summon SAM
+              drag any widget to reorder
             </span>
           </footer>
         </main>
       </div>
-
-      <AIChatPanel />
     </>
   );
 }

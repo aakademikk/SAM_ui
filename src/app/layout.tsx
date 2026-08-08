@@ -4,8 +4,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'SAM — Core Dashboard',
-  description:
-    'Command console for SAM (Seriously Awesome Machine): agent fleet supervision, vault memory, system telemetry and raw command execution.',
+  description: 'Command console for SAM: daily tasks, project delivery health, and system telemetry.',
   applicationName: 'SAM',
   robots: { index: false, follow: false },
 };

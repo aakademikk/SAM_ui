@@ -1,13 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Cloud, CloudOff, Loader2, MessageSquare, Radio } from 'lucide-react';
+import { Cloud, CloudOff, Loader2, Radio } from 'lucide-react';
 
-import { cn, formatClock, formatCompact } from '@/lib/utils';
-import {
-  selectUnacknowledgedCritical,
-  useDashboardStore,
-} from '@/store/dashboardStore';
+import { cn, formatClock } from '@/lib/utils';
+import { useDashboardStore } from '@/store/dashboardStore';
 import { useUserPreferencesStore } from '@/store/userPreferencesStore';
 import { ControlDeck } from '@/components/dashboard/ControlDeck';
 import { StatusDot, TONE_COLOR, type ToneName } from '@/components/ui/Indicators';
@@ -70,12 +67,8 @@ function EstateChip({
 
 export function TopBar() {
   const system = useDashboardStore((s) => s.system.data);
-  const fleet = useDashboardStore((s) => s.fleet.data);
-  const criticalCount = useDashboardStore(selectUnacknowledgedCritical);
   const polling = useDashboardStore((s) => s.polling);
 
-  const chatOpen = useUserPreferencesStore((s) => s.chatOpen);
-  const toggleChat = useUserPreferencesStore((s) => s.toggleChat);
   const operatorName = useUserPreferencesStore((s) => s.operatorName);
 
   const mounted = useMounted();
@@ -88,7 +81,6 @@ export function TopBar() {
     return () => clearInterval(timer);
   }, []);
 
-  const executing = fleet?.agents.filter((a) => a.status === 'executing').length ?? 0;
   const score = system?.overallScore ?? 0;
   const scoreTone: ToneName = score >= 92 ? 'success' : score >= 78 ? 'warning' : 'critical';
 
@@ -117,25 +109,6 @@ export function TopBar() {
       {/* Live estate readout */}
       <div className="hidden min-w-0 flex-1 items-center gap-3 md:flex">
         <EstateChip label="health" value={score.toFixed(1)} tone={scoreTone} pulse={score < 78} />
-        <EstateChip
-          label="agents"
-          value={`${executing}/${fleet?.agents.length ?? 0}`}
-          tone="accent-2"
-          pulse={executing > 0}
-        />
-        {fleet && (
-          <div className="hidden xl:block">
-            <EstateChip label="tok/min" value={formatCompact(fleet.totalTokensPerMin)} tone="accent" />
-          </div>
-        )}
-        {criticalCount > 0 && (
-          <div className="flex items-center gap-1.5 border-l border-void-500/60 pl-3">
-            <AlertTriangle size={12} className="text-alarm-400" />
-            <span className="font-mono text-[10.5px] font-medium tracking-wider text-alarm-300 uppercase">
-              {criticalCount} critical
-            </span>
-          </div>
-        )}
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-3">
@@ -152,21 +125,6 @@ export function TopBar() {
         <span className="hidden font-mono text-[9px] tracking-[0.14em] text-slate-600 uppercase lg:inline">
           {operatorName}
         </span>
-
-        <button
-          type="button"
-          onClick={toggleChat}
-          aria-label={chatOpen ? 'Collapse SAM panel' : 'Open SAM panel'}
-          aria-pressed={chatOpen}
-          className={cn(
-            'rounded-[4px] border p-1.5 transition-colors',
-            chatOpen
-              ? 'border-[var(--sam-accent)]/50 bg-[var(--sam-accent)]/15 text-[var(--sam-accent)]'
-              : 'border-void-400/60 text-slate-400 hover:bg-white/5 hover:text-slate-200',
-          )}
-        >
-          <MessageSquare size={14} />
-        </button>
 
         <ControlDeck />
       </div>

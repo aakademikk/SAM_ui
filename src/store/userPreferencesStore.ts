@@ -23,14 +23,9 @@ import { dashboardService } from '@/lib/dashboardService';
 import { clamp, debounce } from '@/lib/utils';
 
 export const DEFAULT_LAYOUT: WidgetLayoutItem[] = [
-  { id: 'ai-insights', size: 'md-tall', visible: true },
-  { id: 'system-health', size: 'md-wide', visible: true },
-  { id: 'agent-fleet', size: 'lg', visible: true },
-  { id: 'finance-balance', size: 'sm', visible: true },
   { id: 'daily-tasks', size: 'md-tall', visible: true },
   { id: 'active-projects', size: 'md-wide', visible: true },
-  { id: 'command-terminal', size: 'lg', visible: true },
-  { id: 'vault-memory', size: 'md-wide', visible: true },
+  { id: 'system-health', size: 'md-wide', visible: true },
 ];
 
 const KNOWN_WIDGETS = new Set<WidgetKind>(DEFAULT_LAYOUT.map((w) => w.id));
@@ -88,10 +83,6 @@ export interface UserPreferencesState {
   reducedMotion: boolean;
   compactDensity: boolean;
 
-  /* --- Chat panel -------------------------------------------------------- */
-  chatOpen: boolean;
-  chatWidth: number;
-
   /* --- Sync bookkeeping -------------------------------------------------- */
   syncState: SyncState;
   lastSyncedAt: string | null;
@@ -115,9 +106,6 @@ export interface UserPreferencesState {
   setCompactDensity: (on: boolean) => void;
 
   setOperatorName: (name: string) => void;
-  setChatOpen: (open: boolean) => void;
-  toggleChat: () => void;
-  setChatWidth: (px: number) => void;
 
   flushLayoutSync: () => void;
   markHydrated: () => void;
@@ -188,9 +176,6 @@ export const useUserPreferencesStore = create<UserPreferencesState>()(
       reducedMotion: false,
       compactDensity: false,
 
-      chatOpen: true,
-      chatWidth: 396,
-
       syncState: 'idle',
       lastSyncedAt: null,
       syncError: null,
@@ -237,9 +222,6 @@ export const useUserPreferencesStore = create<UserPreferencesState>()(
       setCompactDensity: (compactDensity) => set({ compactDensity }),
 
       setOperatorName: (operatorName) => set({ operatorName: operatorName.trim() || 'Operator' }),
-      setChatOpen: (chatOpen) => set({ chatOpen }),
-      toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
-      setChatWidth: (px) => set({ chatWidth: clamp(px, 320, 720) }),
 
       flushLayoutSync: () => {
         debouncedPushLayout.flush(get().dashboardLayout);
@@ -262,8 +244,6 @@ export const useUserPreferencesStore = create<UserPreferencesState>()(
         sarcasm: state.sarcasm,
         reducedMotion: state.reducedMotion,
         compactDensity: state.compactDensity,
-        chatOpen: state.chatOpen,
-        chatWidth: state.chatWidth,
       }),
       merge: (persisted, current) => {
         const incoming = (persisted ?? {}) as Partial<UserPreferencesState>;
