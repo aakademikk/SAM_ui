@@ -8,6 +8,7 @@ import {
 
 import { useVoiceWebSocket } from '@/hooks/useVoiceWebSocket';
 import type { VoiceState, ToolCallEntry } from '@/hooks/useVoiceWebSocket';
+import { setMicWaveform } from '@/lib/client/micAnalyser';
 
 /* ========================================================================== */
 /* State colours                                                              */
@@ -123,6 +124,9 @@ export function ChatVoiceWidget() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const micRafRef = useRef<number | null>(null);
 
   const connected = connectionState === 'connected';
   const disconnected = connectionState === 'disconnected';
@@ -144,6 +148,9 @@ export function ChatVoiceWidget() {
         mediaRecorderRef.current.stop();
       }
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (micRafRef.current) cancelAnimationFrame(micRafRef.current);
+      setMicWaveform(null);
+      audioCtxRef.current?.close();
     };
   }, []);
 
@@ -178,6 +185,34 @@ export function ChatVoiceWidget() {
         },
       });
       streamRef.current = stream;
+
+      // ---- Mic analyser for visualiser -----------------------------------
+      try {
+        const audioCtx = new AudioContext();
+        audioCtxRef.current = audioCtx;
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyserRef.current = analyser;
+        source.connect(analyser);
+        // deliberately not connected to destination — no feedback
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const readLevel = () => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteTimeDomainData(dataArray);
+          const waveform = new Array<number>(64);
+          const step = dataArray.length / 64;
+          for (let i = 0; i < 64; i++) {
+            waveform[i] = (dataArray[Math.floor(i * step)] - 128) / 128;
+          }
+          setMicWaveform(waveform);
+          micRafRef.current = requestAnimationFrame(readLevel);
+        };
+        micRafRef.current = requestAnimationFrame(readLevel);
+      } catch {
+        // non-critical — visualiser just won't get mic waveform
+      }
 
       // Prefer webm/opus; fall back to whatever the browser supports
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -214,6 +249,17 @@ export function ChatVoiceWidget() {
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current?.state === 'recording') {
       mediaRecorderRef.current.stop();
+    }
+    // Stop mic analyser
+    if (micRafRef.current) {
+      cancelAnimationFrame(micRafRef.current);
+      micRafRef.current = null;
+    }
+    setMicWaveform(null);
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close();
+      audioCtxRef.current = null;
+      analyserRef.current = null;
     }
   }, []);
 

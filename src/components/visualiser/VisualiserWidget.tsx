@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import { useVisualiserState } from '@/hooks/useVisualiserState';
 import type { VisualiserState } from '@/hooks/useVisualiserState';
+import { getMicWaveform } from '@/lib/client/micAnalyser';
 
 /* ========================================================================== */
 /* Constants                                                                  */
@@ -159,6 +160,10 @@ export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state' }: V
   const dimsRef = useRef({ cx: 0, cy: 0, S: 0, dpr: 1 });
 
   const snapshot = useVisualiserState(stateUrl);
+  // Keep a stable ref to the latest snapshot so the animation loop never
+  // restarts — it reads the latest state from the ref each frame.
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
 
   /* ---- Resize handler ---------------------------------------------------- */
   const resize = useCallback(() => {
@@ -222,7 +227,12 @@ export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state' }: V
       anim.totalTime = ts / 1000;
 
       // ---- Energy ---------------------------------------------------------
-      const appState = snapshot.state;
+      const serverState = snapshotRef.current.state;
+      // When the mic is live, drive the visualiser from real voice input
+      // instead of the server-polled (TTS-derived) waveform.
+      const micData = getMicWaveform();
+      const micActive = micData && (Date.now() - micData.timestamp) < 300;
+      const appState: VisualiserState = micActive ? 'listening' : serverState;
       const tgt = getTargets(appState);
       if (appState === 'idle') {
         anim.breathePhase += dt;
@@ -354,8 +364,8 @@ export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state' }: V
           ctx.stroke();
         }
 
-        // Energy pulse wavefronts
-        const dcol = motion > 0.4 ? AMBER : COLS.idle;
+        // Energy pulse wavefronts — colour follows active state
+        const dcol = col;
         const pulseCount = 3;
         for (let pc = 0; pc < pulseCount; pc++) {
           const pOffset = pc / pulseCount;
@@ -462,10 +472,15 @@ export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state' }: V
 
       // Node pulse
       let pulse: number;
-      if (appState === 'speaking') {
+      // Live mic waveform takes priority over server-polled TTS waveform
+      if (micActive && micData) {
         let s = 0;
-        for (let i = 0; i < snapshot.waveform.length; i++) s += snapshot.waveform[i] ** 2;
-        pulse = 0.4 + Math.min(0.6, Math.sqrt(s / snapshot.waveform.length) * 4);
+        for (let i = 0; i < micData.waveform.length; i++) s += micData.waveform[i] ** 2;
+        pulse = 0.4 + Math.min(0.6, Math.sqrt(s / micData.waveform.length) * 4);
+      } else if (appState === 'speaking') {
+        let s = 0;
+        for (let i = 0; i < snapshotRef.current.waveform.length; i++) s += snapshotRef.current.waveform[i] ** 2;
+        pulse = 0.4 + Math.min(0.6, Math.sqrt(s / snapshotRef.current.waveform.length) * 4);
       } else if (appState === 'thinking') {
         pulse = 0.3 + 0.5 * Math.abs(Math.sin(t * 4));
       } else if (appState === 'idle') {
@@ -678,7 +693,8 @@ export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state' }: V
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', resize);
     };
-  }, [resize, snapshot]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resize]);
 
   /* ---- Render ------------------------------------------------------------ */
   return (
