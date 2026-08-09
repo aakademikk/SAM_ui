@@ -7,6 +7,8 @@ import { useUserPreferencesStore } from '@/store/userPreferencesStore';
 import { ParallaxBackground } from '@/components/background/ParallaxBackground';
 import { TopBar } from '@/components/dashboard/TopBar';
 import { StatCardGrid } from '@/components/dashboard/StatCardGrid';
+import { VisualiserWidget } from '@/components/visualiser/VisualiserWidget';
+import { ChatVoiceWidget } from '@/components/chat/ChatVoiceWidget';
 import { AvatarReceptionist } from '@/components/avatar';
 
 /**
@@ -55,6 +57,10 @@ export function DashboardShell() {
   return (
     <>
       <ParallaxBackground />
+
+      <VisualiserWidget stateUrl="http://127.0.0.1:8790/state" />
+
+      <ChatVoiceWidget />
 
       <div className="relative z-10 min-h-screen">
         <main className="mx-auto w-full max-w-[1680px] px-3 py-3 sm:px-5 sm:py-4">
