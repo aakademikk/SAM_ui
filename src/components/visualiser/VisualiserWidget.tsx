@@ -152,12 +152,20 @@ function createParticles(count: number): Particle[] {
 export interface VisualiserWidgetProps {
   /** URL to poll for state. Defaults to the mock server on :8778. */
   stateUrl?: string;
+  /**
+   * Fixed pixel size for a compact, embedded rendering (square box).
+   * When omitted, the visualiser fills the viewport as a fixed background
+   * (the original dashboard behaviour) and shows the state HUD badge.
+   */
+  size?: number;
 }
 
-export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state' }: VisualiserWidgetProps) {
+export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state', size }: VisualiserWidgetProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const animRef = useRef<AnimState | null>(null);
   const dimsRef = useRef({ cx: 0, cy: 0, S: 0, dpr: 1 });
+  const compact = size !== undefined;
 
   const snapshot = useVisualiserState(stateUrl);
   // Keep a stable ref to the latest snapshot so the animation loop never
@@ -170,8 +178,8 @@ export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state' }: V
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const w = compact ? (size as number) : window.innerWidth;
+    const h = compact ? (size as number) : window.innerHeight;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     canvas.style.width = w + 'px';
@@ -188,7 +196,7 @@ export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state' }: V
       animRef.current.meshNodes = buildMeshNodes(500, S);
       animRef.current.meshEdges = buildMeshEdges(animRef.current.meshNodes, S);
     }
-  }, []);
+  }, [compact, size]);
 
   /* ---- Initialise animation state ---------------------------------------- */
   useEffect(() => {
@@ -295,8 +303,8 @@ export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state' }: V
       const { cx, cy, S, dpr } = dims;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
-      const w = window.innerWidth;
-      const h = window.innerHeight;
+      const w = compact ? (size as number) : window.innerWidth;
+      const h = compact ? (size as number) : window.innerHeight;
       const t = anim.totalTime;
       const col = stateCol(appState);
       const { glow, motion } = anim;
@@ -701,6 +709,18 @@ export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state' }: V
   }, [resize]);
 
   /* ---- Render ------------------------------------------------------------ */
+  if (compact) {
+    return (
+      <div
+        ref={containerRef}
+        className="pointer-events-none relative"
+        style={{ width: size, height: size }}
+      >
+        <canvas ref={canvasRef} className="absolute inset-0 block" />
+      </div>
+    );
+  }
+
   return (
     <div className="pointer-events-none fixed inset-0 z-0">
       <canvas ref={canvasRef} className="absolute inset-0 block" />

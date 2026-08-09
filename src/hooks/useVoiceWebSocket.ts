@@ -24,10 +24,6 @@ export interface ToolCallEntry {
   ts: number;
 }
 
-export interface PermissionRequest {
-  summary: string;
-}
-
 /* ========================================================================== */
 /* Audio queue — sequential mp3 playback                                      */
 /* ========================================================================== */
@@ -102,7 +98,6 @@ export function useVoiceWebSocket(url = 'ws://127.0.0.1:8790/ws') {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [toolCalls, setToolCalls] = useState<ToolCallEntry[]>([]);
-  const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [audioSpeaking, setAudioSpeaking] = useState(false);
 
@@ -204,10 +199,6 @@ export function useVoiceWebSocket(url = 'ws://127.0.0.1:8790/ws') {
           break;
         }
 
-        case 'permission_request':
-          setPermissionRequest({ summary: (msg.summary as string) ?? 'Unknown tool' });
-          break;
-
         case 'error':
           setError((msg.message as string) ?? 'Unknown error');
           break;
@@ -262,13 +253,6 @@ export function useVoiceWebSocket(url = 'ws://127.0.0.1:8790/ws') {
     }
   }, []);
 
-  const sendPermissionAnswer = useCallback((allow: boolean) => {
-    setPermissionRequest(null);
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'permission_answer', allow }));
-    }
-  }, []);
-
   const sendInterrupt = useCallback(() => {
     audioQueueRef.current.clear();
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -284,12 +268,10 @@ export function useVoiceWebSocket(url = 'ws://127.0.0.1:8790/ws') {
     voiceState,
     transcript,
     toolCalls,
-    permissionRequest,
     error,
     audioSpeaking,
     sendText,
     sendAudio,
-    sendPermissionAnswer,
     sendInterrupt,
     clearTranscript,
     clearToolCalls,

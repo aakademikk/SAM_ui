@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { VisualiserWidget } from '@/components/visualiser/VisualiserWidget';
+
 export default function IntroPage() {
   const router = useRouter();
   const [visible, setVisible] = useState(false);
@@ -72,6 +74,12 @@ export default function IntroPage() {
     >
       {/* Core glow */}
       <div className="relative mb-8">
+        {/* Compact visualiser, fades in behind the orb/text */}
+        <div
+          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 transition-opacity duration-1000 ${visible ? 'opacity-60' : 'opacity-0'}`}
+        >
+          <VisualiserWidget size={220} stateUrl="http://127.0.0.1:8790/state" />
+        </div>
         <div
           className="h-32 w-32 rounded-full transition-all duration-1000"
           style={{

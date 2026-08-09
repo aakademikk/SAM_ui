@@ -106,12 +106,10 @@ export function ChatVoiceWidget() {
     voiceState,
     transcript,
     toolCalls,
-    permissionRequest,
     error,
     audioSpeaking,
     sendText,
     sendAudio,
-    sendPermissionAnswer,
     sendInterrupt,
     connect,
   } = useVoiceWebSocket();
@@ -236,10 +234,19 @@ export function ChatVoiceWidget() {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
+      recorder.onerror = () => {
+        console.error('[PTT] MediaRecorder error');
+        setRecording(false);
+      };
+
       recorder.onstop = () => {
-        if (chunksRef.current.length > 0) {
+        const totalChunks = chunksRef.current.length;
+        if (totalChunks > 0) {
           const blob = new Blob(chunksRef.current, { type: mimeType });
+          console.log(`[PTT] sending ${blob.size} bytes (${totalChunks} chunks, ${mimeType})`);
           sendAudio(blob);
+        } else {
+          console.warn('[PTT] no audio chunks recorded');
         }
         stream.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
@@ -247,9 +254,11 @@ export function ChatVoiceWidget() {
       };
 
       recorder.start(250); // collect chunks every 250ms
+      console.log('[PTT] recording started');
       setRecording(true);
     } catch (err) {
-      // Mic access denied or not available
+      console.error('[PTT] mic access failed:', err);
+      setRecording(false);
     }
   }, [connected, recording, sendAudio]);
 
@@ -270,28 +279,32 @@ export function ChatVoiceWidget() {
     }
   }, []);
 
-  /* ---- Permission bar ---------------------------------------------------- */
-  const PermissionBar = permissionRequest && (
-    <div className="flex items-center gap-2 border-t border-amber-500/30 bg-amber-500/10 px-3 py-2">
-      <span className="flex-1 font-mono text-[10px] text-amber-300 leading-tight">
-        Allow: {permissionRequest.summary}?
-      </span>
-      <button
-        type="button"
-        className="rounded-sm bg-emerald-600/80 px-2.5 py-0.5 font-mono text-[10px] text-white hover:bg-emerald-500"
-        onClick={() => sendPermissionAnswer(true)}
-      >
-        Yes
-      </button>
-      <button
-        type="button"
-        className="rounded-sm bg-alarm-600/80 px-2.5 py-0.5 font-mono text-[10px] text-white hover:bg-alarm-500"
-        onClick={() => sendPermissionAnswer(false)}
-      >
-        No
-      </button>
-    </div>
-  );
+  /* ---- Spacebar push-to-talk ---------------------------------------------- */
+  useEffect(() => {
+    if (!open) return;
+
+    const isTypingTarget = (target: EventTarget | null) =>
+      target instanceof HTMLElement &&
+      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.repeat || isTypingTarget(e.target)) return;
+      e.preventDefault();
+      startRecording();
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || isTypingTarget(e.target)) return;
+      stopRecording();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [open, startRecording, stopRecording]);
 
   /* ---- State dot --------------------------------------------------------- */
   const stateColor = STATE_COLORS[voiceState] ?? STATE_COLORS.idle;
@@ -439,9 +452,6 @@ export function ChatVoiceWidget() {
           {/* Tool activity panel */}
           {connected && <ToolActivityPanel calls={toolCalls} />}
 
-          {/* Permission bar */}
-          {connected && PermissionBar}
-
           {/* Input area */}
           {connected && (
             <div className="flex items-center gap-2 border-t border-void-500/50 px-3 py-2">
@@ -458,7 +468,7 @@ export function ChatVoiceWidget() {
                 onMouseLeave={stopRecording}
                 title="Hold to talk"
               >
-                {recording ? <MicOff size={14} /> : <Mic size={14} />}
+                {recording ? <Mic size={14} /> : <MicOff size={14} />}
               </button>
 
               <input
