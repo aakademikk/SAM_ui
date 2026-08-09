@@ -7,6 +7,7 @@ import { useUserPreferencesStore } from '@/store/userPreferencesStore';
 import { ParallaxBackground } from '@/components/background/ParallaxBackground';
 import { TopBar } from '@/components/dashboard/TopBar';
 import { StatCardGrid } from '@/components/dashboard/StatCardGrid';
+import { AvatarReceptionist } from '@/components/avatar';
 
 /**
  * Console root. Owns the data lifecycle and pushes preference state onto the
@@ -59,6 +60,11 @@ export function DashboardShell() {
         <main className="mx-auto w-full max-w-[1680px] px-3 py-3 sm:px-5 sm:py-4">
           <TopBar />
           <StatCardGrid />
+
+          {/* ---- Avatar Receptionist ------------------------------------- */}
+          <section className="mt-6 flex justify-center">
+            <AvatarReceptionist />
+          </section>
 
           <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 px-1 pb-4">
             <span className="font-mono text-[9px] tracking-[0.16em] text-slate-700 uppercase">
