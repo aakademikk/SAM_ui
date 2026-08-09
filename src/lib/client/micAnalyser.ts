@@ -30,3 +30,18 @@ export function subscribeToMicWaveform(fn: Listener): () => void {
   listeners.add(fn);
   return () => { listeners.delete(fn); };
 }
+
+/* -------------------------------------------------------------------------- */
+/* Audio-speaking bus — ChatVoiceWidget sets this when TTS audio is playing   */
+/* so the visualiser can override to the white "speaking" state.              */
+/* -------------------------------------------------------------------------- */
+
+let audioSpeaking = false;
+
+export function setAudioSpeaking(active: boolean): void {
+  audioSpeaking = active;
+}
+
+export function getAudioSpeaking(): boolean {
+  return audioSpeaking;
+}

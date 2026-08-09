@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import { useVisualiserState } from '@/hooks/useVisualiserState';
 import type { VisualiserState } from '@/hooks/useVisualiserState';
-import { getMicWaveform } from '@/lib/client/micAnalyser';
+import { getMicWaveform, getAudioSpeaking } from '@/lib/client/micAnalyser';
 
 /* ========================================================================== */
 /* Constants                                                                  */
@@ -228,11 +228,15 @@ export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state' }: V
 
       // ---- Energy ---------------------------------------------------------
       const serverState = snapshotRef.current.state;
-      // When the mic is live, drive the visualiser from real voice input
-      // instead of the server-polled (TTS-derived) waveform.
+      // Priority: audio playing → speaking, mic active → listening, else server
       const micData = getMicWaveform();
       const micActive = micData && (Date.now() - micData.timestamp) < 300;
-      const appState: VisualiserState = micActive ? 'listening' : serverState;
+      const audioActive = getAudioSpeaking();
+      const appState: VisualiserState = audioActive
+        ? 'speaking'
+        : micActive
+          ? 'listening'
+          : serverState;
       const tgt = getTargets(appState);
       if (appState === 'idle') {
         anim.breathePhase += dt;

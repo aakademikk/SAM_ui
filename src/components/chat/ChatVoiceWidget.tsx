@@ -8,7 +8,7 @@ import {
 
 import { useVoiceWebSocket } from '@/hooks/useVoiceWebSocket';
 import type { VoiceState, ToolCallEntry } from '@/hooks/useVoiceWebSocket';
-import { setMicWaveform } from '@/lib/client/micAnalyser';
+import { setMicWaveform, setAudioSpeaking } from '@/lib/client/micAnalyser';
 
 /* ========================================================================== */
 /* State colours                                                              */
@@ -140,6 +140,13 @@ export function ChatVoiceWidget() {
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
+
+  /* ---- Push audio-speaking flag to visualiser bus ------------------------- */
+  useEffect(() => {
+    setAudioSpeaking(audioSpeaking);
+    // Clear mic waveform when audio starts so the mic override doesn't fight
+    if (audioSpeaking) setMicWaveform(null);
+  }, [audioSpeaking]);
 
   /* ---- Clean up media on unmount ----------------------------------------- */
   useEffect(() => {
