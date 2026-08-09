@@ -67,10 +67,11 @@ export function DashboardShell() {
           <TopBar />
           <StatCardGrid />
 
-          {/* ---- Avatar Receptionist ------------------------------------- */}
+          {/* ---- Avatar Receptionist (disabled) ----------------------------
           <section className="mt-6 flex justify-center">
             <AvatarReceptionist />
           </section>
+          */}
 
           <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 px-1 pb-4">
             <span className="font-mono text-[9px] tracking-[0.16em] text-slate-700 uppercase">
