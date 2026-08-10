@@ -23,8 +23,9 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [speaking, setSpeaking] = useState<string | null>(null); // message id being spoken
-  const [autoSpeak, setAutoSpeak] = useState(false);
+  const [muted, setMuted] = useState(false); // auto-speak toggle
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastAssistantIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -32,6 +33,23 @@ export default function ChatPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Auto-speak completed assistant messages
+  useEffect(() => {
+    if (muted) return;
+    const last = messages[messages.length - 1];
+    if (
+      last?.role === 'assistant' &&
+      last.content &&
+      !streaming &&
+      last.id !== lastAssistantIdRef.current
+    ) {
+      lastAssistantIdRef.current = last.id;
+      // Small delay so the UI settles before audio starts
+      const t = setTimeout(() => speak(last.id, last.content), 300);
+      return () => clearTimeout(t);
+    }
+  }, [messages, streaming, muted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Focus input on mount
   useEffect(() => {
@@ -188,6 +206,23 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] md:min-h-screen">
+      {/* Mute toggle */}
+      <div className="flex items-center justify-end px-4 py-1.5 border-b border-void-800 shrink-0">
+        <button
+          type="button"
+          onClick={() => setMuted(!muted)}
+          className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded transition-colors ${
+            muted
+              ? 'text-red-400 bg-red-900/20 border border-red-700/30'
+              : 'text-void-400 hover:text-void-200'
+          }`}
+          title={muted ? 'Unmute SAM' : 'Mute SAM'}
+        >
+          {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+          {muted ? 'Muted' : 'Speaking'}
+        </button>
+      </div>
+
       {/* Message area */}
       <div className="flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-4">
         {messages.length === 0 && (
@@ -217,13 +252,13 @@ export default function ChatPage() {
                 <span className="inline-block w-2 h-4 bg-accent animate-pulse align-text-bottom" />
               ) : null)}
 
-              {/* Speak button on SAM's messages */}
+              {/* Replay button on SAM's messages (auto-speak handles first play) */}
               {msg.role === 'assistant' && msg.content && (
                 <button
                   type="button"
                   onClick={() => speak(msg.id, msg.content)}
-                  className="mt-1.5 text-void-300 hover:text-accent transition-colors"
-                  title={speaking === msg.id ? 'Stop' : 'Read aloud'}
+                  className="mt-1.5 text-void-400 hover:text-accent transition-colors"
+                  title={speaking === msg.id ? 'Stop' : 'Replay'}
                 >
                   {speaking === msg.id ? (
                     <VolumeX size={13} />

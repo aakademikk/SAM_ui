@@ -12,23 +12,45 @@
 
 import { SignJWT, jwtVerify } from 'jose';
 import { randomBytes } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 
 /* ========================================================================== */
-/* Key management                                                              */
+/* Key management — persisted to disk so sessions survive restarts              */
 /* ========================================================================== */
+
+const KEY_PATH = path.join(os.homedir(), '.sam', 'auth', 'session-key');
 
 function generateKey(): Uint8Array {
   return randomBytes(32);
 }
 
-// Cached on globalThis so the key is stable across Next.js dev-mode reloads
-// but regenerates on cold start.
+function loadOrCreateKey(): Uint8Array {
+  try {
+    // Try to load existing key from disk.
+    const raw = fs.readFileSync(KEY_PATH);
+    if (raw.length === 32) return new Uint8Array(raw);
+  } catch {
+    // Key doesn't exist yet — create and persist it.
+  }
+
+  const key = generateKey();
+  try {
+    fs.mkdirSync(path.dirname(KEY_PATH), { recursive: true });
+    fs.writeFileSync(KEY_PATH, key);
+  } catch {
+    // Can't persist — key lives only in memory this session.
+  }
+  return key;
+}
+
 const globalForSam = globalThis as unknown as {
   __samSessionKey?: Uint8Array;
 };
 function getKey(): Uint8Array {
   if (!globalForSam.__samSessionKey) {
-    globalForSam.__samSessionKey = generateKey();
+    globalForSam.__samSessionKey = loadOrCreateKey();
   }
   return globalForSam.__samSessionKey;
 }
