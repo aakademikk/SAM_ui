@@ -36,13 +36,16 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
   const [closed, setClosed] = useState(false);
   const [lastSeq, setLastSeq] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [cmdError, setCmdError] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [needsStepUp, setNeedsStepUp] = useState(false);
 
   // Check auth on mount
   useEffect(() => {
     authService.checkSession().then((s) => {
       setIsLoggedIn(s.authenticated);
+      setNeedsStepUp(!s.stepUp);
       setAuthChecked(true);
     });
   }, []);
@@ -114,13 +117,25 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
   const runCommand = useCallback(async (cmd: string) => {
     if (!cmd.trim()) return;
     setLoading(true);
+    setCmdError(null);
     try {
       const j = await jobsService.create(cmd.trim());
       setCommand('');
       attachToJob(j.id);
       await refreshJobs();
-    } catch { /* silent */ }
-    finally { setLoading(false); }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Command failed';
+      // Check if step-up is required
+      if (msg.includes('step-up') || msg.includes('stepup')) {
+        setCmdError('Biometric unlock required. Tap Unlock in the sidebar (or Login below), then retry.');
+        setNeedsStepUp(true);
+      } else if (msg.includes('authenticated') || msg.includes('Not authenticated')) {
+        setCmdError('Not logged in. Tap Login below.');
+        setIsLoggedIn(false);
+      } else {
+        setCmdError(msg.slice(0, 120));
+      }
+    } finally { setLoading(false); }
   }, [attachToJob, refreshJobs]);
 
   const onSubmit = (e: React.FormEvent) => {
@@ -278,6 +293,43 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
             {loading ? '...' : 'Run'}
           </button>
         </form>
+
+        {/* Command error */}
+        {cmdError && (
+          <div className="flex items-start gap-2 p-3 bg-red-900/10 border border-red-700/20 rounded-lg">
+            <p className="text-sm text-red-400 flex-1">{cmdError}</p>
+            <button
+              type="button"
+              onClick={() => setCmdError(null)}
+              className="text-red-400 hover:text-red-300 shrink-0"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Step-up prompt */}
+        {needsStepUp && isLoggedIn && (
+          <div className="flex items-center gap-3 p-3 bg-amber-900/10 border border-amber-700/20 rounded-lg">
+            <p className="text-sm text-amber-300/80 flex-1">
+              Biometric unlock needed to run commands.
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await authService.stepUp();
+                  setNeedsStepUp(false);
+                  setCmdError(null);
+                } catch { /* user cancelled */ }
+              }}
+              className="px-4 py-2 bg-accent/20 border border-accent/40 rounded-lg
+                         text-accent text-sm font-medium hover:bg-accent/30 transition-colors shrink-0"
+            >
+              Unlock
+            </button>
+          </div>
+        )}
 
         {/* Voice input — requires auth for the transcription endpoint */}
         {!authChecked ? null : isLoggedIn ? (
