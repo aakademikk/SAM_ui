@@ -17,17 +17,41 @@ interface Message {
   content: string;
 }
 
+const CHAT_STORAGE_KEY = 'sam-chat-messages';
+const MAX_STORED_MESSAGES = 50;
+
+function loadMessages(): Message[] {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as Message[];
+  } catch { /* corrupted */ }
+  return [];
+}
+
+function saveMessages(msgs: Message[]) {
+  try {
+    // Keep only the last N to stay within localStorage limits.
+    const trimmed = msgs.slice(-MAX_STORED_MESSAGES);
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(trimmed));
+  } catch { /* quota exceeded */ }
+}
+
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(loadMessages);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [speaking, setSpeaking] = useState<string | null>(null); // message id being spoken
-  const [muted, setMuted] = useState(false); // auto-speak toggle
+  const [speaking, setSpeaking] = useState<string | null>(null);
+  const [muted, setMuted] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastAssistantIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Persist messages to localStorage on every change.
+  useEffect(() => {
+    if (messages.length > 0) saveMessages(messages);
+  }, [messages]);
 
   // Auto-scroll to bottom
   useEffect(() => {
