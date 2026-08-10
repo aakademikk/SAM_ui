@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Send, Cpu } from 'lucide-react';
+import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 
 interface Message {
   id: string;
@@ -182,13 +183,105 @@ export default function ChatPage() {
       </div>
 
       {/* Input area */}
-      <form
-        onSubmit={onSubmit}
+      <div
         className="shrink-0 border-t border-void-700 bg-void-900/80 backdrop-blur-md
-                   px-3 py-2.5 md:px-6 md:py-3
+                   px-3 py-2.5 md:px-6 md:py-3 space-y-2
                    pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]"
       >
-        <div className="flex items-center gap-2 max-w-3xl mx-auto">
+        {/* Voice record */}
+        <div className="flex justify-center">
+          <VoiceRecordButton
+            onTranscribe={(text) => {
+              setInput(text);
+              // Auto-send after a beat so the user sees the transcript
+              setTimeout(() => {
+                // Use the text directly — setInput may be stale in the closure
+                const sendText = text;
+                if (!sendText.trim() || streaming) return;
+
+                const userMsg: Message = {
+                  id: `user_${Date.now()}`,
+                  role: 'user',
+                  content: sendText,
+                };
+                const assistantMsg: Message = {
+                  id: `assistant_${Date.now()}`,
+                  role: 'assistant',
+                  content: '',
+                };
+
+                setMessages((prev) => [...prev, userMsg, assistantMsg]);
+                setInput('');
+                setStreaming(true);
+                setError(null);
+
+                const allMessages = [...messages, userMsg].map((m) => ({
+                  role: m.role,
+                  content: m.content,
+                }));
+
+                fetch('/api/chat', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({ messages: allMessages }),
+                })
+                  .then(async (response) => {
+                    if (!response.ok) {
+                      const err = await response.json().catch(() => ({ error: 'Request failed' }));
+                      throw new Error(err.error ?? `HTTP ${response.status}`);
+                    }
+                    if (!response.body) throw new Error('No response body');
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+
+                    while (true) {
+                      const { done, value } = await reader.read();
+                      if (done) break;
+
+                      buffer += decoder.decode(value, { stream: true });
+                      const lines = buffer.split('\n');
+                      buffer = lines.pop() ?? '';
+
+                      for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                          try {
+                            const parsed = JSON.parse(line.slice(6));
+                            if (parsed.text) {
+                              setMessages((prev) => {
+                                const updated = [...prev];
+                                const last = updated[updated.length - 1];
+                                if (last?.role === 'assistant') last.content += parsed.text;
+                                return [...updated];
+                              });
+                            }
+                          } catch { /* skip */ }
+                        }
+                      }
+                    }
+                  })
+                  .catch((err) => {
+                    setError(err instanceof Error ? err.message : 'Chat failed');
+                    setMessages((prev) => {
+                      const updated = [...prev];
+                      if (updated[updated.length - 1]?.role === 'assistant' && !updated[updated.length - 1].content) {
+                        updated.pop();
+                      }
+                      return updated;
+                    });
+                  })
+                  .finally(() => setStreaming(false));
+              }, 200);
+            }}
+          />
+        </div>
+
+        <form
+          onSubmit={onSubmit}
+          className="flex items-center gap-2 max-w-3xl mx-auto"
+        >
           <input
             ref={inputRef}
             type="text"
@@ -211,8 +304,8 @@ export default function ChatPage() {
           >
             <Send size={16} />
           </button>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }
