@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     return failure('text is required.', 400);
   }
 
-  const voiceId = typeof body.voice === 'number' && body.voice >= 0 && body.voice <= 10
+  const voiceId = typeof body.voice === 'number' && body.voice >= 0 && body.voice <= 52
     ? body.voice
     : undefined;
 
