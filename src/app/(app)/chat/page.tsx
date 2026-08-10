@@ -217,12 +217,12 @@ export default function ChatPage() {
                 <span className="inline-block w-2 h-4 bg-accent animate-pulse align-text-bottom" />
               ) : null)}
 
-              {/* Speak button on SAM's completed messages */}
-              {msg.role === 'assistant' && msg.content && !streaming && (
+              {/* Speak button on SAM's messages */}
+              {msg.role === 'assistant' && msg.content && (
                 <button
                   type="button"
                   onClick={() => speak(msg.id, msg.content)}
-                  className="mt-1.5 text-void-500 hover:text-accent transition-colors"
+                  className="mt-1.5 text-void-300 hover:text-accent transition-colors"
                   title={speaking === msg.id ? 'Stop' : 'Read aloud'}
                 >
                   {speaking === msg.id ? (
