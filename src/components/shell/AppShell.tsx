@@ -12,6 +12,7 @@
 
 import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
+import { InstallButton } from './InstallButton';
 import { useDevDuplicateCheck } from './useDevDuplicateCheck';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -30,6 +31,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           min-h-screen
         "
       >
+        {/* Install banner — appears when beforeinstallprompt fires */}
+        <div className="md:hidden pt-3 px-3">
+          <InstallButton variant="banner" />
+        </div>
+
         {children}
       </main>
 
