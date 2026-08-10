@@ -59,7 +59,15 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Auto-speak completed assistant messages
+  // On mount, mark the last assistant message as already spoken so we
+  // don't re-speak it when switching tabs.
+  useEffect(() => {
+    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant' && m.content);
+    if (lastAssistant) lastAssistantIdRef.current = lastAssistant.id;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-speak completed assistant messages (only new ones since mount)
   useEffect(() => {
     if (muted) return;
     const last = messages[messages.length - 1];
@@ -70,9 +78,7 @@ export default function ChatPage() {
       last.id !== lastAssistantIdRef.current
     ) {
       lastAssistantIdRef.current = last.id;
-      // Small delay so the UI settles before audio starts
-      const t = setTimeout(() => speak(last.id, last.content), 300);
-      return () => clearTimeout(t);
+      speak(last.id, last.content);
     }
   }, [messages, streaming, muted]); // eslint-disable-line react-hooks/exhaustive-deps
 
