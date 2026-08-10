@@ -11,7 +11,7 @@
 
 import { requireSession } from '@/lib/server/auth/guard';
 import { failure } from '@/lib/server/respond';
-import { getSystemPrompt } from '@/lib/server/chat/context';
+import { buildContext } from '@/lib/server/chat/context';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // 60s timeout for streaming responses
@@ -40,8 +40,10 @@ export async function POST(request: Request) {
     return failure('messages array is required.', 400);
   }
 
-  // Build system prompt from live vault + CLAUDE.md context
-  const systemPrompt = await getSystemPrompt();
+  // Build system prompt with real-time vault search for this message.
+  // Use the last user message as the search query.
+  const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+  const systemPrompt = await buildContext(lastUserMsg);
 
   // Build Anthropic-format messages
   const apiMessages = [
