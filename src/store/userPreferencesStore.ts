@@ -167,7 +167,7 @@ export const useUserPreferencesStore = create<UserPreferencesState>()(
       dashboardLayout: [...DEFAULT_LAYOUT],
       editMode: false,
 
-      ambientTheme: 'void',
+      ambientTheme: 'toxic',
       backgroundIntensity: 0.75,
       parallaxEnabled: true,
       gridOverlay: true,

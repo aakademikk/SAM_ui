@@ -11,7 +11,8 @@
 
 import { requireSession } from '@/lib/server/auth/guard';
 import { failure, readJson } from '@/lib/server/respond';
-import { synthesize, VOICES } from '@/lib/server/voice/tts';
+import { synthesize } from '@/lib/server/voice/tts';
+import { VOICES } from '@/lib/voiceData';
 
 export const dynamic = 'force-dynamic';
 

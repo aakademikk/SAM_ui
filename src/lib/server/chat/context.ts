@@ -6,7 +6,6 @@
  * briefly to avoid disk thrash on rapid-fire messages.
  */
 
-import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
