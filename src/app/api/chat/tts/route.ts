@@ -1,27 +1,23 @@
 /**
- * POST /api/chat/tts — text-to-speech via ElevenLabs.
+ * POST /api/chat/tts — local text-to-speech via Kokoro (sherpa-onnx).
  *
- * Body: { text: string }
- * Returns: audio/mpeg stream
+ * Body: { text: string, voice?: number }
+ * Returns: audio/wav
+ *
+ * Runs entirely on CPU. No API keys, no token limits, no network.
  *
  * Requires a valid session cookie.
  */
 
 import { requireSession } from '@/lib/server/auth/guard';
 import { failure, readJson } from '@/lib/server/respond';
+import { synthesize, VOICES } from '@/lib/server/voice/tts';
 
 export const dynamic = 'force-dynamic';
-
-const API_KEY = process.env.ELEVENLABS_API_KEY ?? '';
-const VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? '21m00Tcm4TlvDq8ikWAM';
 
 export async function POST(request: Request) {
   const session = await requireSession(request);
   if (session instanceof Response) return session;
-
-  if (!API_KEY) {
-    return failure('ELEVENLABS_API_KEY not configured.', 500);
-  }
 
   const body = await readJson(request);
   const text = typeof body.text === 'string' ? body.text.trim() : '';
@@ -29,44 +25,60 @@ export async function POST(request: Request) {
     return failure('text is required.', 400);
   }
 
-  // Cap text length to avoid abuse.
-  const capped = text.slice(0, 1000);
+  const voiceId = typeof body.voice === 'number' && body.voice >= 0 && body.voice <= 10
+    ? body.voice
+    : undefined;
 
   try {
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream`,
-      {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'xi-api-key': API_KEY,
-        },
-        body: JSON.stringify({
-          text: capped,
-          model_id: 'eleven_flash_v2_5', // fast streaming model
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
-            style: 0.3,
-            use_speaker_boost: true,
-          },
-        }),
-      },
-    );
+    const result = synthesize(text, voiceId);
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      return failure(`TTS failed: ${response.status} — ${errText.slice(0, 120)}`, 500);
-    }
+    // Build a minimal WAV file (PCM 24kHz 16-bit mono).
+    const dataSize = result.pcm.length;
+    const wav = Buffer.allocUnsafe(44 + dataSize);
 
-    // Stream the audio back to the client.
-    return new Response(response.body, {
+    // RIFF header
+    wav.write('RIFF', 0);
+    wav.writeUInt32LE(36 + dataSize, 4);
+    wav.write('WAVE', 8);
+
+    // fmt chunk
+    wav.write('fmt ', 12);
+    wav.writeUInt32LE(16, 16);         // chunk size
+    wav.writeUInt16LE(1, 20);          // PCM
+    wav.writeUInt16LE(1, 22);          // mono
+    wav.writeUInt32LE(24000, 24);      // sample rate
+    wav.writeUInt32LE(48000, 28);      // byte rate
+    wav.writeUInt16LE(2, 32);          // block align
+    wav.writeUInt16LE(16, 34);         // bits per sample
+
+    // data chunk
+    wav.write('data', 36);
+    wav.writeUInt32LE(dataSize, 40);
+    result.pcm.copy(wav, 44);
+
+    return new Response(wav, {
       headers: {
-        'content-type': response.headers.get('content-type') ?? 'audio/mpeg',
+        'content-type': 'audio/wav',
         'cache-control': 'public, max-age=3600',
+        'x-sam-tts-latency-ms': String(result.latencyMs),
+        'x-sam-tts-duration-ms': String(Math.round(result.durationSec * 1000)),
       },
     });
   } catch (err) {
-    return failure(`TTS request failed: ${err instanceof Error ? err.message : 'unknown'}`, 500);
+    return failure(
+      `TTS failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+      500,
+    );
   }
+}
+
+/** GET — list available voices. */
+export async function GET(request: Request) {
+  const session = await requireSession(request);
+  if (session instanceof Response) return session;
+
+  return Response.json({
+    defaultVoice: 7, // bf_emma
+    voices: VOICES,
+  });
 }
