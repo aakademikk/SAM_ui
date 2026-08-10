@@ -98,7 +98,10 @@ export default function ChatPage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({
+          text,
+          voice: parseInt(localStorage.getItem('sam-tts-voice') ?? '21', 10),
+        }),
       });
 
       if (!response.ok) throw new Error('TTS failed');
