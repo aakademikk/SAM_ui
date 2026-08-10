@@ -33,19 +33,31 @@ const STATE_LABELS: Record<VoiceState, string> = {
 /* ========================================================================== */
 
 function ToolActivityPanel({ calls }: { calls: ToolCallEntry[] }) {
+  const [collapsed, setCollapsed] = useState(false);
+
   if (calls.length === 0) return null;
 
   return (
     <div className="border-t border-void-500/50 px-3 py-2">
-      <div className="mb-1.5 flex items-center gap-1.5 text-[10px] tracking-[0.14em] text-slate-500 uppercase">
+      <button
+        type="button"
+        className="mb-1.5 flex w-full items-center gap-1.5 text-[10px] tracking-[0.14em] text-slate-500 uppercase hover:text-slate-400"
+        onClick={() => setCollapsed(!collapsed)}
+      >
+        {collapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
         <Wrench size={10} />
         <span>Tool Activity</span>
-      </div>
-      <div className="max-h-48 space-y-1 overflow-y-auto scrollbar-thin">
-        {calls.map((tc) => (
-          <ToolCallRow key={tc.id} call={tc} />
-        ))}
-      </div>
+        <span className="ml-auto font-mono text-[9px] text-slate-600">
+          {calls.length}
+        </span>
+      </button>
+      {!collapsed && (
+        <div className="max-h-48 space-y-1 overflow-y-auto scrollbar-thin">
+          {calls.map((tc) => (
+            <ToolCallRow key={tc.id} call={tc} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
