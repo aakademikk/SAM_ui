@@ -15,6 +15,7 @@ import { useDevDuplicateCheck } from '@/components/shell/useDevDuplicateCheck';
 import { KeyBar } from './KeyBar';
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { authService } from '@/lib/authService';
+import { readMessage, sendMessage } from '@/lib/crossTab';
 
 interface TerminalProps {
   /** If set, attach to this specific job ID. Otherwise show job list + launcher. */
@@ -48,6 +49,17 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
       setNeedsStepUp(!s.stepUp);
       setAuthChecked(true);
     });
+  }, []);
+
+  // Poll for commands sent from Chat
+  useEffect(() => {
+    const check = () => {
+      const cmd = readMessage('command');
+      if (cmd) setCommand(cmd);
+    };
+    check();
+    window.addEventListener('storage', check);
+    return () => window.removeEventListener('storage', check);
   }, []);
 
   // Keyboard height tracking for Android
@@ -202,6 +214,24 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
             ← Back
           </button>
           <code className="text-sm text-void-200 truncate flex-1">{job.command}</code>
+          {/* Discuss with SAM — send job output to Chat */}
+          {job.status !== 'running' && output && (
+            <button
+              type="button"
+              onClick={() => {
+                sendMessage({
+                  type: 'chat',
+                  text: `Command: \`${job.command}\`\nExit: ${job.exitCode}\nOutput:\n${output.slice(0, 2000)}`,
+                  timestamp: Date.now(),
+                });
+              }}
+              className="shrink-0 px-2 py-1 text-[10px] bg-accent/10 border border-accent/20
+                         rounded text-accent hover:bg-accent/20 transition-colors"
+              title="Send to Chat for discussion"
+            >
+              Discuss
+            </button>
+          )}
           <span className={`text-xs px-1.5 py-0.5 rounded border font-mono ${
             job.status === 'running' ? 'bg-blue-900/40 text-blue-400 border-blue-700/30' :
             job.status === 'exited' && job.exitCode === 0 ? 'bg-emerald-900/40 text-emerald-400 border-emerald-700/30' :

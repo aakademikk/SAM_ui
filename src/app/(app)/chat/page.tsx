@@ -8,8 +8,9 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Send, Cpu, Volume2, VolumeX } from 'lucide-react';
+import { Send, Cpu, Volume2, VolumeX, Play } from 'lucide-react';
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
+import { sendMessage, readMessage } from '@/lib/crossTab';
 
 interface Message {
   id: string;
@@ -79,6 +80,49 @@ export default function ChatPage() {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Poll for incoming messages from Terminal
+  useEffect(() => {
+    const check = () => {
+      const msg = readMessage('chat');
+      if (msg) {
+        // Auto-send as a user message
+        const userMsg: Message = {
+          id: `user_${Date.now()}`,
+          role: 'user',
+          content: msg,
+        };
+        setMessages((prev) => [...prev, userMsg]);
+      }
+    };
+    // Check on mount and on storage events
+    check();
+    window.addEventListener('storage', check);
+    return () => window.removeEventListener('storage', check);
+  }, []);
+
+  /* ── Helpers ─────────────────────────────────────────────────────────── */
+
+  /** Extract inline code blocks that look like shell commands. */
+  const extractCommands = (text: string): string[] => {
+    const cmds: string[] = [];
+    // Match backtick-wrapped text
+    const ticks = text.match(/`([^`]+)`/g);
+    if (ticks) {
+      for (const t of ticks) {
+        const inner = t.slice(1, -1).trim();
+        // Heuristic: looks like a shell command
+        if (inner.length > 3 && !inner.includes('\n') && /^[a-z]/.test(inner)) {
+          cmds.push(inner);
+        }
+      }
+    }
+    return cmds;
+  };
+
+  const sendToTerminal = (cmd: string) => {
+    sendMessage({ type: 'command', text: cmd, timestamp: Date.now() });
+  };
 
   /* ── Text-to-speech ──────────────────────────────────────────────────── */
 
@@ -278,6 +322,26 @@ export default function ChatPage() {
               {msg.content || (msg.role === 'assistant' && streaming ? (
                 <span className="inline-block w-2 h-4 bg-accent animate-pulse align-text-bottom" />
               ) : null)}
+
+              {/* Run-command button on messages containing shell commands */}
+              {msg.role === 'assistant' && msg.content && extractCommands(msg.content).length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {extractCommands(msg.content).slice(0, 3).map((cmd, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => sendToTerminal(cmd)}
+                      className="flex items-center gap-1 px-2 py-1 text-[10px] bg-accent/10
+                                 border border-accent/20 rounded text-accent hover:bg-accent/20
+                                 transition-colors"
+                      title={`Run in Terminal: ${cmd}`}
+                    >
+                      <Play size={10} />
+                      <code className="truncate max-w-[200px]">{cmd}</code>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* Replay button on SAM's messages (auto-speak handles first play) */}
               {msg.role === 'assistant' && msg.content && (
