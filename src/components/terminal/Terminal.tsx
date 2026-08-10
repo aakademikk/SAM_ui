@@ -14,6 +14,7 @@ import { useVisualViewport } from '@/components/shell/useVisualViewport';
 import { useDevDuplicateCheck } from '@/components/shell/useDevDuplicateCheck';
 import { KeyBar } from './KeyBar';
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
+import { authService } from '@/lib/authService';
 
 interface TerminalProps {
   /** If set, attach to this specific job ID. Otherwise show job list + launcher. */
@@ -35,6 +36,16 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
   const [closed, setClosed] = useState(false);
   const [lastSeq, setLastSeq] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // Check auth on mount
+  useEffect(() => {
+    authService.checkSession().then((s) => {
+      setIsLoggedIn(s.authenticated);
+      setAuthChecked(true);
+    });
+  }, []);
 
   // Keyboard height tracking for Android
   useVisualViewport({ containerRef, keyBarHeight: 44 });
@@ -268,8 +279,31 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
           </button>
         </form>
 
-        {/* Voice input */}
-        <VoiceRecordButton onTranscribe={(text) => setCommand(text)} />
+        {/* Voice input — requires auth for the transcription endpoint */}
+        {!authChecked ? null : isLoggedIn ? (
+          <VoiceRecordButton onTranscribe={(text) => setCommand(text)} />
+        ) : (
+          <div className="flex items-center gap-3 p-3 bg-amber-900/10 border border-amber-700/20 rounded-lg">
+            <p className="text-sm text-amber-300/80 flex-1">
+              Log in to use voice commands and terminal.
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await authService.authenticate();
+                  setIsLoggedIn(true);
+                } catch {
+                  // user cancelled or error
+                }
+              }}
+              className="px-4 py-2 bg-accent/20 border border-accent/40 rounded-lg
+                         text-accent text-sm font-medium hover:bg-accent/30 transition-colors shrink-0"
+            >
+              Login
+            </button>
+          </div>
+        )}
 
         {/* Job list */}
         <div className="space-y-2">
