@@ -17,6 +17,41 @@ Zustand 5 · @dnd-kit · @react-three/fiber + drei · Framer Motion.
 
 ---
 
+## Multi-device access (Tailscale)
+
+SAM is served over the tailnet via `tailscale serve` with an auto-provisioned
+Let's Encrypt certificate. The dashboard is **not** exposed to the public
+internet — Funnel is disabled.
+
+| | |
+|---|---|
+| **Origin** | `https://super-awesome-machine.tail2eadff.ts.net` |
+| **Proxies to** | `localhost:3000` |
+| **Access** | Tailnet only |
+
+### ⚠️ Hostname = WebAuthn RP ID (Phase 6)
+
+This origin is the WebAuthn relying party ID used for passkey authentication.
+**Renaming the machine or the tailnet after passkeys are registered invalidates
+every credential.** If you rename, every device must re-register from scratch.
+
+### Serve management
+
+```bash
+tailscale serve status              # check status
+tailscale serve --https=443 off     # disable
+tailscale serve --bg --https 443 localhost:3000   # re-enable
+```
+
+### Tailscale checklist
+
+- [ ] MagicDNS enabled (tailnet-wide)
+- [ ] HTTPS certs enabled (admin console → DNS → HTTPS Certificates)
+- [ ] Key expiry **disabled** on the desktop node (admin console → machine → ... → Disable key expiry)
+- [ ] `tailscale set --operator=$USER` run once so serve doesn't need sudo
+
+---
+
 ## Architecture
 
 ```

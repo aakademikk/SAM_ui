@@ -1,0 +1,23 @@
+[Unit]
+Description=SAM UI — Next.js dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/col/SAM_ui
+ExecStart=/usr/bin/npm start -- --port 3000
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+# Security hardening — least privilege
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/col/SAM_ui/.next
+
+[Install]
+WantedBy=default.target

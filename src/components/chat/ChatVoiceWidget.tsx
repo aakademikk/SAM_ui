@@ -328,7 +328,7 @@ export function ChatVoiceWidget() {
         <button
           type="button"
           className="fixed right-4 bottom-4 z-50 flex items-center gap-2 rounded-full border border-void-400/50 bg-void-900/90 px-4 py-2.5 shadow-lg backdrop-blur-md transition-all hover:border-accent/50 hover:shadow-accent/20"
-          style={{ boxShadow: connected ? `0 0 20px -4px ${stateColor}40` : undefined }}
+          style={{ boxShadow: connected ? `0 0 20px -4px ${stateColor}40` : undefined, paddingBottom: 'calc(0.625rem + env(safe-area-inset-bottom))' }}
           onClick={() => setOpen(true)}
         >
           {connected ? (
@@ -348,14 +348,15 @@ export function ChatVoiceWidget() {
         </button>
       )}
 
-      {/* Chat panel */}
+      {/* Chat panel — full-screen on phones, floating card on larger screens */}
       {open && (
         <div
-          className="fixed right-4 bottom-4 z-50 flex w-[420px] flex-col overflow-hidden rounded-lg border border-void-400/50 bg-void-900/95 shadow-2xl backdrop-blur-xl"
-          style={{ maxHeight: 'calc(100vh - 120px)', height: '560px' }}
+          className="fixed inset-0 z-50 flex flex-col overflow-hidden rounded-none border-0 bg-void-900/95 backdrop-blur-xl
+                     sm:inset-auto sm:right-4 sm:bottom-4 sm:w-[420px] sm:rounded-lg sm:border sm:border-void-400/50 sm:shadow-2xl sm:h-[560px] sm:max-h-[calc(100vh-120px)]"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-void-500/50 px-3 py-2">
+          <div className="flex shrink-0 items-center justify-between border-b border-void-500/50 px-3 py-2">
             <div className="flex items-center gap-2">
               <MessageSquare size={14} className="text-accent" />
               <span className="font-mono text-[11px] tracking-[0.12em] text-slate-300">
@@ -425,7 +426,7 @@ export function ChatVoiceWidget() {
 
           {/* Transcript */}
           {connected && (
-            <div className="flex-1 overflow-y-auto scrollbar-thin px-3 py-2">
+            <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin px-3 py-2">
               {transcript.length === 0 && (
                 <div className="flex h-full items-center justify-center">
                   <p className="font-mono text-[10px] tracking-[0.08em] text-slate-600">
@@ -466,7 +467,7 @@ export function ChatVoiceWidget() {
 
           {/* Input area */}
           {connected && (
-            <div className="flex items-center gap-2 border-t border-void-500/50 px-3 py-2">
+            <div className="flex shrink-0 items-center gap-2 border-t border-void-500/50 px-3 py-2">
               {/* PTT mic button */}
               <button
                 type="button"
@@ -497,13 +498,13 @@ export function ChatVoiceWidget() {
                       : 'Type a message…'
                 }
                 disabled={voiceState === 'thinking' || recording}
-                className="flex-1 rounded-sm border border-void-500/50 bg-void-800/80 px-2.5 py-1.5 font-mono text-[11px] text-slate-200 placeholder:text-slate-600 focus:border-accent/60 focus:outline-none disabled:opacity-50"
+                className="min-w-0 flex-1 rounded-sm border border-void-500/50 bg-void-800/80 px-2.5 py-1.5 font-mono text-[11px] text-slate-200 placeholder:text-slate-600 focus:border-accent/60 focus:outline-none disabled:opacity-50"
               />
 
               {voiceState === 'thinking' || audioSpeaking ? (
                 <button
                   type="button"
-                  className="rounded-sm border border-amber-500/40 bg-amber-500/15 px-2.5 py-1.5 font-mono text-[10px] text-amber-300 hover:bg-amber-500/25"
+                  className="rounded-sm border border-amber-500/40 bg-amber-500/15 px-3 py-2 sm:px-2.5 sm:py-1.5 font-mono text-[11px] sm:text-[10px] text-amber-300 hover:bg-amber-500/25"
                   onClick={sendInterrupt}
                 >
                   Stop
@@ -511,7 +512,7 @@ export function ChatVoiceWidget() {
               ) : (
                 <button
                   type="button"
-                  className="rounded-sm border border-accent/40 bg-accent/15 px-2.5 py-1.5 font-mono text-[10px] text-accent hover:bg-accent/25 disabled:opacity-40"
+                  className="rounded-sm border border-accent/40 bg-accent/15 px-3 py-2 sm:px-2.5 sm:py-1.5 font-mono text-[11px] sm:text-[10px] text-accent hover:bg-accent/25 disabled:opacity-40"
                   onClick={handleSend}
                   disabled={!input.trim()}
                 >
