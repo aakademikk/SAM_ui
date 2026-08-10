@@ -295,11 +295,11 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
         <div className="flex items-start gap-2">
           <textarea
             className="flex-1 bg-void-900 border border-accent/30 rounded-lg px-3 py-2
-                       text-void-100 text-sm font-mono resize-none focus:border-accent
-                       focus:outline-none min-h-[3rem]"
+                       text-void-100 text-base font-mono resize-none focus:border-accent
+                       focus:outline-none min-h-[5rem]"
             value={transcript}
             onChange={(e) => setTranscript(e.target.value)}
-            rows={2}
+            rows={4}
             autoFocus
           />
           <div className="flex flex-col gap-1 shrink-0">

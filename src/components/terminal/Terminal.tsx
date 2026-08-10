@@ -209,7 +209,7 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
           <button
             type="button"
             onClick={() => { setJobId(null); setJob(null); }}
-            className="text-void-500 hover:text-accent text-sm transition-colors"
+            className="text-void-200 hover:text-accent text-sm transition-colors"
           >
             ← Back
           </button>
@@ -308,9 +308,11 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
             className="flex-1 bg-void-900 border border-void-600 rounded px-3 py-2
                        text-void-100 font-mono text-sm
                        focus:border-accent focus:outline-none
-                       placeholder:text-void-600"
+                       placeholder:text-void-400"
             disabled={loading}
             autoComplete="off"
+            autoCapitalize="none"
+            autoCorrect="off"
             spellCheck={false}
           />
           <button
@@ -410,7 +412,7 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
                   }`}>
                     {j.status} {j.exitCode !== null ? `(${j.exitCode})` : ''}
                   </span>
-                  <span className="text-xs text-void-600 font-mono">{j.id.slice(-8)}</span>
+                  <span className="text-xs text-void-400 font-mono">{j.id.slice(-8)}</span>
                   {j.status === 'running' && (
                     <button
                       type="button"

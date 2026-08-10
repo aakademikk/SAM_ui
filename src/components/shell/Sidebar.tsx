@@ -57,7 +57,7 @@ export function Sidebar() {
               className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors
                 ${active
                   ? 'bg-accent/10 text-accent border border-accent/20'
-                  : 'text-void-400 hover:text-void-200 hover:bg-void-800 border border-transparent'
+                  : 'text-void-200 hover:text-void-100 hover:bg-void-800 border border-transparent'
                 }`}
             >
               <Icon size={17} strokeWidth={active ? 2.5 : 1.5} />

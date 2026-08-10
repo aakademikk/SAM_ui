@@ -41,7 +41,7 @@ export function TabBar() {
             className={`flex flex-col items-center justify-center gap-0.5 min-w-0 px-3 py-1
               ${active
                 ? 'text-accent'
-                : 'text-void-500 hover:text-void-300'
+                : 'text-void-100'
               } transition-colors`}
           >
             <Icon size={20} strokeWidth={active ? 2.5 : 1.5} />
