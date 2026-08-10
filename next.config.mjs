@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import withSerwist from '@serwist/next';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -36,4 +37,9 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSerwist({
+  swSrc: 'src/app/sw.ts',
+  swDest: 'public/sw.js',
+  // Disable in dev — hot-reloading + service worker = pain.
+  disable: process.env.NODE_ENV === 'development',
+})(nextConfig);
