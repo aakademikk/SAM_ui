@@ -8,7 +8,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Send, Cpu } from 'lucide-react';
+import { Send, Cpu, Volume2, VolumeX } from 'lucide-react';
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 
 interface Message {
@@ -22,6 +22,9 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [speaking, setSpeaking] = useState<string | null>(null); // message id being spoken
+  const [autoSpeak, setAutoSpeak] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -34,6 +37,52 @@ export default function ChatPage() {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  /* ── Text-to-speech ──────────────────────────────────────────────────── */
+
+  const speak = useCallback(async (msgId: string, text: string) => {
+    // Stop current playback
+    audioRef.current?.pause();
+    audioRef.current = null;
+
+    if (speaking === msgId) {
+      setSpeaking(null);
+      return;
+    }
+
+    try {
+      setSpeaking(msgId);
+      const response = await fetch('/api/chat/tts', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!response.ok) throw new Error('TTS failed');
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        setSpeaking(null);
+        URL.revokeObjectURL(url);
+        audioRef.current = null;
+      };
+
+      audio.onerror = () => {
+        setSpeaking(null);
+        URL.revokeObjectURL(url);
+        audioRef.current = null;
+      };
+
+      await audio.play();
+    } catch {
+      setSpeaking(null);
+    }
+  }, [speaking]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -167,6 +216,22 @@ export default function ChatPage() {
               {msg.content || (msg.role === 'assistant' && streaming ? (
                 <span className="inline-block w-2 h-4 bg-accent animate-pulse align-text-bottom" />
               ) : null)}
+
+              {/* Speak button on SAM's completed messages */}
+              {msg.role === 'assistant' && msg.content && !streaming && (
+                <button
+                  type="button"
+                  onClick={() => speak(msg.id, msg.content)}
+                  className="mt-1.5 text-void-500 hover:text-accent transition-colors"
+                  title={speaking === msg.id ? 'Stop' : 'Read aloud'}
+                >
+                  {speaking === msg.id ? (
+                    <VolumeX size={13} />
+                  ) : (
+                    <Volume2 size={13} />
+                  )}
+                </button>
+              )}
             </div>
           </div>
         ))}
