@@ -1,12 +1,12 @@
 /**
  * VoiceRecordButton — hold-to-record with slide-to-cancel.
  *
- * Acquires the mic stream once on mount and keeps it open. Recording
- * starts on pointerdown and stops on pointerup. Slide left to cancel.
- * Transcript appears in a confirm step — nothing executes automatically.
+ * Mic stream is acquired on first pointerdown (user gesture required by
+ * Chrome), then kept open for subsequent recordings. MediaRecorder starts
+ * on pointerdown and stops on pointerup. Slide left to cancel.
  *
- * Android-specific: touch-action:none, user-select:none, -webkit-touch-callout:none
- * to prevent long-press text selection on the record button.
+ * Confirm step: transcript is shown in an editable field. Nothing executes
+ * automatically — the user must review and tap Send.
  */
 
 'use client';
@@ -19,7 +19,7 @@ import { transcribeAudio } from '@/lib/voiceService';
 /* Types                                                                       */
 /* ========================================================================== */
 
-type RecordState = 'idle' | 'recording' | 'processing' | 'confirm';
+type RecordState = 'idle' | 'needsMic' | 'acquiring' | 'recording' | 'processing' | 'confirm';
 
 /* ========================================================================== */
 /* Constants                                                                   */
@@ -34,12 +34,11 @@ const CANCEL_SLIDE_PX = 60;
 /* ========================================================================== */
 
 interface VoiceRecordButtonProps {
-  /** Called when the user confirms and wants to execute the transcript. */
   onTranscribe: (text: string) => void;
 }
 
 export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
-  const [state, setState] = useState<RecordState>('idle');
+  const [state, setState] = useState<RecordState>('needsMic');
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
@@ -55,49 +54,58 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
   const startPosRef = useRef<{ x: number; y: number } | null>(null);
   const cancelledRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordTimeRef = useRef(0);
 
-  /* ── Acquire mic stream once on mount ────────────────────────────────── */
+  /* ── Acquire mic stream (called on first user gesture) ────────────────── */
+
+  const acquireMic = useCallback(async (): Promise<MediaStream | null> => {
+    try {
+      setState('acquiring');
+      setError(null);
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+
+      streamRef.current = stream;
+      console.log('[SAM] Microphone acquired');
+
+      // Set up an analyser for live audio level.
+      try {
+        const ctx = new AudioContext();
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        audioContextRef.current = ctx;
+        analyserRef.current = analyser;
+      } catch {
+        // AudioContext may fail in some contexts — non-critical.
+      }
+
+      setState('idle');
+      return stream;
+    } catch (err) {
+      console.error('[SAM] Microphone error:', err);
+      const msg = err instanceof DOMException && err.name === 'NotAllowedError'
+        ? 'Microphone permission denied. Check site settings in Chrome.'
+        : err instanceof DOMException && err.name === 'NotFoundError'
+          ? 'No microphone found on this device.'
+          : 'Failed to access microphone. Check permissions.';
+      setError(msg);
+      setState('needsMic');
+      return null;
+    }
+  }, []);
+
+  /* ── Cleanup on unmount ───────────────────────────────────────────────── */
 
   useEffect(() => {
-    let cancelled = false;
-
-    const acquire = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            channelCount: 1,
-            echoCancellation: true,
-            noiseSuppression: true,
-          },
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-
-        // Set up an analyser for live audio level.
-        try {
-          const ctx = new AudioContext();
-          const source = ctx.createMediaStreamSource(stream);
-          const analyser = ctx.createAnalyser();
-          analyser.fftSize = 256;
-          source.connect(analyser);
-          audioContextRef.current = ctx;
-          analyserRef.current = analyser;
-        } catch {
-          // AudioContext may fail in some contexts — non-critical.
-        }
-      } catch {
-        if (!cancelled) {
-          setError('Microphone access denied. Check your browser permissions.');
-        }
-      }
-    };
-
-    acquire();
     return () => {
-      cancelled = true;
       streamRef.current?.getTracks().forEach((t) => t.stop());
       audioContextRef.current?.close();
       if (levelRafRef.current) cancelAnimationFrame(levelRafRef.current);
@@ -105,7 +113,7 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
     };
   }, []);
 
-  /* ── Audio level meter ───────────────────────────────────────────────── */
+  /* ── Audio level meter ────────────────────────────────────────────────── */
 
   const startLevelMeter = useCallback(() => {
     const analyser = analyserRef.current;
@@ -130,12 +138,18 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
     setAudioLevel(0);
   }, []);
 
-  /* ── Recording lifecycle ─────────────────────────────────────────────── */
+  /* ── Recording lifecycle ──────────────────────────────────────────────── */
+
+  const stopRecording = useCallback(() => {
+    if (recorderRef.current?.state === 'recording') {
+      recorderRef.current.stop();
+    }
+  }, []);
 
   const startRecording = useCallback(() => {
     const stream = streamRef.current;
     if (!stream) {
-      setError('No microphone available. Reload the page.');
+      setError('No microphone. Tap the mic button to enable it first.');
       return;
     }
 
@@ -143,6 +157,7 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
     chunksRef.current = [];
     setSlideOffset(0);
     setRecordTime(0);
+    recordTimeRef.current = 0;
     setTranscript('');
     setError(null);
 
@@ -162,14 +177,18 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
       stopLevelMeter();
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
 
-      if (cancelledRef.current || recordTime * 1000 < MIN_RECORD_MS) {
+      const duration = recordTimeRef.current;
+      if (cancelledRef.current || duration * 1000 < MIN_RECORD_MS) {
         setState('idle');
         return;
       }
 
       setState('processing');
+      console.log('[SAM] Transcribing audio, duration:', duration.toFixed(1), 's, size:', blob.size);
+
       try {
         const result = await transcribeAudio(blob);
+        console.log('[SAM] Transcript:', result.transcript, 'latency:', result.latencyMs, 'ms');
         if (!result.transcript) {
           setError('No speech detected. Try again.');
           setState('idle');
@@ -178,49 +197,49 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
           setState('confirm');
         }
       } catch (err) {
+        console.error('[SAM] Transcription error:', err);
         setError(err instanceof Error ? err.message : 'Transcription failed');
         setState('idle');
       }
     };
 
-    recorder.start(100); // collect data every 100ms
+    recorder.start(100);
     setState('recording');
     startLevelMeter();
 
     timerRef.current = setInterval(() => {
-      setRecordTime((prev) => {
-        if (prev >= MAX_RECORD_MS / 1000) {
-          stopRecording();
-          return prev;
-        }
-        return prev + 0.1;
-      });
+      recordTimeRef.current += 0.1;
+      setRecordTime(recordTimeRef.current);
+      if (recordTimeRef.current >= MAX_RECORD_MS / 1000) {
+        stopRecording();
+      }
     }, 100);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startLevelMeter, stopLevelMeter]);
 
-  const stopRecording = useCallback(() => {
-    if (recorderRef.current?.state === 'recording') {
-      recorderRef.current.stop();
-    }
-  }, []);
+  /* ── Pointer event handlers ───────────────────────────────────────────── */
 
-  /* ── Pointer event handlers ──────────────────────────────────────────── */
-
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
+  const onPointerDown = useCallback(async (e: React.PointerEvent) => {
     e.preventDefault();
-    // Use ref to avoid stale closure over state.
+
+    // Acquire mic on first press (user gesture required).
+    if (!streamRef.current) {
+      const stream = await acquireMic();
+      if (!stream) return; // user denied or error — error state already set
+      // Short delay to let the stream settle.
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
     if (recorderRef.current?.state === 'recording') return;
-    if (e.currentTarget instanceof HTMLButtonElement && e.currentTarget.disabled) return;
 
     startPosRef.current = { x: e.clientX, y: e.clientY };
     startRecording();
-  }, [startRecording]);
+  }, [acquireMic, startRecording]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (state !== 'recording' || !startPosRef.current) return;
+    if (!startPosRef.current) return;
 
-    const dx = startPosRef.current.x - e.clientX; // positive = left swipe
+    const dx = startPosRef.current.x - e.clientX;
     setSlideOffset(Math.max(0, dx));
 
     if (dx > CANCEL_SLIDE_PX) {
@@ -231,16 +250,16 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
       setSlideOffset(0);
       startPosRef.current = null;
     }
-  }, [state, stopRecording, stopLevelMeter]);
+  }, [stopRecording, stopLevelMeter]);
 
   const onPointerUp = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     startPosRef.current = null;
 
-    if (state === 'recording') {
+    if (recorderRef.current?.state === 'recording') {
       stopRecording();
     }
-  }, [state, stopRecording]);
+  }, [stopRecording]);
 
   const onPointerCancel = useCallback(() => {
     cancelledRef.current = true;
@@ -250,7 +269,7 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
     startPosRef.current = null;
   }, [stopRecording, stopLevelMeter]);
 
-  /* ── Confirm / dismiss ───────────────────────────────────────────────── */
+  /* ── Confirm / dismiss ────────────────────────────────────────────────── */
 
   const onConfirm = useCallback(() => {
     if (transcript.trim()) {
@@ -267,8 +286,9 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
     setError(null);
   }, []);
 
-  /* ── Render ──────────────────────────────────────────────────────────── */
+  /* ── Render ───────────────────────────────────────────────────────────── */
 
+  // Confirm step
   if (state === 'confirm') {
     return (
       <div className="flex flex-col gap-2">
@@ -305,18 +325,25 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
     );
   }
 
+  // Processing spinner
   if (state === 'processing') {
     return (
-      <button
-        type="button"
-        disabled
-        className="flex items-center gap-2 px-4 py-2.5 bg-void-800 border border-void-600
-                   rounded-full text-void-400 text-sm"
-        style={{ touchAction: 'none' }}
-      >
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-void-800 border border-void-600
+                   rounded-full text-void-400 text-sm">
         <span className="inline-block w-3 h-3 rounded-full bg-accent animate-pulse" />
         Transcribing...
-      </button>
+      </div>
+    );
+  }
+
+  // Acquiring mic
+  if (state === 'acquiring') {
+    return (
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-void-800 border border-void-600
+                   rounded-full text-void-400 text-sm">
+        <span className="inline-block w-3 h-3 rounded-full bg-amber-400 animate-pulse" />
+        Enabling microphone...
+      </div>
     );
   }
 
@@ -324,75 +351,94 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
   const cancelOpacity = Math.max(0, 1 - slideOffset / CANCEL_SLIDE_PX);
 
   return (
-    <div className="relative flex items-center gap-3">
-      {/* Slide-to-cancel indicator (appears when recording) */}
-      {isRecording && (
-        <div
-          className="flex items-center gap-1 text-amber-400 text-xs font-medium transition-opacity"
-          style={{ opacity: slideOffset > 10 ? 1 : 0 }}
-        >
-          <ArrowLeft size={14} />
-          <span>Slide to cancel</span>
-        </div>
-      )}
-
-      {/* Record button */}
-      <button
-        type="button"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        className={`
-          relative flex items-center justify-center gap-2 px-5 py-2.5
-          rounded-full border text-sm font-medium transition-all select-none
-          ${isRecording
-            ? 'bg-red-900/40 border-red-500/40 text-red-400 scale-110'
-            : 'bg-accent/20 border-accent/40 text-accent hover:bg-accent/30 active:scale-95'
-          }
-        `}
-        style={{
-          touchAction: 'none',
-          userSelect: 'none',
-          WebkitTouchCallout: 'none',
-          transform: isRecording ? `scale(1.1) translateX(${-slideOffset}px)` : undefined,
-          opacity: isRecording ? cancelOpacity : 1,
-        }}
-      >
-        {isRecording ? (
-          <>
-            <span
-              className="inline-block w-2.5 h-2.5 rounded-full bg-red-400"
-              style={{ opacity: 0.6 + audioLevel * 0.4 }}
-            />
-            <span>{recordTime.toFixed(1)}s</span>
-          </>
-        ) : (
-          <>
-            <Mic size={16} />
-            <span>Hold to record</span>
-          </>
+    <div className="relative flex flex-col gap-2">
+      <div className="flex items-center gap-3">
+        {/* Slide-to-cancel indicator */}
+        {isRecording && (
+          <div
+            className="flex items-center gap-1 text-amber-400 text-xs font-medium transition-opacity shrink-0"
+            style={{ opacity: slideOffset > 10 ? 1 : 0 }}
+          >
+            <ArrowLeft size={14} />
+            <span className="hidden sm:inline">Slide to cancel</span>
+          </div>
         )}
-      </button>
 
-      {/* Audio level meter bar */}
-      {isRecording && (
-        <div className="flex items-end gap-0.5 h-6">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div
-              key={i}
-              className="w-1 rounded-full bg-accent transition-all duration-75"
-              style={{
-                height: `${Math.min(100, audioLevel * 100 * (0.5 + Math.random() * 0.5))}%`,
-                opacity: 0.3 + audioLevel * 0.7,
-              }}
-            />
-          ))}
-        </div>
-      )}
+        {/* Record / Enable mic button */}
+        <button
+          type="button"
+          onPointerDown={state === 'needsMic' ? (async (e) => { e.preventDefault(); await acquireMic(); }) : onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+          className={`
+            relative flex items-center justify-center gap-2 px-5 py-2.5
+            rounded-full border text-sm font-medium transition-all select-none shrink-0
+            ${isRecording
+              ? 'bg-red-900/40 border-red-500/40 text-red-400 scale-110'
+              : state === 'needsMic'
+                ? 'bg-amber-900/30 border-amber-500/30 text-amber-400 hover:bg-amber-900/40'
+                : 'bg-accent/20 border-accent/40 text-accent hover:bg-accent/30 active:scale-95'
+            }
+          `}
+          style={{
+            touchAction: 'none',
+            userSelect: 'none',
+            WebkitTouchCallout: 'none',
+            transform: isRecording ? `scale(1.1) translateX(${-slideOffset}px)` : undefined,
+            opacity: isRecording ? cancelOpacity : 1,
+          }}
+        >
+          {isRecording ? (
+            <>
+              <span
+                className="inline-block w-2.5 h-2.5 rounded-full bg-red-400"
+                style={{ opacity: 0.6 + audioLevel * 0.4 }}
+              />
+              <span>{recordTime.toFixed(1)}s</span>
+            </>
+          ) : state === 'needsMic' ? (
+            <>
+              <Mic size={16} />
+              <span>Tap to enable mic</span>
+            </>
+          ) : (
+            <>
+              <Mic size={16} />
+              <span>Hold to record</span>
+            </>
+          )}
+        </button>
 
+        {/* Audio level meter */}
+        {isRecording && (
+          <div className="hidden sm:flex items-end gap-0.5 h-6">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                className="w-1 rounded-full bg-accent transition-all duration-75"
+                style={{
+                  height: `${Math.min(100, audioLevel * 100 * (0.5 + Math.random() * 0.5))}%`,
+                  opacity: 0.3 + audioLevel * 0.7,
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Error message */}
       {error && (
-        <span className="text-xs text-red-400">{error}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-red-400">{error}</span>
+          <button
+            type="button"
+            onClick={() => { setError(null); acquireMic(); }}
+            className="text-xs text-accent hover:underline"
+          >
+            Retry
+          </button>
+        </div>
       )}
     </div>
   );
