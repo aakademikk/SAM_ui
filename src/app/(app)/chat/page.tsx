@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Send, Cpu, Volume2, VolumeX, Play } from 'lucide-react';
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
-import { sendMessage, readMessage } from '@/lib/crossTab';
+import { sendMessage as sendCrossTab, readMessage as readCrossTab } from '@/lib/crossTab';
 
 interface Message {
   id: string;
@@ -84,7 +84,7 @@ export default function ChatPage() {
   // Poll for incoming messages from Terminal
   useEffect(() => {
     const check = () => {
-      const msg = readMessage('chat');
+      const msg = readCrossTab('chat');
       if (msg) {
         // Auto-send as a user message
         const userMsg: Message = {
@@ -121,7 +121,7 @@ export default function ChatPage() {
   };
 
   const sendToTerminal = (cmd: string) => {
-    sendMessage({ type: 'command', text: cmd, timestamp: Date.now() });
+    sendCrossTab({ type: 'command', text: cmd, timestamp: Date.now() });
   };
 
   /* ── Text-to-speech ──────────────────────────────────────────────────── */
