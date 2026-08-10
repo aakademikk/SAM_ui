@@ -44,9 +44,10 @@ export async function POST(request: Request) {
       id: c.credentialId,
     })),
     authenticatorSelection: {
-      authenticatorAttachment: 'platform',
+      // Don't force 'platform' — Linux desktops have no platform authenticator.
+      // Android Chrome → fingerprint, Mac → Touch ID, Linux → USB key or phone QR.
       userVerification: 'required',
-      residentKey: 'required',
+      residentKey: 'preferred',
     },
   });
 

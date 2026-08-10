@@ -40,6 +40,11 @@ export default function RegisterPage() {
     }
   };
 
+  // Check we're on the correct origin (RP ID must match).
+  const expectedHost = 'super-awesome-machine.tail2eadff.ts.net';
+  const isCorrectOrigin =
+    typeof window !== 'undefined' && window.location.hostname === expectedHost;
+
   return (
     <div className="min-h-[80vh] flex items-center justify-center p-8">
       <div className="max-w-md w-full space-y-6">
@@ -48,8 +53,24 @@ export default function RegisterPage() {
           <p className="text-sm text-void-400">
             Create a passkey to secure SAM. This uses your device&apos;s built-in
             authenticator — fingerprint on Android, Touch ID on Mac, or Windows Hello.
+            On Linux desktops, you can use a USB security key or scan a QR code with your phone.
           </p>
         </div>
+
+        {!isCorrectOrigin && (
+          <div className="bg-amber-900/20 border border-amber-700/30 rounded-lg p-3">
+            <p className="text-amber-400 text-sm font-medium">
+              Wrong origin — passkeys will not work here.
+            </p>
+            <p className="text-amber-300/70 text-xs mt-1">
+              Open{' '}
+              <code className="bg-void-800 px-1 py-0.5 rounded text-amber-200">
+                https://{expectedHost}/register
+              </code>{' '}
+              instead. WebAuthn requires the domain to match the RP ID exactly.
+            </p>
+          </div>
+        )}
 
         {success ? (
           <div className="bg-emerald-900/20 border border-emerald-700/30 rounded-lg p-4 text-center">
