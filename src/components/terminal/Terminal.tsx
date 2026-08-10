@@ -13,6 +13,7 @@ import { jobsService, type JobEvent } from '@/lib/jobsService';
 import { useVisualViewport } from '@/components/shell/useVisualViewport';
 import { useDevDuplicateCheck } from '@/components/shell/useDevDuplicateCheck';
 import { KeyBar } from './KeyBar';
+import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 
 interface TerminalProps {
   /** If set, attach to this specific job ID. Otherwise show job list + launcher. */
@@ -266,6 +267,9 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
             {loading ? '...' : 'Run'}
           </button>
         </form>
+
+        {/* Voice input */}
+        <VoiceRecordButton onTranscribe={(text) => setCommand(text)} />
 
         {/* Job list */}
         <div className="space-y-2">

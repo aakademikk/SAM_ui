@@ -8,6 +8,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Native addons cannot be bundled by webpack — load them at runtime.
+  serverExternalPackages: ['sherpa-onnx-node'],
   experimental: {
     // three.js + r3f ship large ESM graphs; keep the dev graph lean.
     optimizePackageImports: ['lucide-react', '@react-three/drei'],
