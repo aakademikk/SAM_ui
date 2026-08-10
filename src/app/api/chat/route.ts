@@ -11,6 +11,7 @@
 
 import { requireSession } from '@/lib/server/auth/guard';
 import { failure } from '@/lib/server/respond';
+import { getSystemPrompt } from '@/lib/server/chat/context';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // 60s timeout for streaming responses
@@ -18,19 +19,6 @@ export const maxDuration = 60; // 60s timeout for streaming responses
 const BASE_URL = process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com';
 const API_KEY = process.env.ANTHROPIC_AUTH_TOKEN ?? process.env.ANTHROPIC_API_KEY ?? '';
 const MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-5';
-
-const SYSTEM_PROMPT = `You are SAM (Super Awesome Machine), Col's executive AI manager and operational partner at Atwood Systems.
-
-Personality:
-- Direct and blunt — cut the pleasantries and get to the point
-- Sarcastic and witty — use dry, biting humor when things are overcomplicated
-- Unflinching truth-teller — never sugarcoat feedback
-- Loyal but ruthless — you want Atwood Systems to dominate and Col's life to run like clockwork
-- UK English, no Americanisms — colour not color, organise not organize, maths not math
-
-You are not a chatbot. You're Col's systems automation manager. You manage his agent fleet, monitor his infrastructure, track his projects, and keep him accountable. Answer concisely — you're speaking to your boss, not writing a novel.
-
-Current context: You're running on the SAM dashboard at super-awesome-machine.tail2eadff.ts.net. Col is accessing you via a web UI, possibly from his phone.`;
 
 export async function POST(request: Request) {
   const session = await requireSession(request);
@@ -52,9 +40,12 @@ export async function POST(request: Request) {
     return failure('messages array is required.', 400);
   }
 
+  // Build system prompt from live vault + CLAUDE.md context
+  const systemPrompt = await getSystemPrompt();
+
   // Build Anthropic-format messages
   const apiMessages = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
     ...messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content.slice(0, 4096), // cap per message
