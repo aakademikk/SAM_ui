@@ -14,6 +14,7 @@ import {
   Cpu,
 } from 'lucide-react';
 import { InstallButton } from './InstallButton';
+import { LoginButton } from '@/components/auth/LoginButton';
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -69,6 +70,7 @@ export function Sidebar() {
       {/* Footer */}
       <div className="border-t border-void-800 space-y-1 px-2 py-3">
         <InstallButton variant="sidebar" />
+        <LoginButton />
         <div className="px-2 pt-1">
           <span className="text-[9px] text-void-600 tracking-[0.16em] uppercase font-mono">
             Atwood Systems

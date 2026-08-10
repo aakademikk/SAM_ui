@@ -7,6 +7,7 @@
 import { getJobManager } from '@/lib/server/jobs/manager';
 import { envelope, failure, readJson } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
+import { requireStepUp } from '@/lib/server/auth/guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,9 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const stepUp = await requireStepUp(request);
+  if (stepUp instanceof Response) return stepUp;
+
   const startedAt = Date.now();
   const { id } = await params;
   const estate = getEstate();

@@ -1,18 +1,22 @@
 /**
- * GET    /api/jobs/[id]  → job status
- * DELETE /api/jobs/[id]  → kill a running job
+ * GET    /api/jobs/[id]  → job status (session required)
+ * DELETE /api/jobs/[id]  → kill a running job (step-up required)
  */
 
 import { getJobManager } from '@/lib/server/jobs/manager';
 import { envelope, failure } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
+import { requireSession, requireStepUp } from '@/lib/server/auth/guard';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const session = await requireSession(request);
+  if (session instanceof Response) return session;
+
   const startedAt = Date.now();
   const { id } = await params;
   const estate = getEstate();
@@ -27,9 +31,12 @@ export async function GET(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const stepUp = await requireStepUp(request);
+  if (stepUp instanceof Response) return stepUp;
+
   const startedAt = Date.now();
   const { id } = await params;
   const estate = getEstate();
