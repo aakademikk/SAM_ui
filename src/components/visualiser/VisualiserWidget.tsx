@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import { useVisualiserState } from '@/hooks/useVisualiserState';
-import type { VisualiserState } from '@/hooks/useVisualiserState';
+import type { VisualiserState, VisualiserSnapshot } from '@/hooks/useVisualiserState';
 import { getMicWaveform, getAudioSpeaking } from '@/lib/client/micAnalyser';
 
 /* ========================================================================== */
@@ -150,24 +150,44 @@ function createParticles(count: number): Particle[] {
 /* ========================================================================== */
 
 export interface VisualiserWidgetProps {
-  /** URL to poll for state. Defaults to the mock server on :8778. */
-  stateUrl?: string;
+  /** URL to poll for state. Pass `null` when `state` drives it locally. */
+  stateUrl?: string | null;
   /**
    * Fixed pixel size for a compact, embedded rendering (square box).
    * When omitted, the visualiser fills the viewport as a fixed background
    * (the original dashboard behaviour) and shows the state HUD badge.
    */
   size?: number;
+  /** Drive the state directly instead of polling. Disables the poll. */
+  state?: VisualiserState;
+  /** Show the corner state badge. Defaults to on for the full-screen form. */
+  hud?: boolean;
 }
 
-export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state', size }: VisualiserWidgetProps) {
+export function VisualiserWidget({
+  stateUrl = 'http://127.0.0.1:8778/state',
+  size,
+  state: override,
+  hud,
+}: VisualiserWidgetProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const animRef = useRef<AnimState | null>(null);
   const dimsRef = useRef({ cx: 0, cy: 0, S: 0, dpr: 1 });
   const compact = size !== undefined;
+  const showHud = hud ?? true;
 
-  const snapshot = useVisualiserState(stateUrl);
+  const polled = useVisualiserState(override !== undefined ? null : stateUrl);
+  const snapshot: VisualiserSnapshot =
+    override !== undefined
+      ? {
+          state: override,
+          waveform: polled.waveform,
+          timestamp: Date.now() / 1000,
+          mode: 'real',
+          loading: override === 'thinking',
+        }
+      : polled;
   // Keep a stable ref to the latest snapshot so the animation loop never
   // restarts — it reads the latest state from the ref each frame.
   const snapshotRef = useRef(snapshot);
@@ -728,7 +748,7 @@ export function VisualiserWidget({ stateUrl = 'http://127.0.0.1:8778/state', siz
       {/* HUD overlay — matches the original index.html HUD */}
       <div
         className="absolute inset-x-0 top-0 z-5 flex items-start justify-between px-8 py-7"
-        style={{ opacity: 1 }}
+        style={{ opacity: 1, display: showHud ? undefined : 'none' }}
       >
         <div
           className="flex items-center gap-2 rounded-sm border px-3 py-1.5"

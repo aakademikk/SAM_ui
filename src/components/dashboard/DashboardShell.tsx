@@ -6,7 +6,6 @@ import { useDashboardStore } from '@/store/dashboardStore';
 import { useUserPreferencesStore } from '@/store/userPreferencesStore';
 import { TopBar } from '@/components/dashboard/TopBar';
 import { StatCardGrid } from '@/components/dashboard/StatCardGrid';
-import { VisualiserWidget } from '@/components/visualiser/VisualiserWidget';
 import { ChatVoiceWidget } from '@/components/chat/ChatVoiceWidget';
 import { AvatarReceptionist } from '@/components/avatar';
 
@@ -55,15 +54,16 @@ export function DashboardShell() {
 
   return (
     <>
-      {/* Visualiser is the primary background — full-screen canvas, behind everything */}
-      <VisualiserWidget stateUrl="http://127.0.0.1:8790/state" />
+      {/* The visualiser now lives in AppShell so it backs every tab, not just
+          this one. Mounting it here as well would run a second full-screen
+          canvas over the top of the first. */}
 
       <ChatVoiceWidget />
 
       {/* Dashboard content overlaid with semi-transparent backgrounds so the
           visualiser remains visible through the glass panels */}
       <div className="relative z-10 min-h-screen">
-        <main className="mx-auto w-full max-w-[1680px] px-3 py-3 sm:px-5 sm:py-4">
+        <main className="mx-auto w-full max-w-[1680px] px-3 pt-3 pb-20 sm:px-5 sm:py-4">
           <TopBar />
           <StatCardGrid />
 

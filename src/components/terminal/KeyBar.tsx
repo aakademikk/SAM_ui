@@ -40,7 +40,7 @@ export function KeyBar({ onKey }: KeyBarProps) {
           className={`
             flex items-center justify-center
             bg-void-700 hover:bg-void-600 active:bg-void-500
-            text-void-300 text-xs font-medium
+            text-dim-200 text-xs font-medium
             border border-void-600 rounded
             py-2 transition-colors
             select-none touch-none

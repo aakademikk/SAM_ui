@@ -255,7 +255,7 @@ export function Stat({ label, value, hint, tone, className, align = 'left' }: St
 export function EmptyState({ message, icon }: { message: string; icon?: ReactNode }) {
   return (
     <div className="flex h-full min-h-24 flex-col items-center justify-center gap-2 px-6 text-center">
-      {icon && <div className="text-void-300 opacity-60">{icon}</div>}
+      {icon && <div className="text-dim-200 opacity-60">{icon}</div>}
       <p className="max-w-[34ch] text-[11.5px] leading-relaxed text-slate-500 italic">{message}</p>
     </div>
   );

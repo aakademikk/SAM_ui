@@ -50,7 +50,7 @@ export default function RegisterPage() {
       <div className="max-w-md w-full space-y-6">
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold text-accent">Register Passkey</h1>
-          <p className="text-sm text-void-400">
+          <p className="text-sm text-dim-300">
             Create a passkey to secure SAM. This uses your device&apos;s built-in
             authenticator — fingerprint on Android, Touch ID on Mac, or Windows Hello.
             On Linux desktops, you can use a USB security key or scan a QR code with your phone.
@@ -75,12 +75,12 @@ export default function RegisterPage() {
         {success ? (
           <div className="bg-emerald-900/20 border border-emerald-700/30 rounded-lg p-4 text-center">
             <p className="text-emerald-400 font-medium">Passkey registered!</p>
-            <p className="text-void-400 text-sm mt-1">Redirecting to dashboard...</p>
+            <p className="text-dim-300 text-sm mt-1">Redirecting to dashboard...</p>
           </div>
         ) : (
           <form onSubmit={onSubmit} className="space-y-4">
             <div>
-              <label htmlFor="deviceName" className="block text-sm text-void-300 mb-1">
+              <label htmlFor="deviceName" className="block text-sm text-dim-200 mb-1">
                 Device name
               </label>
               <input
@@ -112,7 +112,7 @@ export default function RegisterPage() {
               {loading ? 'Creating passkey...' : 'Register Passkey'}
             </button>
 
-            <p className="text-[11px] text-void-600 text-center">
+            <p className="text-[11px] text-dim-500 text-center">
               Your browser will prompt for biometric verification (fingerprint / face / PIN).
               The passkey is stored on your device — nothing leaves this machine.
             </p>

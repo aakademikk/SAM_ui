@@ -78,7 +78,7 @@ function ProjectRow({ project, detailed, index }: { project: Project; detailed: 
 
         {detailed && (
           <>
-            <span className="text-void-300">·</span>
+            <span className="text-dim-200">·</span>
             <span className="flex items-center gap-1 truncate">
               <GitBranch size={9} />
               {project.deployTarget}
@@ -86,12 +86,12 @@ function ProjectRow({ project, detailed, index }: { project: Project; detailed: 
           </>
         )}
 
-        <span className="text-void-300">·</span>
+        <span className="text-dim-200">·</span>
         <span>{project.openIssues} issues</span>
 
         {project.blockers > 0 && (
           <>
-            <span className="text-void-300">·</span>
+            <span className="text-dim-200">·</span>
             <span className="flex items-center gap-1 text-alarm-300">
               <AlertTriangle size={9} />
               {project.blockers} blocked
@@ -109,11 +109,11 @@ function ProjectRow({ project, detailed, index }: { project: Project; detailed: 
       {detailed && (
         <div className="mt-1 flex items-center gap-2 font-mono text-[9px] tracking-wider text-slate-600 uppercase">
           <span>owner {project.owner}</span>
-          <span className="text-void-300">·</span>
+          <span className="text-dim-200">·</span>
           <RelativeTime value={project.lastDeploy} prefix="deployed " />
           {project.etaDays > 0 && (
             <>
-              <span className="text-void-300">·</span>
+              <span className="text-dim-200">·</span>
               <span>eta {project.etaDays}d</span>
             </>
           )}

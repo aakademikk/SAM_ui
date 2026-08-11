@@ -69,10 +69,14 @@ const FETCH_TIMEOUT = 2000; // ms
 
 /**
  * Polls a `/state` endpoint every 100 ms and returns the latest visualiser
- * state.  Falls back to a local mock cycle when the server is unreachable so
+ * state. Falls back to a local mock cycle when the server is unreachable so
  * the canvas always has something to render.
+ *
+ * Pass `null` to disable polling entirely — used when the state is driven
+ * locally instead. Without that, the hook fires a fetch every 100 ms at an
+ * address that cannot resolve on mobile, burning battery to fail.
  */
-export function useVisualiserState(stateUrl: string = '/state'): VisualiserSnapshot {
+export function useVisualiserState(stateUrl: string | null = '/state'): VisualiserSnapshot {
   const [snapshot, setSnapshot] = useState<VisualiserSnapshot>({
     state: 'idle',
     waveform: new Array(64).fill(0),
@@ -85,6 +89,9 @@ export function useVisualiserState(stateUrl: string = '/state'): VisualiserSnaps
   const mockRef = useRef({ start: Date.now() / 1000 });
 
   useEffect(() => {
+    if (stateUrl === null) return; // locally driven — nothing to poll or mock
+    const url = stateUrl; // narrowed for the nested closures below
+
     let active = true;
     let pollInFlight = false;
     let pollFailing = true;
@@ -113,7 +120,7 @@ export function useVisualiserState(stateUrl: string = '/state'): VisualiserSnaps
       if (pollInFlight) return;
       pollInFlight = true;
       try {
-        const res = await fetchWithTimeout(stateUrl, FETCH_TIMEOUT);
+        const res = await fetchWithTimeout(url, FETCH_TIMEOUT);
         if (!active) return;
         if (res.status !== 200) {
           pollFailing = true;

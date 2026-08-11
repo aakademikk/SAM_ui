@@ -43,7 +43,7 @@ export function InstallButton({ variant = 'sidebar' }: { variant?: 'sidebar' | '
   if (variant === 'banner') {
     return (
       <div className="flex items-center gap-3 px-4 py-2.5 bg-accent/10 border border-accent/30 rounded-lg mx-3 mb-3">
-        <p className="text-xs text-void-200 flex-1">Install SAM to your home screen</p>
+        <p className="text-xs text-dim-100 flex-1">Install SAM to your home screen</p>
         <button
           type="button"
           onClick={() => triggerInstall()}

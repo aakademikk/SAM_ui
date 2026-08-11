@@ -38,10 +38,10 @@ function ThemeSection() {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold text-void-300 uppercase tracking-wider">Appearance</h2>
+      <h2 className="text-sm font-semibold text-dim-200 uppercase tracking-wider">Appearance</h2>
 
       <div className="space-y-2">
-        <label className="text-xs text-void-400">Colour theme</label>
+        <label className="text-xs text-dim-300">Colour theme</label>
         <div className="flex flex-wrap gap-2">
           {AMBIENT_THEMES.map((t) => (
             <button
@@ -51,7 +51,7 @@ function ThemeSection() {
               className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
                 theme === t.id
                   ? 'border-accent/50 bg-accent/10 text-accent'
-                  : 'border-void-700 bg-void-900 text-void-400 hover:border-void-600'
+                  : 'border-void-700 bg-void-900 text-dim-300 hover:border-void-600'
               }`}
             >
               <span
@@ -65,7 +65,7 @@ function ThemeSection() {
       </div>
 
       <div className="space-y-2">
-        <label className="text-xs text-void-400">Sarcasm level</label>
+        <label className="text-xs text-dim-300">Sarcasm level</label>
         <div className="flex gap-2">
           {([0, 1, 2, 3] as SarcasmLevel[]).map((level) => (
             <button
@@ -75,7 +75,7 @@ function ThemeSection() {
               className={`px-3 py-1.5 rounded-lg border text-xs transition-colors ${
                 sarcasm === level
                   ? 'border-accent/50 bg-accent/10 text-accent'
-                  : 'border-void-700 bg-void-900 text-void-400 hover:border-void-600'
+                  : 'border-void-700 bg-void-900 text-dim-300 hover:border-void-600'
               }`}
             >
               {SARCASM_LABELS[level]}
@@ -123,10 +123,10 @@ function VoiceSection() {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold text-void-300 uppercase tracking-wider">Voice</h2>
+      <h2 className="text-sm font-semibold text-dim-200 uppercase tracking-wider">Voice</h2>
 
       <div className="space-y-2">
-        <label className="text-xs text-void-400">TTS voice (Kokoro)</label>
+        <label className="text-xs text-dim-300">TTS voice (Kokoro)</label>
         <select
           value={voiceId}
           onChange={(e) => setVoice(parseInt(e.target.value))}
@@ -148,7 +148,7 @@ function VoiceSection() {
           onClick={preview}
           disabled={previewing}
           className="px-3 py-1.5 bg-void-800 border border-void-600 rounded-lg
-                     text-void-300 text-xs hover:text-void-100 transition-colors"
+                     text-dim-200 text-xs hover:text-void-100 transition-colors"
         >
           {previewing ? 'Playing...' : 'Preview voice'}
         </button>
@@ -195,13 +195,13 @@ function DeviceSection() {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold text-void-300 uppercase tracking-wider">Devices</h2>
+      <h2 className="text-sm font-semibold text-dim-200 uppercase tracking-wider">Devices</h2>
 
-      {loading && <p className="text-xs text-void-500">Loading...</p>}
+      {loading && <p className="text-xs text-dim-400">Loading...</p>}
       {error && <p className="text-xs text-amber-400">{error}</p>}
 
       {devices.length === 0 && !loading && (
-        <p className="text-xs text-void-500">No registered devices.</p>
+        <p className="text-xs text-dim-400">No registered devices.</p>
       )}
 
       <div className="space-y-2">
@@ -211,8 +211,8 @@ function DeviceSection() {
             className="flex items-center justify-between p-3 bg-void-900 border border-void-700 rounded-lg"
           >
             <div>
-              <p className="text-sm text-void-200">{d.deviceName}</p>
-              <p className="text-[10px] text-void-500 font-mono">
+              <p className="text-sm text-dim-100">{d.deviceName}</p>
+              <p className="text-[10px] text-dim-400 font-mono">
                 {d.credentialId.slice(0, 20)}... · {new Date(d.createdAt).toLocaleDateString()}
               </p>
             </div>

@@ -209,11 +209,11 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
           <button
             type="button"
             onClick={() => { setJobId(null); setJob(null); }}
-            className="text-void-200 hover:text-accent text-sm transition-colors"
+            className="text-dim-100 hover:text-accent text-sm transition-colors"
           >
             ← Back
           </button>
-          <code className="text-sm text-void-200 truncate flex-1">{job.command}</code>
+          <code className="text-sm text-dim-100 truncate flex-1">{job.command}</code>
           {/* Discuss with SAM — send job output to Chat */}
           {job.status !== 'running' && output && (
             <button
@@ -244,7 +244,7 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
         {/* Output */}
         <pre
           ref={outputRef}
-          className="flex-1 overflow-y-auto px-3 py-2 text-sm font-mono text-void-200
+          className="flex-1 overflow-y-auto px-3 py-2 text-sm font-mono text-dim-100
                      whitespace-pre-wrap break-all bg-void-980/80"
         >
           {output || (job.status === 'running' ? 'Waiting for output...\n' : '(no output)\n')}
@@ -267,13 +267,13 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
             }}
             className="flex items-center gap-2 px-3 py-1.5 border-t border-void-700 bg-void-900 shrink-0"
           >
-            <span className="text-void-500 text-xs font-mono shrink-0">$</span>
+            <span className="text-dim-400 text-xs font-mono shrink-0">$</span>
             <input
               name="stdin"
               type="text"
               placeholder="stdin..."
-              className="flex-1 bg-transparent text-sm font-mono text-void-200
-                         placeholder-void-600 focus:outline-none"
+              className="flex-1 bg-transparent text-sm font-mono text-dim-100
+                         placeholder-dim-500 focus:outline-none"
               autoComplete="off"
               spellCheck={false}
             />
@@ -308,7 +308,7 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
             className="flex-1 bg-void-900 border border-void-600 rounded px-3 py-2
                        text-void-100 font-mono text-sm
                        focus:border-accent focus:outline-none
-                       placeholder:text-void-400"
+                       placeholder:text-dim-300"
             disabled={loading}
             autoComplete="off"
             autoCapitalize="none"
@@ -392,7 +392,7 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
         {/* Job list */}
         <div className="space-y-2">
           {jobs.length === 0 && (
-            <p className="text-void-500 text-sm">No jobs yet.</p>
+            <p className="text-dim-400 text-sm">No jobs yet.</p>
           )}
           {jobs.map((j) => (
             <button
@@ -403,7 +403,7 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
                          hover:border-accent/30 transition-colors"
             >
               <div className="flex items-center justify-between gap-3">
-                <code className="text-sm text-void-200 truncate flex-1">{j.command}</code>
+                <code className="text-sm text-dim-100 truncate flex-1">{j.command}</code>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className={`text-xs px-1.5 py-0.5 rounded border ${
                     j.status === 'running' ? 'bg-blue-900/40 text-blue-400 border-blue-700/30' :
@@ -412,7 +412,7 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
                   }`}>
                     {j.status} {j.exitCode !== null ? `(${j.exitCode})` : ''}
                   </span>
-                  <span className="text-xs text-void-400 font-mono">{j.id.slice(-8)}</span>
+                  <span className="text-xs text-dim-300 font-mono">{j.id.slice(-8)}</span>
                   {j.status === 'running' && (
                     <button
                       type="button"

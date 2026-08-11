@@ -71,7 +71,7 @@ export function LoginButton() {
         type="button"
         onClick={onLogin}
         disabled={loading}
-        className="flex items-center gap-2 px-3 py-2 text-sm text-void-300 hover:text-accent
+        className="flex items-center gap-2 px-3 py-2 text-sm text-dim-200 hover:text-accent
                    hover:bg-void-800 rounded-md transition-colors w-full"
       >
         <LogIn size={15} />

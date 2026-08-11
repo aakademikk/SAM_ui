@@ -94,7 +94,7 @@ export function Gauge({
               strokeOpacity={active ? 0.85 : 0.18}
               strokeWidth={1.1}
               strokeLinecap="round"
-              className="text-void-300"
+              className="text-dim-200"
             />
           );
         })}
@@ -107,7 +107,7 @@ export function Gauge({
           strokeOpacity={0.16}
           strokeWidth={6}
           strokeLinecap="round"
-          className="text-void-300"
+          className="text-dim-200"
         />
 
         {/* Value arc */}

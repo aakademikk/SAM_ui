@@ -315,7 +315,7 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
               type="button"
               onClick={onDismiss}
               className="p-2 bg-void-800 border border-void-600 rounded-lg
-                         text-void-400 hover:text-void-200 transition-colors"
+                         text-dim-300 hover:text-dim-100 transition-colors"
             >
               <X size={16} />
             </button>
@@ -329,7 +329,7 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
   if (state === 'processing') {
     return (
       <div className="flex items-center gap-2 px-4 py-2.5 bg-void-800 border border-void-600
-                   rounded-full text-void-400 text-sm">
+                   rounded-full text-dim-300 text-sm">
         <span className="inline-block w-3 h-3 rounded-full bg-accent animate-pulse" />
         Transcribing...
       </div>
@@ -340,7 +340,7 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
   if (state === 'acquiring') {
     return (
       <div className="flex items-center gap-2 px-4 py-2.5 bg-void-800 border border-void-600
-                   rounded-full text-void-400 text-sm">
+                   rounded-full text-dim-300 text-sm">
         <span className="inline-block w-3 h-3 rounded-full bg-amber-400 animate-pulse" />
         Enabling microphone...
       </div>

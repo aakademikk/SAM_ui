@@ -18,13 +18,13 @@ export default function OfflinePage() {
 
         <h1 className="text-xl font-bold text-void-100">SAM is unreachable</h1>
 
-        <p className="text-void-400 text-sm leading-relaxed">
+        <p className="text-dim-300 text-sm leading-relaxed">
           Your phone cannot reach the desktop. SAM runs on the machine in your
           office — it does not work offline. The agent, your data, and every
           command all live on that machine.
         </p>
 
-        <p className="text-void-500 text-xs">
+        <p className="text-dim-400 text-xs">
           Check your connection to the tailnet, then retry.
         </p>
 

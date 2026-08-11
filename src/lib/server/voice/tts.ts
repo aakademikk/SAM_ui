@@ -37,7 +37,11 @@ function createTts(): TtsInstance {
           path.join(modelDir, 'lexicon-zh.txt'),
         ].join(','),
       },
-      numThreads: 2,
+      // Kokoro synthesis is CPU-bound and scales with threads. This box has
+      // 16 cores; 2 was leaving most of the machine idle while the caller
+      // waited. Capped well below the core count so synthesis never starves
+      // the Next.js event loop or a concurrently running agent job.
+      numThreads: Math.max(2, Math.min(8, Math.floor((os.cpus()?.length ?? 4) / 2))),
     },
   };
 

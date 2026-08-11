@@ -37,7 +37,7 @@ export function Sidebar() {
         <Cpu size={22} className="text-accent" />
         <div className="flex flex-col leading-none">
           <span className="text-sm font-bold text-void-100 tracking-wide">SAM</span>
-          <span className="text-[9px] text-void-500 tracking-[0.12em] uppercase">
+          <span className="text-[9px] text-dim-400 tracking-[0.12em] uppercase">
             Core Dashboard
           </span>
         </div>
@@ -57,7 +57,7 @@ export function Sidebar() {
               className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors
                 ${active
                   ? 'bg-accent/10 text-accent border border-accent/20'
-                  : 'text-void-200 hover:text-void-100 hover:bg-void-800 border border-transparent'
+                  : 'text-dim-100 hover:text-void-100 hover:bg-void-800 border border-transparent'
                 }`}
             >
               <Icon size={17} strokeWidth={active ? 2.5 : 1.5} />
@@ -72,7 +72,7 @@ export function Sidebar() {
         <InstallButton variant="sidebar" />
         <LoginButton />
         <div className="px-2 pt-1">
-          <span className="text-[9px] text-void-600 tracking-[0.16em] uppercase font-mono">
+          <span className="text-[9px] text-dim-500 tracking-[0.16em] uppercase font-mono">
             Atwood Systems
           </span>
         </div>

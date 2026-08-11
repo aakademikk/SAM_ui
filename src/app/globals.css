@@ -8,6 +8,13 @@
 
 @theme {
   /* --- Substrate: the deep blacks of the data city ------------------------ */
+  /* void-100 is the primary type colour, matching the body default. It was
+     referenced by 14 components without ever being defined, so the class
+     silently did nothing and only worked because it inherited the same
+     value. Declared explicitly so it means what it says. */
+  --color-void-100: #e6e8f2;
+  /* Deeper than 950, for sunken panes (terminal output, code blocks). */
+  --color-void-980: #010104;
   --color-void-950: #020207;
   --color-void-900: #05050d;
   --color-void-850: #070713;
@@ -17,6 +24,19 @@
   --color-void-500: #1e1e3a;
   --color-void-400: #2a2a4d;
   --color-void-300: #3b3b66;
+
+  /* --- Dim: the readable text ramp ---------------------------------------
+     The void scale above is a SUBSTRATE ramp — surfaces, borders, shadows.
+     It was also being used for secondary text, where it renders near-black
+     on a near-black page (text-void-600 is #16162c, effectively invisible).
+     These are the text greys: 100 brightest, 500 dimmest, all legible on
+     void-950/900 while staying clearly below the #e6e8f2 body colour so the
+     hierarchy still reads. Use dim-* for type, void-* for surfaces. */
+  --color-dim-100: #dfe3f0;
+  --color-dim-200: #c6cce0;
+  --color-dim-300: #aeb6d0;
+  --color-dim-400: #9aa3c0;
+  --color-dim-500: #8b94b4;
 
   /* --- Plasma: the violet spine ------------------------------------------ */
   --color-plasma-200: #e9d5ff;
@@ -459,5 +479,45 @@
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+  }
+}
+
+/* ============================================================================
+   Mobile / touch polish
+   ========================================================================== */
+
+/* Safe-area insets for notched / gesture-bar phones. Applied via utilities so
+   components stay explicit about where they need the padding. */
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pl-safe {
+  padding-left: env(safe-area-inset-left);
+}
+@utility pr-safe {
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Prevent iOS rubber-band / overscroll from revealing the black canvas. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  overscroll-behavior-y: none;
+}
+
+/* Keep interactive targets comfortable for thumbs on touch devices. */
+@media (pointer: coarse) {
+  button,
+  [role='button'],
+  input[type='range'] {
+    touch-action: manipulation;
   }
 }

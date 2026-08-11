@@ -214,7 +214,7 @@ export function WidgetFrame({
             aria-label={`Reorder ${title}`}
             className={cn(
               'drag-none absolute inset-0 flex cursor-grab touch-none items-center justify-center',
-              'rounded-[3px] text-void-300 opacity-0 transition',
+              'rounded-[3px] text-dim-200 opacity-0 transition',
               'hover:text-slate-200 focus-visible:opacity-100 group-hover/widget:opacity-100',
               'active:cursor-grabbing',
             )}
@@ -251,7 +251,7 @@ export function WidgetFrame({
               type="button"
               onClick={onRefresh}
               aria-label={`Refresh ${title}`}
-              className="rounded-[3px] p-1 text-void-300 opacity-0 transition hover:bg-white/5 hover:text-slate-300 focus-visible:opacity-100 group-hover/widget:opacity-100"
+              className="rounded-[3px] p-1 text-dim-200 opacity-0 transition hover:bg-white/5 hover:text-slate-300 focus-visible:opacity-100 group-hover/widget:opacity-100"
             >
               <RefreshCw size={12} className={cn(isLoading && 'animate-spin')} />
             </button>
@@ -266,7 +266,7 @@ export function WidgetFrame({
               aria-expanded={menuOpen}
               aria-haspopup="menu"
               className={cn(
-                'rounded-[3px] p-1 text-void-300 transition hover:bg-white/5 hover:text-slate-300',
+                'rounded-[3px] p-1 text-dim-200 transition hover:bg-white/5 hover:text-slate-300',
                 menuOpen ? 'bg-white/8 text-slate-200 opacity-100' : 'opacity-0 group-hover/widget:opacity-100',
               )}
             >
