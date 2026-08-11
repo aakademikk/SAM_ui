@@ -123,8 +123,16 @@ export async function GET(
 }
 
 function formatFrame(frame: OutputFrame): string {
+  // SSE requires one `data:` field per line. Emitting raw newlines inside a
+  // single `data:` silently drops every line after the first, which matters
+  // enormously for newline-delimited payloads (e.g. agent stream-json).
+  // Splitting here round-trips exactly: the client rejoins the fields with \n.
+  const text = frame.data.toString('utf-8');
   let out = `id: ${frame.seq}\n`;
   out += `event: output\n`;
-  out += `data: ${frame.data.toString('utf-8')}\n\n`;
+  for (const line of text.split('\n')) {
+    out += `data: ${line}\n`;
+  }
+  out += `\n`;
   return out;
 }

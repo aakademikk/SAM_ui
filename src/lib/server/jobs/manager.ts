@@ -163,6 +163,27 @@ interface RunningJob {
   output: OutputWriter;
 }
 
+export interface CreateArgsOptions {
+  /** Human-readable string stored as the job's `command`. Never executed. */
+  label?: string;
+  cwd?: string;
+  /**
+   * Environment overlaid on `process.env`. A `null` value *removes* the
+   * variable — needed to stop an inherited key (e.g. `ANTHROPIC_BASE_URL`
+   * from `.env.local`) silently redirecting a child to the wrong provider.
+   */
+  env?: Record<string, string | null>;
+}
+
+function mergeEnv(overrides?: Record<string, string | null>): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const [key, value] of Object.entries(overrides ?? {})) {
+    if (value === null) delete env[key];
+    else env[key] = value;
+  }
+  return env;
+}
+
 /* ========================================================================== */
 /* Manager                                                                    */
 /* ========================================================================== */
@@ -175,26 +196,9 @@ class JobManager {
     await ensureRoot();
   }
 
-  /** Create and start a new job. */
+  /** Create and start a new job from a raw shell command string. */
   async create(command: string): Promise<JobRecord> {
-    await this.ensure();
-
-    const id = nextId();
-    const now = new Date().toISOString();
-    const output = new OutputWriter(id);
-    await output.init();
-
-    const record: JobRecord = {
-      id,
-      command,
-      status: 'queued',
-      exitCode: null,
-      createdAt: now,
-      startedAt: null,
-      endedAt: null,
-      outputBytes: 0,
-      lastSeq: 0,
-    };
+    const { record, output } = await this.prepare(command);
 
     const child = spawn(command, [], {
       shell: true,
@@ -203,6 +207,66 @@ class JobManager {
       env: { ...process.env },
     });
 
+    return this.attach(record, child, output);
+  }
+
+  /**
+   * Create and start a job from an argv array, with no shell involved.
+   *
+   * Use this whenever any argument contains untrusted or free-form text (a
+   * chat message, a filename): `shell: false` means backticks, `$(...)`, and
+   * friends are passed through as literal characters instead of being
+   * interpreted. `create()` keeps its shell semantics for the Terminal, where
+   * the operator is deliberately typing shell.
+   */
+  async createArgs(
+    bin: string,
+    args: string[],
+    opts: CreateArgsOptions = {},
+  ): Promise<JobRecord> {
+    // The label is display-only — it is never executed.
+    const label = opts.label ?? [bin, ...args].join(' ');
+    const { record, output } = await this.prepare(label);
+
+    const child = spawn(bin, args, {
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: opts.cwd ?? os.homedir(),
+      env: mergeEnv(opts.env),
+    });
+
+    return this.attach(record, child, output);
+  }
+
+  /** Allocate an ID, output writer and initial record. */
+  private async prepare(command: string) {
+    await this.ensure();
+
+    const id = nextId();
+    const output = new OutputWriter(id);
+    await output.init();
+
+    const record: JobRecord = {
+      id,
+      command,
+      status: 'queued',
+      exitCode: null,
+      createdAt: new Date().toISOString(),
+      startedAt: null,
+      endedAt: null,
+      outputBytes: 0,
+      lastSeq: 0,
+    };
+
+    return { record, output };
+  }
+
+  /** Wire up a spawned child's lifecycle and register it as running. */
+  private async attach(
+    record: JobRecord,
+    child: ChildProcess,
+    output: OutputWriter,
+  ): Promise<JobRecord> {
     record.status = 'running';
     record.startedAt = new Date().toISOString();
 
@@ -227,8 +291,8 @@ class JobManager {
       record.endedAt = new Date().toISOString();
       await output.close();
       await this.writeMeta(record);
-      this.jobs.delete(id);
-      this.completedIds.push(id);
+      this.jobs.delete(record.id);
+      this.completedIds.push(record.id);
       this.prune();
     });
 
@@ -241,7 +305,7 @@ class JobManager {
     await this.writeMeta(record);
 
     const running: RunningJob = { record, process: child, output };
-    this.jobs.set(id, running);
+    this.jobs.set(record.id, running);
     this.prune();
 
     return { ...record };
