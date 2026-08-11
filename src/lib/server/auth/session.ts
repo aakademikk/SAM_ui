@@ -2,12 +2,12 @@
  * SAM — Session management.
  *
  * Two tiers via httpOnly cookies:
- *   - sam-session  (30 days):  read access — view dashboards, logs, job status.
- *   - sam-stepup   (10 min):  write access — run commands, kill jobs, change settings.
+ *   - sam-session  (30 days): read access — view dashboards, logs, job status.
+ *   - sam-stepup   (12 hours): write access — run commands, kill jobs, settings.
  *
- * JWTs signed with a random key generated at server startup. This means
- * sessions DO NOT survive server restart — acceptable for a single-machine
- * agent dashboard that reboots rarely.
+ * JWTs are signed with a key persisted to ~/.sam/auth/session-key, so sessions
+ * survive server restarts. (This previously said they did not; the key was made
+ * persistent and the comment was left behind.)
  */
 
 import { SignJWT, jwtVerify } from 'jose';
@@ -63,7 +63,18 @@ export const SESSION_COOKIE = 'sam-session';
 export const STEPUP_COOKIE = 'sam-stepup';
 
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
-const STEPUP_MAX_AGE = 10 * 60;             // 10 minutes
+// Step-up needs a fresh passkey assertion when it lapses. On Android that is a
+// fingerprint; on a Linux desktop there is no platform authenticator, so it
+// means reaching for the phone every time — which at 10 minutes made write
+// access unusable from the desktop.
+//
+// Raised to 12 hours deliberately. The control being relied on instead is
+// physical: the desktop's own screen lock, plus the fact that the origin is
+// reachable only from Colin's tailnet. If the screen lock is ever turned off,
+// this number is doing nothing and should come back down — anyone who walks up
+// to the machine gets Terminal and Jobs, which run real `claude` CLI sessions
+// with bash and filesystem reach.
+const STEPUP_MAX_AGE = 12 * 60 * 60;        // 12 hours
 
 function cookieString(name: string, value: string, maxAge: number): string {
   return `${name}=${value}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
