@@ -63,18 +63,43 @@ export const SESSION_COOKIE = 'sam-session';
 export const STEPUP_COOKIE = 'sam-stepup';
 
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
-// Step-up needs a fresh passkey assertion when it lapses. On Android that is a
-// fingerprint; on a Linux desktop there is no platform authenticator, so it
-// means reaching for the phone every time — which at 10 minutes made write
-// access unusable from the desktop.
+// Step-up needs a fresh passkey assertion when it lapses, so the right window
+// depends on what re-authenticating actually costs — not on which device it is.
 //
-// Raised to 12 hours deliberately. The control being relied on instead is
-// physical: the desktop's own screen lock, plus the fact that the origin is
-// reachable only from Colin's tailnet. If the screen lock is ever turned off,
-// this number is doing nothing and should come back down — anyone who walks up
-// to the machine gets Terminal and Jobs, which run real `claude` CLI sessions
-// with bash and filesystem reach.
-const STEPUP_MAX_AGE = 12 * 60 * 60;        // 12 hours
+//   platform        the authenticator is built into the machine being used.
+//                   On the phone that is a fingerprint: instant, so there is
+//                   no reason to widen the window, and the phone is both the
+//                   most losable device and the one with Terminal and Jobs
+//                   behind it. Kept short.
+//
+//   cross-platform  the authenticator lives elsewhere — the hybrid/QR flow a
+//                   Linux desktop must use, since it has no platform
+//                   authenticator of its own. That means physically reaching
+//                   for the phone, which at 10 minutes made desktop write
+//                   access unusable.
+//
+// The long window leans on a physical control instead: the desktop's screen
+// lock (enabled 2026-08-11; it was found switched off) plus the origin being
+// reachable only from the tailnet. If that screen lock is ever turned off, the
+// long window is protecting nothing and should come back down.
+//
+// A USB security key on the desktop would make it a platform-grade touch and
+// let both windows be short again.
+const STEPUP_MAX_AGE_PLATFORM = 10 * 60;          // 10 minutes
+const STEPUP_MAX_AGE_CROSS_PLATFORM = 12 * 60 * 60; // 12 hours
+
+/** WebAuthn reports this on the assertion; absent on older browsers. */
+export type AuthenticatorAttachment = 'platform' | 'cross-platform';
+
+/**
+ * Unknown attachment falls back to the short window on purpose. The field is
+ * client-reported, so failing closed is the only safe default.
+ */
+export function stepUpMaxAge(attachment?: AuthenticatorAttachment | null): number {
+  return attachment === 'cross-platform'
+    ? STEPUP_MAX_AGE_CROSS_PLATFORM
+    : STEPUP_MAX_AGE_PLATFORM;
+}
 
 function cookieString(name: string, value: string, maxAge: number): string {
   return `${name}=${value}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
@@ -123,20 +148,28 @@ async function verify(token: string): Promise<SessionPayload | null> {
 /* ========================================================================== */
 
 /** Create both session + step-up cookies after a successful WebAuthn auth. */
-export async function createSessionCookies(payload: SessionPayload): Promise<string[]> {
+export async function createSessionCookies(
+  payload: SessionPayload,
+  attachment?: AuthenticatorAttachment | null,
+): Promise<string[]> {
+  const stepUpAge = stepUpMaxAge(attachment);
   const sessionJwt = await sign(payload, SESSION_MAX_AGE);
-  const stepupJwt = await sign(payload, STEPUP_MAX_AGE);
+  const stepupJwt = await sign(payload, stepUpAge);
 
   return [
     cookieString(SESSION_COOKIE, sessionJwt, SESSION_MAX_AGE),
-    cookieString(STEPUP_COOKIE, stepupJwt, STEPUP_MAX_AGE),
+    cookieString(STEPUP_COOKIE, stepupJwt, stepUpAge),
   ];
 }
 
 /** Refresh just the step-up cookie (re-auth with biometric). */
-export async function createStepUpCookie(payload: SessionPayload): Promise<string> {
-  const stepupJwt = await sign(payload, STEPUP_MAX_AGE);
-  return cookieString(STEPUP_COOKIE, stepupJwt, STEPUP_MAX_AGE);
+export async function createStepUpCookie(
+  payload: SessionPayload,
+  attachment?: AuthenticatorAttachment | null,
+): Promise<string> {
+  const stepUpAge = stepUpMaxAge(attachment);
+  const stepupJwt = await sign(payload, stepUpAge);
+  return cookieString(STEPUP_COOKIE, stepupJwt, stepUpAge);
 }
 
 /** Verify the long-lived session cookie. */

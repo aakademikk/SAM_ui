@@ -106,7 +106,13 @@ export async function POST(request: Request) {
       iat: Math.floor(Date.now() / 1000),
     };
 
-    const cookie = await createStepUpCookie(stepupPayload);
+    // The window scales with how expensive re-authenticating is: a built-in
+    // authenticator (phone fingerprint) stays short, the hybrid/QR flow a
+    // desktop has to use gets the long one.
+    const cookie = await createStepUpCookie(
+      stepupPayload,
+      (assertionResponse as AuthenticationResponseJSON).authenticatorAttachment,
+    );
 
     const estate = getEstate();
     const response = envelope(

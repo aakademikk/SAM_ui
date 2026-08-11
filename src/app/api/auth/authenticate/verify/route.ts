@@ -68,7 +68,12 @@ export async function POST(request: Request) {
       iat: Math.floor(Date.now() / 1000),
     };
 
-    const cookies = await createSessionCookies(sessionPayload);
+    // Same rule as /api/auth/stepup: the initial step-up window granted with
+    // the session depends on how costly a fresh assertion is on this client.
+    const cookies = await createSessionCookies(
+      sessionPayload,
+      (assertionResponse as AuthenticationResponseJSON).authenticatorAttachment,
+    );
 
     const estate = getEstate();
     const response = envelope(
