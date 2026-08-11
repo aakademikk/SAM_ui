@@ -35,3 +35,6 @@ yarn-error.log*
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# TWA build output, served for sideloading — never commit the binary
+/public/sam.apk

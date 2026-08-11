@@ -34,6 +34,21 @@ function stateCol(state: VisualiserState): Rgb {
   return COLS[state] ?? COLS.idle;
 }
 
+/* ---- Boot assembly helpers ------------------------------------------------ */
+
+/** Normalise `v` into 0..1 across the window [from, to], clamped at both ends. */
+function stage(v: number, from: number, to: number): number {
+  if (v <= from) return 0;
+  if (v >= to) return 1;
+  return (v - from) / (to - from);
+}
+
+/** Decelerating ease — fast departure, soft landing. Used for node convergence. */
+function easeOutCubic(t: number): number {
+  const u = 1 - t;
+  return 1 - u * u * u;
+}
+
 function getTargets(s: VisualiserState): [number, number, number] {
   switch (s) {
     case 'idle':      return [0.5, 0.5, 0.08];
@@ -53,6 +68,9 @@ interface MeshNode {
   x: number; y: number; z: number;
   b: number;  // base brightness
   po: number; // phase offset
+  // Boot assembly: where this node flies in from, and how late it starts.
+  sx: number; sy: number; sz: number;
+  dly: number; // 0..1 stagger, so the mesh lands as a wave rather than at once
 }
 
 interface MeshEdge {
@@ -109,10 +127,18 @@ function buildMeshNodes(count: number, S: number): MeshNode[] {
     const r = R * (1 + fold);
     nx *= r; ny *= r; nz *= r;
 
+    // Boot origin: flung out along its own bearing, well outside the sphere, so
+    // the assembly reads as the mesh pulling itself inward rather than a fade.
+    const sd = 2.4 + Math.random() * 2.2;
+
     nodes.push({
       x: nx, y: ny, z: nz,
       b: 0.4 + Math.random() * 0.6,
       po: Math.random() * Math.PI * 2,
+      sx: nx * sd, sy: ny * sd, sz: nz * sd,
+      // Stagger by height so the sphere assembles as a sweep, with a little
+      // jitter to stop it looking like a mechanical wipe.
+      dly: Math.min(1, Math.max(0, (1 - (y + 1) / 2) * 0.8 + Math.random() * 0.2)),
     });
   }
   return nodes;
@@ -162,6 +188,12 @@ export interface VisualiserWidgetProps {
   state?: VisualiserState;
   /** Show the corner state badge. Defaults to on for the full-screen form. */
   hud?: boolean;
+  /**
+   * Boot assembly progress, 0 → 1. At 0 the canvas is empty; at 1 the
+   * visualiser is fully formed and this has no effect at all. Omit for the
+   * normal, already-built rendering.
+   */
+  boot?: number;
 }
 
 export function VisualiserWidget({
@@ -169,6 +201,7 @@ export function VisualiserWidget({
   size,
   state: override,
   hud,
+  boot = 1,
 }: VisualiserWidgetProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -192,6 +225,11 @@ export function VisualiserWidget({
   // restarts — it reads the latest state from the ref each frame.
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
+
+  // Same reason as the snapshot ref: boot progress changes every frame while
+  // the intro plays, and re-running the effect would restart the animation.
+  const bootRef = useRef(boot);
+  bootRef.current = boot;
 
   /* ---- Resize handler ---------------------------------------------------- */
   const resize = useCallback(() => {
@@ -254,6 +292,12 @@ export function VisualiserWidget({
       anim.lastTime = ts;
       anim.totalTime = ts / 1000;
 
+      // Boot assembly progress. 1 means "fully built", which is the normal
+      // case — every factor derived from it collapses to 1 and costs nothing.
+      // (Named `bootP`, not `bp` — the edge loop below already binds `bp` to a
+      // projected point, and shadowing that would be a nasty trap to leave.)
+      const bootP = bootRef.current;
+
       // ---- Energy ---------------------------------------------------------
       const serverState = snapshotRef.current.state;
       // Priority: audio playing → speaking, mic active → listening, else server
@@ -279,7 +323,9 @@ export function VisualiserWidget({
       anim.motion += (tgt[2] - anim.motion) * Math.min(1, dt * 3.5);
 
       // ---- Particles -------------------------------------------------------
-      const rate = 5 + anim.glow * 150;
+      // Emission is the last thing to come up: the core has to be lit before
+      // it can throw anything off.
+      const rate = (5 + anim.glow * 150) * stage(bootP, 0.68, 1);
       anim.pBudget += rate * dt;
       const particles = anim.particles;
       while (anim.pBudget >= 1) {
@@ -329,35 +375,56 @@ export function VisualiserWidget({
       const col = stateCol(appState);
       const { glow, motion } = anim;
 
+      /* ---- Boot staging ----------------------------------------------------
+       * The order is the story: substrate first, then the mesh pulls itself in,
+       * the core ignites, and only then does the holographic furniture arrive.
+       * Every window collapses to 1 once bp hits 1.
+       */
+      const bGrid    = stage(bootP, 0.00, 0.22); // grid + vias — the substrate
+      const bTrace   = stage(bootP, 0.10, 0.40); // etched trace highways
+      const bEdge    = stage(bootP, 0.42, 0.72); // mesh edges stitching together
+      const bCore    = stage(bootP, 0.30, 0.80); // core glow igniting
+      const bSocket  = stage(bootP, 0.48, 0.72); // socket rings
+      const bPulse   = stage(bootP, 0.55, 0.85); // energy running the traces
+      const bRing    = stage(bootP, 0.62, 0.92); // holo rings
+      const bCorner  = stage(bootP, 0.80, 1.00); // corner brackets — HUD last
+      const bParticle = stage(bootP, 0.68, 1.00);
+
       // Clear
       ctx.fillStyle = '#010812';
       ctx.fillRect(0, 0, w, h);
 
       // ---- Grid ------------------------------------------------------------
-      ctx.strokeStyle = 'rgba(10,40,70,0.35)';
+      ctx.strokeStyle = 'rgba(10,40,70,' + 0.35 * bGrid + ')';
       ctx.lineWidth = 0.4;
       const gs = 30;
-      for (let x = gs; x < w; x += gs) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-      }
-      for (let y = gs; y < h; y += gs) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      if (bGrid > 0.01) {
+        for (let x = gs; x < w; x += gs) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        }
+        for (let y = gs; y < h; y += gs) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+        }
       }
 
       // ---- Vias ------------------------------------------------------------
-      for (let vx = -S * 0.55; vx < S * 0.55; vx += 50) {
-        for (let vy = -S * 0.55; vy < S * 0.55; vy += 50) {
-          const d = Math.sqrt(vx * vx + vy * vy);
-          if (d < S * 0.2 || d > S * 0.55) continue;
-          ctx.beginPath();
-          ctx.arc(cx + vx, cy + vy, 1.2, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(25,80,140,0.4)';
-          ctx.fill();
+      if (bGrid > 0.01) {
+        for (let vx = -S * 0.55; vx < S * 0.55; vx += 50) {
+          for (let vy = -S * 0.55; vy < S * 0.55; vy += 50) {
+            const d = Math.sqrt(vx * vx + vy * vy);
+            if (d < S * 0.2 || d > S * 0.55) continue;
+            ctx.beginPath();
+            ctx.arc(cx + vx, cy + vy, 1.2, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(25,80,140,' + 0.4 * bGrid + ')';
+            ctx.fill();
+          }
         }
       }
 
       // ---- Trace highways --------------------------------------------------
-      for (let b = 0; b < 24; b++) {
+      // Traces etch outward from the core rather than fading in as a block.
+      const traceReach = bTrace;
+      for (let b = 0; b < 24 && bTrace > 0.01; b++) {
         const angle = (b / 24) * Math.PI * 2;
         const innerR = S * 0.26;
         const midR = S * (0.5 + Math.sin(b * 2.1) * 0.08);
@@ -377,23 +444,30 @@ export function VisualiserWidget({
           const bx = mx + Math.cos(angle + (b % 2 === 0 ? 0.6 : -0.6)) * S * 0.06;
           const by = my + Math.sin(angle + (b % 2 === 0 ? 0.6 : -0.6)) * S * 0.06;
 
+          // Etch outward: below half reach the trace stops short of the bend,
+          // above it the bend is fixed and the outer leg extends.
+          const preBend = traceReach < 0.5;
+          const k = preBend ? traceReach / 0.5 : (traceReach - 0.5) / 0.5;
+          const tipX = preBend ? sx + (bx - sx) * k : bx + (ex - bx) * k;
+          const tipY = preBend ? sy + (by - sy) * k : by + (ey - by) * k;
+
+          const strokeTrace = () => {
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            if (!preBend) ctx.lineTo(bx, by);
+            ctx.lineTo(tipX, tipY);
+            ctx.stroke();
+          };
+
           // Main trace
           ctx.strokeStyle = 'rgba(20,70,130,0.55)';
           ctx.lineWidth = 0.7;
-          ctx.beginPath();
-          ctx.moveTo(sx, sy);
-          ctx.lineTo(bx, by);
-          ctx.lineTo(ex, ey);
-          ctx.stroke();
+          strokeTrace();
 
           // Inner bright core
           ctx.strokeStyle = 'rgba(40,120,200,' + (0.15 + glow * 0.15) + ')';
           ctx.lineWidth = 0.25;
-          ctx.beginPath();
-          ctx.moveTo(sx, sy);
-          ctx.lineTo(bx, by);
-          ctx.lineTo(ex, ey);
-          ctx.stroke();
+          strokeTrace();
         }
 
         // Energy pulse wavefronts — colour follows active state
@@ -405,7 +479,7 @@ export function VisualiserWidget({
           const fadeAlpha = dp < 0.15 ? dp / 0.15 : dp > 0.85 ? (1 - dp) / 0.15 : 1;
           const dx = cx + Math.cos(angle) * (innerR + (outerR - innerR) * dp);
           const dy = cy + Math.sin(angle) * (innerR + (outerR - innerR) * dp);
-          const baseAlpha = glow * 0.95 * fadeAlpha;
+          const baseAlpha = glow * 0.95 * fadeAlpha * bPulse;
           if (baseAlpha < 0.04) continue;
 
           ctx.beginPath();
@@ -435,7 +509,7 @@ export function VisualiserWidget({
         if (wfRing < 1) {
           const wd = cx + Math.cos(angle) * (innerR + (outerR - innerR) * wfRing);
           const wy = cy + Math.sin(angle) * (innerR + (outerR - innerR) * wfRing);
-          const wfAlpha = glow * 0.5 * (1 - wfRing);
+          const wfAlpha = glow * 0.5 * (1 - wfRing) * bPulse;
           ctx.beginPath();
           ctx.arc(wd, wy, 14, 0, Math.PI * 2);
           ctx.fillStyle =
@@ -448,7 +522,9 @@ export function VisualiserWidget({
       for (let ring = 0; ring < 3; ring++) {
         const rr = S * (0.22 + ring * 0.04);
         const count = 48 + ring * 10;
-        for (let i = 0; i < count; i++) {
+        // Pins seat around the ring as boot advances rather than fading in.
+        const seated = Math.round(count * bSocket);
+        for (let i = 0; i < seated; i++) {
           const a = (i / count) * Math.PI * 2;
           const px = cx + Math.cos(a) * rr;
           const py = cy + Math.sin(a) * rr;
@@ -462,8 +538,11 @@ export function VisualiserWidget({
       }
 
       // ---- Core glow -------------------------------------------------------
-      const inten = glow;
-      const outerR = S * 0.55 * inten;
+      // Ignition overshoots briefly as it catches, so the core strikes like an
+      // arc rather than swelling politely. Collapses to plain `glow` at bp = 1.
+      const ignite = bCore * (1 + 0.9 * Math.sin(Math.PI * stage(bootP, 0.46, 0.62)));
+      const inten = glow * ignite;
+      const outerR = S * 0.55 * Math.min(1, inten);
 
       const g1 = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerR);
       g1.addColorStop(0, 'rgba(255,255,255,' + inten + ')');
@@ -490,16 +569,27 @@ export function VisualiserWidget({
       const cosT = Math.cos(tilt), sinT = Math.sin(tilt);
 
       const nodes = anim.meshNodes;
-      const proj: { x: number; y: number; d: number; b: number; po: number }[] = [];
+      const proj: { x: number; y: number; d: number; b: number; po: number; a: number }[] = [];
+      const building = bootP < 1;
 
       for (let i = 0; i < nodes.length; i++) {
         const n = nodes[i];
-        const rx = n.x * cosR - n.z * sinR;
-        let rz = n.x * sinR + n.z * cosR;
-        const ry = n.y * cosT - rz * sinT;
-        rz = n.y * sinT + rz * cosT;
+
+        // Per-node arrival, staggered by `dly` and eased so each one decelerates
+        // into its slot. At rest this is a flat 1 and the lerps are skipped.
+        const arrive = building
+          ? easeOutCubic(stage(bootP, n.dly * 0.42, n.dly * 0.42 + 0.34))
+          : 1;
+        const ox = building ? n.sx + (n.x - n.sx) * arrive : n.x;
+        const oy = building ? n.sy + (n.y - n.sy) * arrive : n.y;
+        const oz = building ? n.sz + (n.z - n.sz) * arrive : n.z;
+
+        const rx = ox * cosR - oz * sinR;
+        let rz = ox * sinR + oz * cosR;
+        const ry = oy * cosT - rz * sinT;
+        rz = oy * sinT + rz * cosT;
         const depth = Math.max(0, Math.min(1, (rz / (S * 0.32) + 1) / 2));
-        proj.push({ x: cx + rx, y: cy + ry, d: depth, b: n.b, po: n.po });
+        proj.push({ x: cx + rx, y: cy + ry, d: depth, b: n.b, po: n.po, a: arrive });
       }
 
       // Node pulse
@@ -522,12 +612,13 @@ export function VisualiserWidget({
       }
 
       // Edges
-      const eAlpha = glow * 0.5;
+      const eAlpha = glow * 0.5 * bEdge;
       for (let ei = 0; ei < anim.meshEdges.length; ei++) {
         const e = anim.meshEdges[ei];
         const ap = proj[e.a], bp = proj[e.b];
         const da = Math.min(ap.d, bp.d);
-        const alpha = eAlpha * e.ba * da * (0.3 + 0.85 * pulse);
+        // An edge cannot exist before both of its nodes have landed.
+        const alpha = eAlpha * e.ba * da * (0.3 + 0.85 * pulse) * Math.min(ap.a, bp.a);
         if (alpha < 0.02) continue;
 
         ctx.beginPath();
@@ -554,7 +645,9 @@ export function VisualiserWidget({
         const p = proj[pi];
         const ba = 0.25 + glow * 0.6;
         const pa = pulse * 0.9 * Math.abs(Math.sin(t * 5 + p.po));
-        const alpha = Math.max(0, Math.min(1, (ba + pa) * p.d));
+        // Nodes flare as they come in and settle to normal once seated.
+        const flare = p.a < 1 ? p.a * (1 + 0.6 * Math.sin(Math.PI * p.a)) : 1;
+        const alpha = Math.max(0, Math.min(1, (ba + pa) * p.d * flare));
         if (alpha < 0.04) continue;
 
         const sz = 1.5 + p.d * 2.2;
@@ -596,10 +689,13 @@ export function VisualiserWidget({
       }
 
       // ---- Holo rings -------------------------------------------------------
+      // Rings expand outward into position as they come up, rather than just
+      // appearing at their final radius.
+      const rScale = 0.82 + 0.18 * bRing;
       const rings = [
-        { r: S * 0.38, a: glow * 0.5, seg: 22, gap: 0.26, rot: t * 0.35 * (1 + motion), lw: 1.1 },
-        { r: S * 0.48, a: glow * 0.38, seg: 26, gap: 0.3, rot: -t * 0.25 * (1 + motion * 1.5), lw: 0.85 },
-        { r: S * 0.58, a: glow * 0.26, seg: 32, gap: 0.34, rot: t * 0.18 * (1 + motion * 0.8), lw: 0.65 },
+        { r: S * 0.38 * rScale, a: glow * 0.5 * bRing, seg: 22, gap: 0.26, rot: t * 0.35 * (1 + motion), lw: 1.1 },
+        { r: S * 0.48 * rScale, a: glow * 0.38 * bRing, seg: 26, gap: 0.3, rot: -t * 0.25 * (1 + motion * 1.5), lw: 0.85 },
+        { r: S * 0.58 * rScale, a: glow * 0.26 * bRing, seg: 32, gap: 0.34, rot: t * 0.18 * (1 + motion * 0.8), lw: 0.65 },
       ];
       for (let ri = 0; ri < rings.length; ri++) {
         const r = rings[ri];
@@ -631,7 +727,7 @@ export function VisualiserWidget({
       }
 
       // ---- Corner brackets --------------------------------------------------
-      const cornerAlpha = 0.2 + glow * 0.6;
+      const cornerAlpha = (0.2 + glow * 0.6) * bCorner;
       if (cornerAlpha >= 0.04) {
         const d = S * 0.84;
         const sz = S * 0.055;
@@ -676,7 +772,7 @@ export function VisualiserWidget({
         if (!p.alive) continue;
         const lt = p.life / p.maxLife;
         let a = lt < 0.12 ? lt / 0.12 : lt > 0.6 ? (1 - lt) / 0.4 : 1;
-        a *= glow;
+        a *= glow * bParticle;
         if (a < 0.03) continue;
         const d = Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2);
         const df = Math.max(0, 1 - d / (S * 0.9));

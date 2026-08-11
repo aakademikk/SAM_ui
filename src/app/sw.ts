@@ -39,6 +39,21 @@ const serwist = new Serwist({
         ],
       }),
     },
+    // App identity — the manifest and the launcher icons. These must be network
+    // first: under the default CacheFirst they are precached at build, so a new
+    // icon never reaches an installed PWA and the home screen keeps painting the
+    // old one (and the splash screen built from it) indefinitely.
+    {
+      matcher: ({ url }) =>
+        url.pathname === '/manifest.json' || url.pathname.startsWith('/icons/'),
+      handler: new NetworkFirst({
+        cacheName: 'sam-app-identity',
+        networkTimeoutSeconds: 5,
+        plugins: [
+          new ExpirationPlugin({ maxEntries: 16, maxAgeSeconds: 60 * 60 * 24 }),
+        ],
+      }),
+    },
     // Navigation — network first, offline page as fallback.
     {
       matcher: ({ request }) => request.mode === 'navigate',

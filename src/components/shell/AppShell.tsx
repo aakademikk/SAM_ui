@@ -10,21 +10,33 @@
 
 'use client';
 
+import { useState } from 'react';
+
 import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
 import { InstallButton } from './InstallButton';
+import { BootSequence } from './BootSequence';
 import { useDevDuplicateCheck } from './useDevDuplicateCheck';
 import { SamBackground } from '@/components/visualiser/SamBackground';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   useDevDuplicateCheck('AppShell');
 
+  // The boot overlay runs its own full-screen visualiser canvas. Mounting the
+  // ambient one underneath it at the same time means two canvases animating a
+  // 500-node mesh on a phone, which is exactly where the intro would judder.
+  const [booting, setBooting] = useState(true);
+
   return (
     // No opaque background here: the body paints void-950 and the visualiser
     // sits above it at z-0, with all chrome and content stacked above at z-10.
     <div className="relative min-h-screen text-void-100">
+      {/* Cold-start intro. Mounted here rather than on a route so the installed
+          PWA gets it too — its start_url is `/`, which never hits /intro. */}
+      <BootSequence once onDone={() => setBooting(false)} />
+
       {/* Ambient visualiser — behind every tab */}
-      <SamBackground />
+      {!booting && <SamBackground />}
 
       {/* Desktop sidebar */}
       <Sidebar />

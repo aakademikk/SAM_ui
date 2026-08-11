@@ -21,7 +21,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#05050d',
+  // Matches manifest background_color so the PWA splash hands over to the boot
+  // screen without a colour step.
+  themeColor: '#010812',
   colorScheme: 'dark',
   width: 'device-width',
   initialScale: 1,

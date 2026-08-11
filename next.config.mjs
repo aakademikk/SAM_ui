@@ -26,6 +26,19 @@ const nextConfig = {
     };
     return config;
   },
+  // Next refuses to serve dot-directories out of `public/`, so
+  // public/.well-known/assetlinks.json 404s. The TWA wrapper reads the file
+  // from the canonical path to verify it owns this origin, so map the path
+  // onto a plain static file — which also means the fingerprint can be edited
+  // without a rebuild, since `next start` serves public/ from disk.
+  async rewrites() {
+    return [
+      {
+        source: '/.well-known/assetlinks.json',
+        destination: '/assetlinks.json',
+      },
+    ];
+  },
   async headers() {
     return [
       {
