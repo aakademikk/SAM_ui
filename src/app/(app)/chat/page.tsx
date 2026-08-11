@@ -26,6 +26,8 @@ import { computeCost, formatCost, formatTokens } from '@/lib/costing';
 import { spokenText, type ChatMessage, type TierId, type TierInfo } from '@/types/chat';
 import { speakChunked, primeSpeech, isSpeechBlocked, type SpeechHandle } from '@/lib/speech';
 import { setSamActivity } from '@/lib/samActivity';
+import { configureOsBridge } from '@/lib/osBridge';
+import { tryOsIntent } from '@/lib/osIntentRunner';
 
 const MESSAGES_KEY = 'sam-agent-messages';
 const SESSION_KEY = 'sam-agent-session';
@@ -71,6 +73,8 @@ export default function ChatPage() {
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [needsStepUp, setNeedsStepUp] = useState(false);
+  /** Opened by the Android wake word rather than by tapping the icon. */
+  const [wokenByVoice, setWokenByVoice] = useState(false);
   const [muted, setMuted] = useState(false);
   const [speaking, setSpeaking] = useState<string | null>(null);
   const [tier, setTier] = useState<TierId>('fast');
@@ -320,6 +324,9 @@ export default function ChatPage() {
     const message = text.trim();
     if (!message || running) return;
 
+    // The wake prompt has served its purpose once he's said something.
+    setWokenByVoice(false);
+
     // A fresh send supersedes any message waiting on a biometric unlock.
     localStorage.removeItem(PENDING_KEY);
 
@@ -327,6 +334,26 @@ export default function ChatPage() {
     // answer lands, seconds later, the gesture has expired and the browser
     // would refuse to play anything.
     primeSpeech();
+
+    // Device commands are resolved on the phone itself — "open Spotify" should
+    // not cost a model round trip, and it keeps working when the agent is slow
+    // or the tier is expensive. Anything that is not clearly a device command,
+    // or that the phone could not carry out, falls through to the agent below
+    // exactly as before. On desktop there is no bridge, so this is a no-op.
+    const osResult = await tryOsIntent(message);
+    if (osResult.handled && osResult.reply) {
+      const osStamp = Date.now();
+      const osReplyId = `a_${osStamp}`;
+      setMessages((prev) => [
+        ...prev,
+        { id: `u_${osStamp}`, role: 'user', blocks: [{ kind: 'text', text: message }], done: true },
+        { id: osReplyId, role: 'assistant', blocks: [{ kind: 'text', text: osResult.reply! }], done: true },
+      ]);
+      setInput('');
+      setError(null);
+      if (!muted) void speak(osReplyId, osResult.reply);
+      return;
+    }
 
     const stamp = Date.now();
     const assistantId = `a_${stamp}`;
@@ -371,7 +398,9 @@ export default function ChatPage() {
       setMessages((prev) => prev.filter((m) => m.id !== assistantId));
       setRunning(false);
     }
-  }, [running, tier, attachToRun]);
+    // muted/speak are here for the OS-intent reply above; attachToRun already
+    // depends on both, so this adds no extra churn.
+  }, [running, tier, attachToRun, muted, speak]);
 
   /* ── Stop ────────────────────────────────────────────────────────────── */
 
@@ -394,6 +423,24 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  /* ── Wake-word launch ────────────────────────────────────────────────── */
+
+  // The Android service opens this page as /chat?wake=1&os_port=8765 when it
+  // hears the wake word. The port is where the native OS bridge is listening;
+  // recording it here is what lets "open Spotify" reach the phone.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const port = params.get('os_port');
+    configureOsBridge(port ? Number(port) : null);
+
+    if (params.get('wake') === '1') {
+      // Arriving via the wake word is a user action in spirit, but not one the
+      // browser recognises, so speech stays blocked until the first real tap.
+      primeSpeech();
+      setWokenByVoice(true);
+    }
+  }, []);
 
   const toggleTier = () => {
     const next: TierId = tier === 'fast' ? 'max' : 'fast';
@@ -591,6 +638,12 @@ export default function ChatPage() {
                    px-3 py-2.5 md:px-6 md:py-3 space-y-2
                    pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]"
       >
+        {wokenByVoice && (
+          <p className="text-center text-[11px] tracking-wide text-accent">
+            Woken by voice — hold the mic to speak.
+          </p>
+        )}
+
         {audioBlocked && !muted && (
           <p className="text-center text-[11px] text-dim-400">
             Your browser blocked autoplay — tap the speaker on a reply to hear it.
