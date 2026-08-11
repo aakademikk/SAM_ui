@@ -31,6 +31,7 @@ const MESSAGES_KEY = 'sam-agent-messages';
 const SESSION_KEY = 'sam-agent-session';
 const TIER_KEY = 'sam-agent-tier';
 const ACTIVE_KEY = 'sam-agent-active';
+const PENDING_KEY = 'sam-agent-pending';
 const MAX_STORED = 40;
 /** Dropped connections are retried before a turn is declared lost. */
 const MAX_RECONNECTS = 5;
@@ -185,22 +186,24 @@ export default function ChatPage() {
       localStorage.removeItem(ACTIVE_KEY);
       if (cost) setSessionCost((c) => c + cost.usd);
 
-      let spoken = '';
-      patch((m) => {
-        const finished: ChatMessage = {
-          ...m,
-          blocks: lost
-            ? [...state.blocks, { kind: 'error' as const, text: 'Lost connection to this run.' }]
-            : [...state.blocks],
-          sessionId: state.sessionId,
-          usage: state.usage,
-          cost,
-          durationMs: state.durationMs,
-          done: true,
-        };
-        spoken = spokenText(finished);
-        return finished;
-      });
+      // Spoken text comes from the parser's final blocks directly, NOT from a
+      // value written inside the setMessages updater below — React defers that
+      // updater to the next render, so anything assigned in it would still be
+      // unset here and auto-speak would silently never fire.
+      const spoken = lost
+        ? ''
+        : spokenText({ id: run.assistantId, role: 'assistant', blocks: state.blocks, done: true });
+      patch((m) => ({
+        ...m,
+        blocks: lost
+          ? [...state.blocks, { kind: 'error' as const, text: 'Lost connection to this run.' }]
+          : [...state.blocks],
+        sessionId: state.sessionId,
+        usage: state.usage,
+        cost,
+        durationMs: state.durationMs,
+        done: true,
+      }));
 
       setRunning(false);
       setPhase('done');
@@ -286,11 +289,39 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* ── Recover a message that failed on biometric unlock ────────────────── */
+
+  useEffect(() => {
+    const pending = localStorage.getItem(PENDING_KEY);
+    if (!pending) return;
+    void authService.checkSession().then((s) => {
+      if (!s.authenticated) {
+        localStorage.removeItem(PENDING_KEY);
+        return;
+      }
+      if (s.stepUp) {
+        // A biometric happened elsewhere since the failure — the message can
+        // go out now without another prompt.
+        localStorage.removeItem(PENDING_KEY);
+        void send(pending);
+      } else {
+        setNeedsStepUp(true);
+        setError('Biometric unlock required before SAM can run anything.');
+      }
+    });
+    // Mount only — send's identity changes with running/tier; re-running this
+    // on those changes would fire the pending message repeatedly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /* ── Send ────────────────────────────────────────────────────────────── */
 
   const send = useCallback(async (text: string) => {
     const message = text.trim();
     if (!message || running) return;
+
+    // A fresh send supersedes any message waiting on a biometric unlock.
+    localStorage.removeItem(PENDING_KEY);
 
     // Unlock audio while we still have user activation. By the time the
     // answer lands, seconds later, the gesture has expired and the browser
@@ -330,6 +361,8 @@ export default function ChatPage() {
       attachToRun(run);
     } catch (err) {
       if (err instanceof StepUpRequiredError) {
+        // Hold the message so a successful unlock can resend it without a retype.
+        localStorage.setItem(PENDING_KEY, message);
         setNeedsStepUp(true);
         setError('Biometric unlock required before SAM can run anything.');
       } else {
@@ -373,6 +406,7 @@ export default function ChatPage() {
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(MESSAGES_KEY);
     localStorage.removeItem(ACTIVE_KEY);
+    localStorage.removeItem(PENDING_KEY);
     setMessages([]);
     setSessionCost(0);
     setError(null);
@@ -533,6 +567,9 @@ export default function ChatPage() {
                     await authService.stepUp();
                     setNeedsStepUp(false);
                     setError(null);
+                    const pending = localStorage.getItem(PENDING_KEY);
+                    localStorage.removeItem(PENDING_KEY);
+                    if (pending) void send(pending);
                   } catch { /* cancelled */ }
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/20 border

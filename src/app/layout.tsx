@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 
 import './globals.css';
 import { ServiceWorkerRegistration } from '@/components/shell/ServiceWorkerRegistration';
+import { ScreenWakeLock } from '@/components/shell/ScreenWakeLock';
 
 export const metadata: Metadata = {
   title: 'SAM — Core Dashboard',
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="antialiased">
         {children}
         <ServiceWorkerRegistration />
+        <ScreenWakeLock />
       </body>
     </html>
   );

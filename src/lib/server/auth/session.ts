@@ -3,7 +3,7 @@
  *
  * Two tiers via httpOnly cookies:
  *   - sam-session  (30 days):  read access — view dashboards, logs, job status.
- *   - sam-stepup   (5 min):   write access — run commands, kill jobs, change settings.
+ *   - sam-stepup   (10 min):  write access — run commands, kill jobs, change settings.
  *
  * JWTs signed with a random key generated at server startup. This means
  * sessions DO NOT survive server restart — acceptable for a single-machine
@@ -63,7 +63,7 @@ export const SESSION_COOKIE = 'sam-session';
 export const STEPUP_COOKIE = 'sam-stepup';
 
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
-const STEPUP_MAX_AGE = 5 * 60;              // 5 minutes
+const STEPUP_MAX_AGE = 10 * 60;             // 10 minutes
 
 function cookieString(name: string, value: string, maxAge: number): string {
   return `${name}=${value}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`;

@@ -87,12 +87,12 @@ export interface ChatMessage {
 
 /** Convenience: the spoken text for a completed assistant turn. */
 export function spokenText(message: ChatMessage): string {
-  // Deliberately text blocks only. Thinking and tool traffic are shown but
-  // never spoken — narrating the working is the exact behaviour that was
-  // removed from the voice line.
-  return message.blocks
-    .filter((b): b is Extract<ChatBlock, { kind: 'text' }> => b.kind === 'text')
-    .map((b) => b.text)
-    .join('\n')
-    .trim();
+  // Deliberately the LAST text block only. A tool-using turn emits a text
+  // block before each tool call plus the actual answer; joining them would
+  // narrate the whole working. The final text block is the answer.
+  const texts = message.blocks.filter(
+    (b): b is Extract<ChatBlock, { kind: 'text' }> => b.kind === 'text',
+  );
+  const answer = texts[texts.length - 1];
+  return answer ? answer.text.trim() : '';
 }
