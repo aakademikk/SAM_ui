@@ -11,7 +11,7 @@
 
 import { defaultCache } from '@serwist/next/worker';
 import type { PrecacheEntry, SerwistGlobalConfig } from 'serwist';
-import { Serwist, NetworkFirst, ExpirationPlugin } from 'serwist';
+import { Serwist, NetworkFirst, NetworkOnly, ExpirationPlugin } from 'serwist';
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -54,16 +54,22 @@ const serwist = new Serwist({
         ],
       }),
     },
-    // Navigation — network first, offline page as fallback.
+    // Navigation — network only, offline page as fallback.
+    //
+    // This was NetworkFirst with a 'sam-pages' cache, which produced a page
+    // that was guaranteed to be broken. Cached HTML names the JS chunks of the
+    // build it came from, but the precache only ever holds the *current*
+    // build's chunks — earlier ones are purged on activate. So when a
+    // navigation failed, the stale HTML was served and every chunk it asked
+    // for 404'd, surfacing as "Application error: a client-side exception has
+    // occurred" rather than the offline page. Exactly that happened on the
+    // phone when the tailnet hostname stopped resolving.
+    //
+    // Going straight to /offline is also what the rest of this file already
+    // decided: a cached agent status is worse than showing nothing.
     {
       matcher: ({ request }) => request.mode === 'navigate',
-      handler: new NetworkFirst({
-        cacheName: 'sam-pages',
-        networkTimeoutSeconds: 5,
-        plugins: [
-          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 300 }),
-        ],
-      }),
+      handler: new NetworkOnly(),
     },
     // Default cache handles static assets (precached + runtime).
     ...defaultCache,

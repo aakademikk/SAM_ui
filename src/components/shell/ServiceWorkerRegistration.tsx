@@ -40,6 +40,18 @@ export function ServiceWorkerRegistration() {
     // Always register the SW in production. In dev we skip it entirely.
     if (process.env.NODE_ENV !== 'production') return;
 
+    // Service workers only exist in a secure context. Opening the app over
+    // plain HTTP — a LAN address, or the raw Tailscale IP — leaves
+    // navigator.serviceWorker undefined, and calling .register() on it throws
+    // inside this effect, which React surfaces as "Application error: a
+    // client-side exception has occurred" and takes the whole app down.
+    // Also covers Firefox private browsing and locked-down enterprise
+    // browsers, where service workers are disabled outright.
+    if (!('serviceWorker' in navigator)) {
+      console.debug('[SAM] service workers unavailable (insecure context?) — skipping');
+      return;
+    }
+
     navigator.serviceWorker
       .register('/sw.js', { scope: '/' })
       .then((registration) => {
