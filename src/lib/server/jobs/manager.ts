@@ -204,7 +204,19 @@ class JobManager {
       shell: true,
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: os.homedir(),
-      env: { ...process.env },
+      env: mergeEnv({
+        // `.env.local` puts ANTHROPIC_* on process.env, so a raw child would
+        // inherit them — typing `claude` in the Terminal would silently route
+        // to DeepSeek. Strip them so the CLI talks to Claude, matching the Max
+        // chat tier and fleet dispatch.
+        ANTHROPIC_BASE_URL: null,
+        ANTHROPIC_AUTH_TOKEN: null,
+        ANTHROPIC_API_KEY: null,
+        ANTHROPIC_MODEL: null,
+        // The SessionStart hook launches a visualiser and a voice-line terminal
+        // tab — noise for a job whose output already streams in the Terminal.
+        SAM_SKIP_SERVICE_LAUNCH: '1',
+      }),
     });
 
     return this.attach(record, child, output);
