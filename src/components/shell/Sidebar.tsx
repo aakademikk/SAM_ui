@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Settings,
   Cpu,
+  Bot,
 } from 'lucide-react';
 import { InstallButton } from './InstallButton';
 import { LoginButton } from '@/components/auth/LoginButton';
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', href: '/', icon: LayoutDashboard },
   { id: 'terminal', label: 'Terminal', href: '/terminal', icon: Terminal },
   { id: 'chat', label: 'Chat', href: '/chat', icon: MessageSquare },
+  { id: 'fleet', label: 'Fleet', href: '/fleet', icon: Bot },
   { id: 'settings', label: 'Settings', href: '/settings', icon: Settings },
 ] as const;
 

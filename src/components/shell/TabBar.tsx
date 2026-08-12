@@ -11,12 +11,14 @@ import {
   Terminal,
   MessageSquare,
   Settings,
+  Bot,
 } from 'lucide-react';
 
 const TABS = [
   { id: 'dashboard', label: 'Dash', href: '/', icon: LayoutDashboard },
   { id: 'terminal', label: 'Term', href: '/terminal', icon: Terminal },
   { id: 'chat', label: 'Chat', href: '/chat', icon: MessageSquare },
+  { id: 'fleet', label: 'Fleet', href: '/fleet', icon: Bot },
   { id: 'settings', label: 'Prefs', href: '/settings', icon: Settings },
 ] as const;
 
