@@ -2,7 +2,7 @@
  * SAM — Fleet types.
  *
  * The Fleet tab is the single interface for dispatching the Tier 2 General
- * personas (growth, marketing, delivery, cerberus, rd) as stateless `claude`
+ * personas (hermes, calliope, hephaestus, cerberus, prometheus) as stateless `claude`
  * CLI jobs. Personas are read live from `~/.claude/agents/*.md` — the vault
  * Generals notes are the source of truth, these files are the executable
  * layer over them.
