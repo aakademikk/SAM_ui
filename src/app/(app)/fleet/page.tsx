@@ -9,8 +9,8 @@
 
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Bot, Send, Square, Lock, Loader2, Wallet, Clock } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Bot, Send, Square, Lock, Loader2, Wallet, Clock, ChevronRight } from 'lucide-react';
 
 import { fleetService } from '@/lib/fleetService';
 import { jobsService, type JobEvent } from '@/lib/jobsService';
@@ -62,6 +62,12 @@ export default function FleetPage() {
   const [streamState, setStreamState] = useState<AgentStreamState | null>(null);
   const [, setTick] = useState(0);
 
+  // Re-opening a past run's output. The stream replays the persisted stdout.log
+  // into the same parser, so cost/tokens/duration come back too. No activeRun —
+  // it's a finished job, so no stop button / elapsed timer.
+  const replayRef = useRef<{ close: () => void } | null>(null);
+  const [replayLabel, setReplayLabel] = useState<{ persona: string; model: string } | null>(null);
+
   /* ── Load roster, spend, recent runs ───────────────────────────────────── */
 
   const refreshLists = useCallback(async () => {
@@ -103,6 +109,36 @@ export default function FleetPage() {
     return () => clearInterval(id);
   }, [activeRun]);
 
+  /* ── Reopen a past run's output ────────────────────────────────────────── */
+
+  const closeReplay = useCallback(() => {
+    replayRef.current?.close();
+    replayRef.current = null;
+  }, []);
+
+  // Tear down any replay stream on unmount.
+  useEffect(() => closeReplay, [closeReplay]);
+
+  const handleReplay = useCallback((job: JobSummary) => {
+    closeReplay();
+    setError(null);
+
+    const { persona, model: jobModel } = personaFromLabel(job.command);
+    setReplayLabel({ persona, model: jobModel });
+
+    const parser = new AgentStreamParser();
+    setStreamState({ ...parser.state });
+
+    replayRef.current = jobsService.stream(job.id, (event: JobEvent) => {
+      if (event.type === 'output') {
+        setStreamState({ ...parser.push(event.text) });
+      } else if (event.type === 'closed') {
+        setStreamState({ ...parser.finish(event.exitCode) });
+        replayRef.current = null;
+      }
+    });
+  }, [closeReplay]);
+
   /* ── Dispatch ─────────────────────────────────────────────────────────── */
 
   const handleDispatch = useCallback(async () => {
@@ -112,6 +148,8 @@ export default function FleetPage() {
     setError(null);
     setNeedsStepUp(false);
     setStreamState(null);
+    closeReplay();
+    setReplayLabel(null);
 
     try {
       const started = await fleetService.dispatch({ persona: selectedPersona, model, brief: text });
@@ -140,7 +178,7 @@ export default function FleetPage() {
         setError(err instanceof Error ? err.message : 'Dispatch failed.');
       }
     }
-  }, [brief, selectedPersona, model, activeRun, refreshLists]);
+  }, [brief, selectedPersona, model, activeRun, refreshLists, closeReplay]);
 
   const handleStop = useCallback(async () => {
     if (!activeRun) return;
@@ -305,9 +343,10 @@ export default function FleetPage() {
         <section className="rounded-xl border border-void-700 bg-void-900/60 overflow-hidden">
           <div className="flex items-center gap-2 px-3 py-2 border-b border-void-700 bg-void-950/40">
             <span className="text-xs font-semibold text-dim-100 uppercase tracking-wide">
-              {selectedPersona || 'run'}
+              {replayLabel?.persona || selectedPersona || 'run'}
             </span>
-            <span className="text-[10px] font-mono text-dim-500">{model}</span>
+            <span className="text-[10px] font-mono text-dim-500">{replayLabel?.model || model}</span>
+            {replayLabel && <span className="text-[10px] font-mono text-dim-500">replayed</span>}
             <span className="flex-1" />
             {running && (
               <>
@@ -428,12 +467,23 @@ export default function FleetPage() {
       {/* Recent fleet runs */}
       {recentJobs.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-dim-200 uppercase tracking-wider">Recent runs</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-dim-200 uppercase tracking-wider">Recent runs</h2>
+            <span className="text-[10px] text-dim-500">click a run to reopen its output</span>
+          </div>
           <div className="rounded-xl border border-void-700 divide-y divide-void-700 overflow-hidden">
             {recentJobs.map((job) => {
               const { persona, model: jobModel } = personaFromLabel(job.command);
               return (
-                <div key={job.id} className="flex items-center gap-3 px-3 py-2 bg-void-900/60">
+                <button
+                  key={job.id}
+                  type="button"
+                  onClick={() => handleReplay(job)}
+                  disabled={running}
+                  className="w-full flex items-center gap-3 px-3 py-2 bg-void-900/60 text-left
+                             hover:bg-void-900 transition-colors disabled:opacity-50
+                             disabled:cursor-not-allowed"
+                >
                   <span
                     className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                       job.status === 'running'
@@ -453,7 +503,8 @@ export default function FleetPage() {
                   <span className="text-[10px] font-mono text-dim-500 shrink-0">
                     {new Date(job.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
-                </div>
+                  <ChevronRight size={12} className="text-dim-500 shrink-0" />
+                </button>
               );
             })}
           </div>
