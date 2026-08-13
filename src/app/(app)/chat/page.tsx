@@ -524,10 +524,7 @@ export default function ChatPage() {
           <div className="flex flex-col items-center justify-center h-full text-center space-y-3 py-20">
             <Cpu size={32} className="text-accent/40" />
             <h2 className="text-lg font-bold text-dim-200">SAM</h2>
-            <p className="text-sm text-dim-400 max-w-xs">
-              Full access — reads and writes the vault, runs commands, uses tools.
-              Same brain as the desktop.
-            </p>
+            <p className="text-sm text-dim-400">IS EVERYWHERE</p>
           </div>
         )}
 
