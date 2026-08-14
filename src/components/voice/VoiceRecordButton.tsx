@@ -14,6 +14,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Mic, Send, X, ArrowLeft } from 'lucide-react';
 import { transcribeAudio } from '@/lib/voiceService';
+import { acquireMicStream, micErrorMessage, type MicStream } from '@/lib/micStream';
 
 /* ========================================================================== */
 /* Types                                                                       */
@@ -46,9 +47,9 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
   const [recordTime, setRecordTime] = useState(0);
 
   const streamRef = useRef<MediaStream | null>(null);
+  const micRef = useRef<MicStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const levelRafRef = useRef<number>(0);
   const startPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -59,44 +60,19 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
   /* ── Acquire mic stream (called on first user gesture) ────────────────── */
 
   const acquireMic = useCallback(async (): Promise<MediaStream | null> => {
+    setState('acquiring');
+    setError(null);
     try {
-      setState('acquiring');
-      setError(null);
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      });
-
-      streamRef.current = stream;
+      const mic = await acquireMicStream();
+      micRef.current = mic;
+      streamRef.current = mic.stream;
+      analyserRef.current = mic.analyser;
       console.log('[SAM] Microphone acquired');
-
-      // Set up an analyser for live audio level.
-      try {
-        const ctx = new AudioContext();
-        const source = ctx.createMediaStreamSource(stream);
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
-        audioContextRef.current = ctx;
-        analyserRef.current = analyser;
-      } catch {
-        // AudioContext may fail in some contexts — non-critical.
-      }
-
       setState('idle');
-      return stream;
+      return mic.stream;
     } catch (err) {
       console.error('[SAM] Microphone error:', err);
-      const msg = err instanceof DOMException && err.name === 'NotAllowedError'
-        ? 'Microphone permission denied. Check site settings in Chrome.'
-        : err instanceof DOMException && err.name === 'NotFoundError'
-          ? 'No microphone found on this device.'
-          : 'Failed to access microphone. Check permissions.';
-      setError(msg);
+      setError(micErrorMessage(err));
       setState('needsMic');
       return null;
     }
@@ -106,8 +82,7 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
 
   useEffect(() => {
     return () => {
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      audioContextRef.current?.close();
+      micRef.current?.close();
       if (levelRafRef.current) cancelAnimationFrame(levelRafRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
     };

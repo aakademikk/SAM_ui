@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Lock, Square } from 'lucide-react';
 
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
+import { HandsFreeMic } from '@/components/voice/HandsFreeMic';
 import { MessageBlocks } from '@/components/chat/MessageBlocks';
 import { readMessage as readCrossTab } from '@/lib/crossTab';
 import { jobsService } from '@/lib/jobsService';
@@ -75,6 +76,14 @@ export default function ChatPage() {
   const [needsStepUp, setNeedsStepUp] = useState(false);
   /** Opened by the Android wake word rather than by tapping the icon. */
   const [wokenByVoice, setWokenByVoice] = useState(false);
+  /**
+   * Hands-free session — survives across turns until cancelled. Wake sets it,
+   * cancel clears it, the hold-to-record button is the fallback when the mic
+   * cannot be acquired without a tap.
+   */
+  const [handsFree, setHandsFree] = useState(false);
+  /** Non-null when hands-free fell back to the hold button, holding why. */
+  const [handsFreeFailed, setHandsFreeFailed] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
   const [speaking, setSpeaking] = useState<string | null>(null);
   const [tier, setTier] = useState<TierId>('fast');
@@ -85,6 +94,8 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<{ close(): void } | null>(null);
+  /** Serialises sends — see the guard at the top of send(). */
+  const sendLockRef = useRef(false);
   const activeJobRef = useRef<string | null>(null);
   const retriesRef = useRef(0);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -324,6 +335,12 @@ export default function ChatPage() {
     const message = text.trim();
     if (!message || running) return;
 
+    // `running` is a render-time closure, so a hands-free re-fire landing
+    // before the next render could otherwise start two turns. The lock closes
+    // that window; it is released on the OS path below or in the finally.
+    if (sendLockRef.current) return;
+    sendLockRef.current = true;
+
     // The wake prompt has served its purpose once he's said something.
     setWokenByVoice(false);
 
@@ -342,6 +359,7 @@ export default function ChatPage() {
     // exactly as before. On desktop there is no bridge, so this is a no-op.
     const osResult = await tryOsIntent(message);
     if (osResult.handled && osResult.reply) {
+      sendLockRef.current = false;
       const osStamp = Date.now();
       const osReplyId = `a_${osStamp}`;
       setMessages((prev) => [
@@ -355,52 +373,72 @@ export default function ChatPage() {
       return;
     }
 
-    const stamp = Date.now();
-    const assistantId = `a_${stamp}`;
-
-    setMessages((prev) => [
-      ...prev,
-      { id: `u_${stamp}`, role: 'user', blocks: [{ kind: 'text', text: message }], done: true },
-      { id: assistantId, role: 'assistant', blocks: [], done: false, tier },
-    ]);
-    setInput('');
-    setError(null);
-    setRunning(true);
-    setPhase('starting');
-
     try {
-      const resumeSessionId = localStorage.getItem(SESSION_KEY) ?? undefined;
-      const started = await startAgentTurn({ message, tier, resumeSessionId });
+      const stamp = Date.now();
+      const assistantId = `a_${stamp}`;
 
-      const run: ActiveRun = {
-        jobId: started.jobId,
-        assistantId,
-        tier: started.tier,
-      };
-      // Recorded before streaming starts, so a tab switch a second later can
-      // still find its way back to this run.
-      localStorage.setItem(ACTIVE_KEY, JSON.stringify(run));
+      setMessages((prev) => [
+        ...prev,
+        { id: `u_${stamp}`, role: 'user', blocks: [{ kind: 'text', text: message }], done: true },
+        { id: assistantId, role: 'assistant', blocks: [], done: false, tier },
+      ]);
+      setInput('');
+      setError(null);
+      setRunning(true);
+      setPhase('starting');
 
-      setMessages((prev) =>
-        prev.map((m) => (m.id === assistantId ? { ...m, jobId: started.jobId } : m)),
-      );
+      try {
+        const resumeSessionId = localStorage.getItem(SESSION_KEY) ?? undefined;
+        const started = await startAgentTurn({ message, tier, resumeSessionId });
 
-      attachToRun(run);
-    } catch (err) {
-      if (err instanceof StepUpRequiredError) {
-        // Hold the message so a successful unlock can resend it without a retype.
-        localStorage.setItem(PENDING_KEY, message);
-        setNeedsStepUp(true);
-        setError('Biometric unlock required before SAM can run anything.');
-      } else {
-        setError(err instanceof Error ? err.message : 'Chat failed');
+        const run: ActiveRun = {
+          jobId: started.jobId,
+          assistantId,
+          tier: started.tier,
+        };
+        // Recorded before streaming starts, so a tab switch a second later can
+        // still find its way back to this run.
+        localStorage.setItem(ACTIVE_KEY, JSON.stringify(run));
+
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, jobId: started.jobId } : m)),
+        );
+
+        attachToRun(run);
+      } catch (err) {
+        if (err instanceof StepUpRequiredError) {
+          // Hold the message so a successful unlock can resend it without a retype.
+          localStorage.setItem(PENDING_KEY, message);
+          setNeedsStepUp(true);
+          setError('Biometric unlock required before SAM can run anything.');
+        } else {
+          setError(err instanceof Error ? err.message : 'Chat failed');
+        }
+        setMessages((prev) => prev.filter((m) => m.id !== assistantId));
+        setRunning(false);
       }
-      setMessages((prev) => prev.filter((m) => m.id !== assistantId));
-      setRunning(false);
+      // muted/speak are here for the OS-intent reply above; attachToRun already
+      // depends on both, so this adds no extra churn.
+    } finally {
+      sendLockRef.current = false;
     }
-    // muted/speak are here for the OS-intent reply above; attachToRun already
-    // depends on both, so this adds no extra churn.
   }, [running, tier, attachToRun, muted, speak]);
+
+  /* ── Hands-free loop wiring ──────────────────────────────────────────── */
+
+  const onHandsFreeTranscribe = useCallback((text: string) => {
+    primeSpeech();
+    void send(text);
+  }, [send]);
+
+  const onHandsFreeCancel = useCallback(() => {
+    setHandsFree(false);
+    setWokenByVoice(false);
+  }, []);
+
+  const onHandsFreeFallback = useCallback((message: string) => {
+    setHandsFreeFailed(message);
+  }, []);
 
   /* ── Stop ────────────────────────────────────────────────────────────── */
 
@@ -439,6 +477,8 @@ export default function ChatPage() {
       // browser recognises, so speech stays blocked until the first real tap.
       primeSpeech();
       setWokenByVoice(true);
+      setHandsFree(true);
+      setHandsFreeFailed(null);
     }
   }, []);
 
@@ -635,7 +675,12 @@ export default function ChatPage() {
                    px-3 py-2.5 md:px-6 md:py-3 space-y-2
                    pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]"
       >
-        {wokenByVoice && (
+        {handsFree && !handsFreeFailed && (
+          <p className="text-center text-[11px] tracking-wide text-accent">
+            Hands-free — speak, or tap to stop.
+          </p>
+        )}
+        {wokenByVoice && handsFreeFailed && (
           <p className="text-center text-[11px] tracking-wide text-accent">
             Woken by voice — hold the mic to speak.
           </p>
@@ -648,12 +693,23 @@ export default function ChatPage() {
         )}
 
         <div className="flex justify-center">
-          <VoiceRecordButton
-            onTranscribe={(text) => {
-              primeSpeech();
-              void send(text);
-            }}
-          />
+          {handsFree && !handsFreeFailed ? (
+            <HandsFreeMic
+              enabled={handsFree}
+              working={running}
+              speaking={speaking !== null}
+              onTranscribe={onHandsFreeTranscribe}
+              onCancel={onHandsFreeCancel}
+              onFallback={onHandsFreeFallback}
+            />
+          ) : (
+            <VoiceRecordButton
+              onTranscribe={(text) => {
+                primeSpeech();
+                void send(text);
+              }}
+            />
+          )}
         </div>
 
         <form
