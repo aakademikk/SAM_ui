@@ -121,6 +121,12 @@ export function useVoiceWebSocket(url = 'ws://127.0.0.1:8790/ws') {
     ws.onopen = () => {
       setConnectionState('connected');
       setError(null);
+      // Tell the voice service which Edge voice to use for this connection.
+      // Read live so a preference change applies on the next connect.
+      const edgeVoice = localStorage.getItem('sam-tts-edge-voice');
+      if (edgeVoice) {
+        ws.send(JSON.stringify({ type: 'set_voice', voice: edgeVoice }));
+      }
     };
 
     ws.onmessage = (event) => {

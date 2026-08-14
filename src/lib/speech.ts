@@ -198,12 +198,15 @@ export function speakChunked(
   opts.signal?.addEventListener('abort', stop);
 
   const synth = async (chunk: string): Promise<string | null> => {
+    // Edge voice is read live so a preference change applies to the next turn
+    // without a rebuild. Absent → voice-line falls back to its default (Abeo).
+    const edgeVoice = localStorage.getItem('sam-tts-edge-voice') ?? undefined;
     const response = await fetch('/api/chat/tts', {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       signal,
-      body: JSON.stringify({ text: chunk, voice: opts.voice }),
+      body: JSON.stringify({ text: chunk, voice: opts.voice, edgeVoice }),
     });
     if (!response.ok) return null;
     return URL.createObjectURL(await response.blob());

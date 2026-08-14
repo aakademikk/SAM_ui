@@ -43,3 +43,81 @@ export const VOICE_GROUPS: { label: string; voices: { id: number; name: string }
 ];
 
 export const DEFAULT_VOICE = 21; // bf_emma — British Female
+
+/**
+ * Edge neural voices (Microsoft) — the primary chat voice provider.
+ * Roster verified against `edge_tts.list_voices()` 2026-08-14 (all en-* voices).
+ * The `id` is the ShortName passed straight to edge-tts.
+ */
+
+export const EDGE_VOICE_GROUPS: { label: string; voices: { id: string; name: string }[] }[] = [
+  {
+    label: 'British',
+    voices: [
+      { id: 'en-GB-RyanNeural', name: 'Ryan (Male)' },
+      { id: 'en-GB-ThomasNeural', name: 'Thomas (Male)' },
+      { id: 'en-GB-SoniaNeural', name: 'Sonia (Female)' },
+      { id: 'en-GB-LibbyNeural', name: 'Libby (Female)' },
+      { id: 'en-GB-MaisieNeural', name: 'Maisie (Female)' },
+    ],
+  },
+  {
+    label: 'Nigerian',
+    voices: [
+      { id: 'en-NG-AbeoNeural', name: 'Abeo (Male)' },
+      { id: 'en-NG-EzinneNeural', name: 'Ezinne (Female)' },
+    ],
+  },
+  {
+    label: 'American',
+    voices: [
+      { id: 'en-US-AndrewNeural', name: 'Andrew (Male)' },
+      { id: 'en-US-AndrewMultilingualNeural', name: 'Andrew Multilingual (Male)' },
+      { id: 'en-US-BrianNeural', name: 'Brian (Male)' },
+      { id: 'en-US-BrianMultilingualNeural', name: 'Brian Multilingual (Male)' },
+      { id: 'en-US-ChristopherNeural', name: 'Christopher (Male)' },
+      { id: 'en-US-EricNeural', name: 'Eric (Male)' },
+      { id: 'en-US-GuyNeural', name: 'Guy (Male)' },
+      { id: 'en-US-RogerNeural', name: 'Roger (Male)' },
+      { id: 'en-US-SteffanNeural', name: 'Steffan (Male)' },
+      { id: 'en-US-AnaNeural', name: 'Ana (Female)' },
+      { id: 'en-US-AriaNeural', name: 'Aria (Female)' },
+      { id: 'en-US-AvaNeural', name: 'Ava (Female)' },
+      { id: 'en-US-AvaMultilingualNeural', name: 'Ava Multilingual (Female)' },
+      { id: 'en-US-EmmaNeural', name: 'Emma (Female)' },
+      { id: 'en-US-EmmaMultilingualNeural', name: 'Emma Multilingual (Female)' },
+      { id: 'en-US-JennyNeural', name: 'Jenny (Female)' },
+      { id: 'en-US-MichelleNeural', name: 'Michelle (Female)' },
+    ],
+  },
+  {
+    label: 'Other English',
+    voices: [
+      { id: 'en-AU-NatashaNeural', name: 'Natasha · AU (Female)' },
+      { id: 'en-AU-WilliamMultilingualNeural', name: 'William · AU (Male)' },
+      { id: 'en-CA-ClaraNeural', name: 'Clara · CA (Female)' },
+      { id: 'en-CA-LiamNeural', name: 'Liam · CA (Male)' },
+      { id: 'en-HK-SamNeural', name: 'Sam · HK (Male)' },
+      { id: 'en-HK-YanNeural', name: 'Yan · HK (Female)' },
+      { id: 'en-IE-ConnorNeural', name: 'Connor · IE (Male)' },
+      { id: 'en-IE-EmilyNeural', name: 'Emily · IE (Female)' },
+      { id: 'en-IN-NeerjaNeural', name: 'Neerja · IN (Female)' },
+      { id: 'en-IN-NeerjaExpressiveNeural', name: 'Neerja Expressive · IN (Female)' },
+      { id: 'en-IN-PrabhatNeural', name: 'Prabhat · IN (Male)' },
+      { id: 'en-KE-AsiliaNeural', name: 'Asilia · KE (Female)' },
+      { id: 'en-KE-ChilembaNeural', name: 'Chilemba · KE (Male)' },
+      { id: 'en-NZ-MitchellNeural', name: 'Mitchell · NZ (Male)' },
+      { id: 'en-NZ-MollyNeural', name: 'Molly · NZ (Female)' },
+      { id: 'en-PH-JamesNeural', name: 'James · PH (Male)' },
+      { id: 'en-PH-RosaNeural', name: 'Rosa · PH (Female)' },
+      { id: 'en-SG-LunaNeural', name: 'Luna · SG (Female)' },
+      { id: 'en-SG-WayneNeural', name: 'Wayne · SG (Male)' },
+      { id: 'en-TZ-ElimuNeural', name: 'Elimu · TZ (Male)' },
+      { id: 'en-TZ-ImaniNeural', name: 'Imani · TZ (Female)' },
+      { id: 'en-ZA-LeahNeural', name: 'Leah · ZA (Female)' },
+      { id: 'en-ZA-LukeNeural', name: 'Luke · ZA (Male)' },
+    ],
+  },
+];
+
+export const DEFAULT_EDGE_VOICE = 'en-NG-AbeoNeural';

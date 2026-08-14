@@ -7,7 +7,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useUserPreferencesStore } from '@/store/userPreferencesStore';
 import { authService } from '@/lib/authService';
-import { VOICE_GROUPS, DEFAULT_VOICE } from '@/lib/voiceData';
+import {
+  VOICE_GROUPS, DEFAULT_VOICE,
+  EDGE_VOICE_GROUPS, DEFAULT_EDGE_VOICE,
+} from '@/lib/voiceData';
 import { AMBIENT_THEMES } from '@/types/dashboard';
 import type { SarcasmLevel } from '@/lib/personalityEngine';
 
@@ -96,11 +99,21 @@ function VoiceSection() {
     try { return parseInt(localStorage.getItem('sam-tts-voice') ?? String(DEFAULT_VOICE), 10); }
     catch { return DEFAULT_VOICE; }
   });
+  const [edgeVoiceId, setEdgeVoiceId] = useState<string>(() => {
+    try { return localStorage.getItem('sam-tts-edge-voice') ?? DEFAULT_EDGE_VOICE; }
+    catch { return DEFAULT_EDGE_VOICE; }
+  });
   const [previewing, setPreviewing] = useState(false);
+  const [edgePreviewing, setEdgePreviewing] = useState(false);
 
   const setVoice = useCallback((id: number) => {
     setVoiceId(id);
     localStorage.setItem('sam-tts-voice', String(id));
+  }, []);
+
+  const setEdgeVoice = useCallback((id: string) => {
+    setEdgeVoiceId(id);
+    localStorage.setItem('sam-tts-edge-voice', id);
   }, []);
 
   const preview = useCallback(async () => {
@@ -120,6 +133,24 @@ function VoiceSection() {
     } catch { /* silent */ }
     finally { setPreviewing(false); }
   }, [voiceId]);
+
+  const edgePreview = useCallback(async () => {
+    setEdgePreviewing(true);
+    try {
+      const res = await fetch('/api/chat/tts', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Hello. This is my voice.', edgeVoice: edgeVoiceId }),
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const audio = new Audio(URL.createObjectURL(blob));
+        audio.play();
+      }
+    } catch { /* silent */ }
+    finally { setEdgePreviewing(false); }
+  }, [edgeVoiceId]);
 
   return (
     <section className="space-y-3">
@@ -151,6 +182,37 @@ function VoiceSection() {
                      text-dim-200 text-xs hover:text-void-100 transition-colors"
         >
           {previewing ? 'Playing...' : 'Preview voice'}
+        </button>
+      </div>
+
+      <div className="pt-2 space-y-2">
+        <label className="text-xs text-dim-300">
+          TTS voice (Edge) — used for chat and push-to-talk
+        </label>
+        <select
+          value={edgeVoiceId}
+          onChange={(e) => setEdgeVoice(e.target.value)}
+          className="w-full bg-void-900 border border-void-600 rounded-lg px-3 py-2
+                     text-void-100 text-sm focus:border-accent focus:outline-none"
+        >
+          {EDGE_VOICE_GROUPS.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.voices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={edgePreview}
+          disabled={edgePreviewing}
+          className="px-3 py-1.5 bg-void-800 border border-void-600 rounded-lg
+                     text-dim-200 text-xs hover:text-void-100 transition-colors"
+        >
+          {edgePreviewing ? 'Playing...' : 'Preview voice'}
         </button>
       </div>
     </section>

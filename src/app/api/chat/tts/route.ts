@@ -1,10 +1,12 @@
 /**
- * POST /api/chat/tts — local text-to-speech via Kokoro (sherpa-onnx).
+ * POST /api/chat/tts — SAM's chat voice.
  *
  * Body: { text: string, voice?: number }
- * Returns: audio/wav
+ * Returns: audio/mpeg
  *
- * Runs entirely on CPU. No API keys, no token limits, no network.
+ * Primary: the voice-line Edge service (Abeo) at 127.0.0.1:8790. Falls back
+ * to local sherpa-onnx Kokoro if that service is unreachable, so chat audio
+ * keeps working even when voice-line is down.
  *
  * Requires a valid session cookie.
  */
@@ -15,6 +17,8 @@ import { synthesize } from '@/lib/server/voice/tts';
 import { VOICES } from '@/lib/voiceData';
 
 export const dynamic = 'force-dynamic';
+
+const VOICE_LINE_TTS_URL = 'http://127.0.0.1:8790/api/tts';
 
 export async function POST(request: Request) {
   const session = await requireSession(request);
@@ -29,7 +33,33 @@ export async function POST(request: Request) {
   const voiceId = typeof body.voice === 'number' && body.voice >= 0 && body.voice <= 52
     ? body.voice
     : undefined;
+  const edgeVoice = typeof body.edgeVoice === 'string' && body.edgeVoice
+    ? body.edgeVoice
+    : undefined;
 
+  // Primary: voice-line Edge service (Abeo, or the selected Edge voice).
+  try {
+    const upstream = await fetch(VOICE_LINE_TTS_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text, ...(edgeVoice ? { voice: edgeVoice } : {}) }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (upstream.ok) {
+      const mp3 = await upstream.arrayBuffer();
+      return new Response(mp3, {
+        headers: {
+          'content-type': 'audio/mpeg',
+          'cache-control': 'no-store',
+        },
+      });
+    }
+  } catch {
+    // voice-line unreachable — fall through to local Kokoro
+  }
+
+  // Fallback: local sherpa-onnx Kokoro. no-store so a stale fallback WAV is
+  // never served once the voice-line service is back.
   try {
     const result = synthesize(text, voiceId);
 
@@ -60,7 +90,7 @@ export async function POST(request: Request) {
     return new Response(wav, {
       headers: {
         'content-type': 'audio/wav',
-        'cache-control': 'public, max-age=3600',
+        'cache-control': 'no-store',
         'x-sam-tts-latency-ms': String(result.latencyMs),
         'x-sam-tts-duration-ms': String(Math.round(result.durationSec * 1000)),
       },
