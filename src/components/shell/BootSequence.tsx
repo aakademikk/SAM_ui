@@ -19,12 +19,14 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import { VaultGraphVisualiser } from '@/components/visualiser/VaultGraphVisualiser';
 import { VisualiserWidget } from '@/components/visualiser/VisualiserWidget';
 import type {
   DailyTasksPayload,
   Project,
   SystemHealthPayload,
 } from '@/types/dashboard';
+import type { VaultGraph } from '@/types/vaultGraph';
 
 /* ========================================================================== */
 /* Timing                                                                     */
@@ -59,14 +61,23 @@ interface LineSpec {
   fixed?: string;
 }
 
-const LINES: LineSpec[] = [
-  { key: 'core', label: 'CORE SYSTEMS', at: 0.06, fixed: 'INITIALISING' },
-  { key: 'mesh', label: 'NEURAL MESH', at: 0.22, fixed: `${MESH_NODES} NODES` },
-  { key: 'telemetry', label: 'TELEMETRY', at: 0.40 },
-  { key: 'projects', label: 'PROJECTS', at: 0.56 },
-  { key: 'tasks', label: 'TASK QUEUE', at: 0.70 },
-  { key: 'uplink', label: 'UPLINK', at: 0.82 },
-];
+/**
+ * The second line describes whatever field is actually rendering. In vault mode
+ * that is the real graph, so the count resolves from the API rather than being
+ * the fixed mesh figure — same rule as every other line here.
+ */
+function buildLines(vaultMode: boolean): LineSpec[] {
+  return [
+    { key: 'core', label: 'CORE SYSTEMS', at: 0.06, fixed: 'INITIALISING' },
+    vaultMode
+      ? { key: 'mesh', label: 'VAULT GRAPH', at: 0.22 }
+      : { key: 'mesh', label: 'NEURAL MESH', at: 0.22, fixed: `${MESH_NODES} NODES` },
+    { key: 'telemetry', label: 'TELEMETRY', at: 0.40 },
+    { key: 'projects', label: 'PROJECTS', at: 0.56 },
+    { key: 'tasks', label: 'TASK QUEUE', at: 0.70 },
+    { key: 'uplink', label: 'UPLINK', at: 0.82 },
+  ];
+}
 
 interface Reading {
   value: string;
@@ -115,7 +126,7 @@ const useIsomorphicLayoutEffect =
  * Pulls the real numbers behind the readout. Each endpoint resolves
  * independently so one slow route never holds up the rest.
  */
-function useBootTelemetry(): Record<string, Reading> {
+function useBootTelemetry(vaultMode: boolean): Record<string, Reading> {
   const [readings, setReadings] = useState<Record<string, Reading>>({});
 
   useEffect(() => {
@@ -155,6 +166,19 @@ function useBootTelemetry(): Record<string, Reading> {
       });
     });
 
+    if (vaultMode) {
+      void readEndpoint<VaultGraph>('/api/vault/graph').then((data) => {
+        if (!data) return put('mesh', UNAVAILABLE);
+        const { notes, edges } = data.counts;
+        put('mesh', {
+          value: `${notes} NOTES · ${edges} LINKS`,
+          // Ghost links are a standing property of the vault, not a fault.
+          // Amber on every single boot would just train the eye to ignore it.
+          status: 'ok',
+        });
+      });
+    }
+
     void readEndpoint<HealthShape>('/api/health').then((data) => {
       if (!data) return put('uplink', UNAVAILABLE);
       put('uplink', {
@@ -166,7 +190,7 @@ function useBootTelemetry(): Record<string, Reading> {
     return () => {
       live = false;
     };
-  }, []);
+  }, [vaultMode]);
 
   return readings;
 }
@@ -180,15 +204,23 @@ export interface BootSequenceProps {
   onDone?: () => void;
   /** Play only on the first load of a browser session. */
   once?: boolean;
+  /**
+   * Which field assembles behind the readout.
+   *   'classic' — the abstract generated mesh (default; unchanged behaviour)
+   *   'vault'   — SAM's real memory: the vault wikilink graph
+   */
+  visualiser?: 'classic' | 'vault';
 }
 
-export function BootSequence({ onDone, once = false }: BootSequenceProps) {
+export function BootSequence({ onDone, once = false, visualiser = 'classic' }: BootSequenceProps) {
   // `null` means "not yet decided" — nothing renders on the server, and the
   // decision is made before first paint so the dashboard never flashes.
   const [active, setActive] = useState<boolean | null>(null);
   const [progress, setProgress] = useState(0);
   const [leaving, setLeaving] = useState(false);
-  const readings = useBootTelemetry();
+  const vaultMode = visualiser === 'vault';
+  const readings = useBootTelemetry(vaultMode);
+  const lines = buildLines(vaultMode);
 
   const doneRef = useRef(false);
   const durationRef = useRef(BOOT_MS);
@@ -288,7 +320,11 @@ export function BootSequence({ onDone, once = false }: BootSequenceProps) {
       }}
     >
       {/* The visualiser assembling itself, full bleed */}
-      <VisualiserWidget state="idle" hud={false} boot={progress} />
+      {visualiser === 'vault' ? (
+        <VaultGraphVisualiser state="idle" boot={progress} />
+      ) : (
+        <VisualiserWidget state="idle" hud={false} boot={progress} />
+      )}
 
       {/* Single scan-line sweep across the build */}
       <div
@@ -309,8 +345,12 @@ export function BootSequence({ onDone, once = false }: BootSequenceProps) {
         <div
           className="absolute left-1/2 top-1/2 h-[280px] w-[420px] -translate-x-1/2 -translate-y-1/2"
           style={{
-            background:
-              'radial-gradient(ellipse at center, rgba(1,6,14,0.82) 0%, rgba(1,6,14,0.55) 45%, transparent 72%)',
+            background: vaultMode
+              ? // The vault nucleus is the brightest thing on screen and sits
+                // directly behind the type. Scrim only enough to hold contrast —
+                // the glow bleeding around the letters is the effect.
+                'radial-gradient(ellipse at center, rgba(1,6,14,0.58) 0%, rgba(1,6,14,0.30) 48%, transparent 74%)'
+              : 'radial-gradient(ellipse at center, rgba(1,6,14,0.82) 0%, rgba(1,6,14,0.55) 45%, transparent 72%)',
           }}
         />
 
@@ -364,7 +404,7 @@ export function BootSequence({ onDone, once = false }: BootSequenceProps) {
       <div className="absolute inset-x-0 bottom-0 z-10 px-5 pb-[calc(1.75rem+env(safe-area-inset-bottom,0px))] sm:px-10">
         <div className="mx-auto w-full max-w-[520px]">
           <ul className="space-y-[7px]">
-            {LINES.map((line) => {
+            {lines.map((line) => {
               const shown = progress >= line.at;
               // CORE reports its own completion; everything else waits on data.
               const fixed =

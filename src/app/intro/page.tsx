@@ -23,7 +23,7 @@ export default function IntroPage() {
 
   return (
     <div className="fixed inset-0 bg-[#010812]">
-      <BootSequence onDone={goToDashboard} />
+      <BootSequence onDone={goToDashboard} visualiser="vault" />
     </div>
   );
 }

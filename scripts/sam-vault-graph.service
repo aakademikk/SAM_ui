@@ -1,0 +1,19 @@
+[Unit]
+Description=SAM — rebuild the vault wikilink graph for the intro visualiser
+After=default.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/col/SAM_ui
+ExecStart=/usr/bin/python3 /home/col/SAM_ui/scripts/build_vault_graph.py
+
+# Security hardening — least privilege. The script reads the vault and writes
+# exactly one file, so the home directory stays read-only apart from ~/.sam.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/col/.sam
+
+[Install]
+WantedBy=default.target
