@@ -269,9 +269,10 @@ interface MeshProps {
   state: VisualiserState;
   boot: number;
   animate: boolean;
+  ambient: boolean;
 }
 
-function GraphMesh({ graph, state, boot, animate }: MeshProps) {
+function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
   const { viewport } = useThree();
   const style = STATE_STYLE[state] ?? STATE_STYLE.idle;
 
@@ -375,13 +376,13 @@ function GraphMesh({ graph, state, boot, animate }: MeshProps) {
   const nodeUniforms = useRef({
     uTime: { value: 0 },
     uBoot: { value: 1 },
-    uSize: { value: 30 },
+    uSize: { value: ambient ? 19 : 30 },
     uPixelRatio: { value: 1 },
     uTempo: { value: 1 },
     uCore: { value: new THREE.Color(style.core) },
     uAccent: { value: new THREE.Color(style.accent) },
     uMix: { value: style.mix },
-    uOpacity: { value: 1 },
+    uOpacity: { value: ambient ? 0.5 : 1 },
   });
 
   const edgeUniforms = useRef({
@@ -390,7 +391,7 @@ function GraphMesh({ graph, state, boot, animate }: MeshProps) {
     uTempo: { value: 1 },
     uCore: { value: new THREE.Color(style.core) },
     uAccent: { value: new THREE.Color(style.accent) },
-    uOpacity: { value: 1 },
+    uOpacity: { value: ambient ? 0.42 : 1 },
     uStaccato: { value: 0 },
   });
 
@@ -400,10 +401,10 @@ function GraphMesh({ graph, state, boot, animate }: MeshProps) {
   useEffect(() => {
     target.current.core.set(style.core);
     target.current.accent.set(style.accent);
-    target.current.tempo = style.tempo;
+    target.current.tempo = ambient ? style.tempo * 0.55 : style.tempo;
     target.current.mix = style.mix;
     target.current.staccato = state === 'alert' ? 1 : 0;
-  }, [style, state]);
+  }, [style, state, ambient]);
 
   useEffect(() => {
     const nu = nodeMatRef.current?.uniforms;
@@ -453,7 +454,7 @@ function GraphMesh({ graph, state, boot, animate }: MeshProps) {
   // just kiss the frame edge. Scaling off the long axis throws everything past
   // radius 0.5 off the top and bottom, which leaves the rim looking like
   // unconnected dust instead of the outer shell of one object.
-  const scale = Math.min(viewport.width, viewport.height) * 0.54;
+  const scale = Math.min(viewport.width, viewport.height) * (ambient ? 0.62 : 0.54);
 
   return (
     <group ref={groupRef} scale={scale}>
@@ -514,12 +515,30 @@ class WebGLBoundary extends Component<{ children: ReactNode }, { failed: boolean
 export interface VaultGraphVisualiserProps {
   /** Overrides the global activity store. Mostly for previews and tests. */
   state?: VisualiserState;
-  /** Assembly progress 0..1. Omit for a fully-formed graph. */
+  /** Assembly progress 0..1. Omit for a fully-formed graph. Ignored when `ambient`. */
   boot?: number;
+  /**
+   * Wallpaper mode, for the layer that sits behind every tab.
+   *
+   * The intro owns the screen; the ambient layer sits under dense body copy and
+   * must never compete with it. So this paints no ground of its own (the app's
+   * own gradient and grid stay visible), skips the vignette (SamBackground's
+   * mask does that job), holds the graph fully assembled, and pulls size,
+   * brightness and tempo well down.
+   */
+  ambient?: boolean;
   className?: string;
 }
 
-export function VaultGraphVisualiser({ state, boot = 1, className }: VaultGraphVisualiserProps) {
+export function VaultGraphVisualiser({
+  state,
+  boot = 1,
+  ambient = false,
+  className,
+}: VaultGraphVisualiserProps) {
+  // No assembly animation on the ambient layer — it would replay on every
+  // route change, which is a distraction rather than an entrance.
+  const bootValue = ambient ? 1 : boot;
   const graph = useVaultGraph();
   const storeState = useSamActivity((s) => s.activity);
   const active = state ?? storeState;
@@ -549,16 +568,21 @@ export function VaultGraphVisualiser({ state, boot = 1, className }: VaultGraphV
 
   return (
     <div
-      className={`pointer-events-none absolute inset-0 overflow-hidden bg-[#010812] ${className ?? ''}`}
+      className={`pointer-events-none absolute inset-0 overflow-hidden ${
+        ambient ? '' : 'bg-[#010812]'
+      } ${className ?? ''}`}
       aria-hidden="true"
       data-testid="vault-graph-visualiser"
     >
       {/* Painted ground: a bloom under the nucleus so the core reads as the
-          brightest thing on screen even before a single node has resolved. */}
+          brightest thing on screen even before a single node has resolved.
+          Omitted in ambient mode — it is opaque, and would cover the app's own
+          gradient and grid from globals.css. */}
+      {!ambient && (
       <div
         className="absolute inset-0 transition-opacity duration-1000"
         style={{
-          opacity: 0.35 + boot * 0.65,
+          opacity: 0.35 + bootValue * 0.65,
           background: `
             radial-gradient(circle 13% at 50% 50%, ${style.core}47 0%, transparent 66%),
             radial-gradient(circle 34% at 50% 50%, ${style.core}24 0%, transparent 72%),
@@ -567,6 +591,7 @@ export function VaultGraphVisualiser({ state, boot = 1, className }: VaultGraphV
           `,
         }}
       />
+      )}
 
       {mounted && (
         <WebGLBoundary>
@@ -583,20 +608,30 @@ export function VaultGraphVisualiser({ state, boot = 1, className }: VaultGraphV
             }}
             camera={{ position: [0, 0, 3.4], fov: 55, near: 0.1, far: 40 }}
           >
-            <GraphMesh graph={graph} state={active} boot={boot} animate={animate} />
+            <GraphMesh
+              graph={graph}
+              state={active}
+              boot={bootValue}
+              animate={animate}
+              ambient={ambient}
+            />
             <AdaptiveDpr pixelated />
           </Canvas>
         </WebGLBoundary>
       )}
 
-      {/* Vignette — holds the eye on the nucleus and hides the rim cutoff. */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            'radial-gradient(ellipse 88% 78% at 50% 50%, transparent 62%, rgba(1,8,18,0.55) 100%)',
-        }}
-      />
+      {/* Vignette — holds the eye on the nucleus and hides the rim cutoff.
+          Ambient mode skips it: SamBackground already applies its own mask,
+          tuned for text legibility, and stacking the two crushes the field. */}
+      {!ambient && (
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(ellipse 88% 78% at 50% 50%, transparent 62%, rgba(1,8,18,0.55) 100%)',
+          }}
+        />
+      )}
     </div>
   );
 }

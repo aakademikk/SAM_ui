@@ -33,7 +33,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="relative min-h-screen text-void-100">
       {/* Cold-start intro. Mounted here rather than on a route so the installed
           PWA gets it too — its start_url is `/`, which never hits /intro. */}
-      <BootSequence once onDone={() => setBooting(false)} />
+      <BootSequence once visualiser="vault" onDone={() => setBooting(false)} />
 
       {/* Ambient visualiser — behind every tab */}
       {!booting && <SamBackground />}

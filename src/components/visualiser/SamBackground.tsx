@@ -9,11 +9,16 @@
  *
  * Dimmed relative to the dashboard's rendering: this sits under dense text on
  * every screen, so it must read as atmosphere and never compete with content.
+ *
+ * Renders the real vault wikilink graph (see VaultGraphVisualiser) in `ambient`
+ * mode — no ground of its own, no vignette, no boot assembly, and pulled well
+ * down in size, brightness and tempo. The mask below is the legibility control
+ * and is tuned for text; the visualiser deliberately does not add a second one.
  */
 
 'use client';
 
-import { VisualiserWidget } from './VisualiserWidget';
+import { VaultGraphVisualiser } from './VaultGraphVisualiser';
 import { useSamActivity } from '@/lib/samActivity';
 
 export function SamBackground() {
@@ -32,7 +37,7 @@ export function SamBackground() {
           'radial-gradient(ellipse 110% 85% at 50% 45%, rgb(0 0 0 / 0.45) 0%, #000 45%)',
       }}
     >
-      <VisualiserWidget state={activity} hud={false} />
+      <VaultGraphVisualiser state={activity} ambient />
     </div>
   );
 }
