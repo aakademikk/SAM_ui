@@ -22,11 +22,21 @@ import type { TierId, TierInfo, TierRates } from '@/types/chat';
  * DeepSeek published rates. Only used for locally-computed costs; the Claude
  * tier trusts the CLI's own figure, which is accurate for first-party models.
  *
- * DeepSeek signalled a significant price rise on 2026-08-06 — revisit.
+ * Peak/off-peak billing effective 2026-08-16 16:00 UTC — peak windows are
+ * 01:00–04:00 and 06:00–10:00 UTC (7h/day). `old` is the flat rate in effect
+ * until the switch; `offPeak`/`peak` apply after it, chosen by UTC hour.
  */
 const DEEPSEEK_RATES: Record<string, TierRates> = {
-  'deepseek-v4-flash': { inputMiss: 0.14, cacheHit: 0.0028, output: 0.28 },
-  'deepseek-v4-pro': { inputMiss: 0.435, cacheHit: 0.003625, output: 0.87 },
+  'deepseek-v4-flash': {
+    old: { inputMiss: 0.14, cacheHit: 0.0028, output: 0.28 },
+    offPeak: { inputMiss: 0.22, cacheHit: 0.007, output: 0.66 },
+    peak: { inputMiss: 0.44, cacheHit: 0.014, output: 1.32 },
+  },
+  'deepseek-v4-pro': {
+    old: { inputMiss: 0.435, cacheHit: 0.003625, output: 0.87 },
+    offPeak: { inputMiss: 0.66, cacheHit: 0.022, output: 1.98 },
+    peak: { inputMiss: 1.32, cacheHit: 0.044, output: 3.96 },
+  },
 };
 
 const DEFAULT_FAST_MODEL = 'deepseek-v4-flash';

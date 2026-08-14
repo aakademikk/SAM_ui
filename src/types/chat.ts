@@ -11,11 +11,25 @@
 /** Which backend a message was run against. */
 export type TierId = 'fast' | 'max';
 
-/** Provider rates, USD per 1M tokens. */
-export interface TierRates {
+/** One pricing window, USD per 1M tokens. */
+export interface RateWindow {
   inputMiss: number;
   cacheHit: number;
   output: number;
+}
+
+/**
+ * Provider rates, USD per 1M tokens. DeepSeek moved to peak/off-peak billing
+ * on 2026-08-16 16:00 UTC; until then the flat `old` window applies, after it
+ * `peak` or `offPeak` is chosen by the UTC hour of the run.
+ */
+export interface TierRates {
+  /** Flat rates in effect until 2026-08-16 16:00 UTC. */
+  old: RateWindow;
+  /** Rates in the 17 off-peak hours after the switch. */
+  offPeak: RateWindow;
+  /** Rates in the 7 peak hours (01:00–04:00, 06:00–10:00 UTC) after the switch. */
+  peak: RateWindow;
 }
 
 export interface TierInfo {

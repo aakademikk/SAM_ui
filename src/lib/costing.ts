@@ -10,6 +10,17 @@
 
 import type { TierInfo, TokenUsage, TurnCost } from '@/types/chat';
 
+/** Peak windows (UTC), inclusive of start, exclusive of end: 01:00–04:00 & 06:00–10:00. */
+const PEAK_HOURS = new Set([1, 2, 3, 6, 7, 8, 9]);
+/** 2026-08-16 16:00 UTC — when DeepSeek's peak/off-peak rates switch on. */
+const NEW_RATES_EPOCH = Date.UTC(2026, 7, 16, 16, 0, 0);
+
+/** Which DeepSeek window a run falls in, by its wall-clock time. */
+export function deepseekWindow(now: Date): 'old' | 'offPeak' | 'peak' {
+  if (now.getTime() < NEW_RATES_EPOCH) return 'old';
+  return PEAK_HOURS.has(now.getUTCHours()) ? 'peak' : 'offPeak';
+}
+
 export function computeCost(
   tier: TierInfo | undefined,
   usage: TokenUsage | undefined,
@@ -25,7 +36,7 @@ export function computeCost(
 
   if (!usage) return undefined;
 
-  const { inputMiss, cacheHit, output } = tier.rates;
+  const { inputMiss, cacheHit, output } = tier.rates[deepseekWindow(new Date())];
   const usd =
     (usage.inputTokens * inputMiss +
       usage.cacheReadTokens * cacheHit +
