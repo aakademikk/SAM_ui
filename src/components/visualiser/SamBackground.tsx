@@ -27,14 +27,14 @@ export function SamBackground() {
   return (
     <div
       aria-hidden
-      className="pointer-events-none fixed inset-0 z-0 opacity-90"
+      className="pointer-events-none fixed inset-0 z-0"
       style={{
         // Only the very centre is pulled back, where body copy is densest.
         // The first pass masked far too aggressively and the mesh vanished.
         maskImage:
-          'radial-gradient(ellipse 110% 85% at 50% 45%, rgb(0 0 0 / 0.45) 0%, #000 45%)',
+          'radial-gradient(ellipse 110% 85% at 50% 45%, rgb(0 0 0 / 0.62) 0%, #000 42%)',
         WebkitMaskImage:
-          'radial-gradient(ellipse 110% 85% at 50% 45%, rgb(0 0 0 / 0.45) 0%, #000 45%)',
+          'radial-gradient(ellipse 110% 85% at 50% 45%, rgb(0 0 0 / 0.62) 0%, #000 42%)',
       }}
     >
       <VaultGraphVisualiser state={activity} ambient />

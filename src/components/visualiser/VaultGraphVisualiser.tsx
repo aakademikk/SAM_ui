@@ -376,13 +376,13 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
   const nodeUniforms = useRef({
     uTime: { value: 0 },
     uBoot: { value: 1 },
-    uSize: { value: ambient ? 19 : 30 },
+    uSize: { value: ambient ? 26 : 30 },
     uPixelRatio: { value: 1 },
     uTempo: { value: 1 },
     uCore: { value: new THREE.Color(style.core) },
     uAccent: { value: new THREE.Color(style.accent) },
     uMix: { value: style.mix },
-    uOpacity: { value: ambient ? 0.5 : 1 },
+    uOpacity: { value: ambient ? 0.92 : 1 },
   });
 
   const edgeUniforms = useRef({
@@ -391,7 +391,7 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
     uTempo: { value: 1 },
     uCore: { value: new THREE.Color(style.core) },
     uAccent: { value: new THREE.Color(style.accent) },
-    uOpacity: { value: ambient ? 0.42 : 1 },
+    uOpacity: { value: ambient ? 0.85 : 1 },
     uStaccato: { value: 0 },
   });
 
@@ -401,7 +401,7 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
   useEffect(() => {
     target.current.core.set(style.core);
     target.current.accent.set(style.accent);
-    target.current.tempo = ambient ? style.tempo * 0.55 : style.tempo;
+    target.current.tempo = ambient ? style.tempo * 0.9 : style.tempo;
     target.current.mix = style.mix;
     target.current.staccato = state === 'alert' ? 1 : 0;
   }, [style, state, ambient]);
@@ -454,7 +454,7 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
   // just kiss the frame edge. Scaling off the long axis throws everything past
   // radius 0.5 off the top and bottom, which leaves the rim looking like
   // unconnected dust instead of the outer shell of one object.
-  const scale = Math.min(viewport.width, viewport.height) * (ambient ? 0.62 : 0.54);
+  const scale = Math.min(viewport.width, viewport.height) * (ambient ? 0.70 : 0.54);
 
   return (
     <group ref={groupRef} scale={scale}>
@@ -574,6 +574,21 @@ export function VaultGraphVisualiser({
       aria-hidden="true"
       data-testid="vault-graph-visualiser"
     >
+      {/* Ambient gets a bloom too, but a transparent one — no base layer, so
+          the app's own gradient and grid still read through it. Without any
+          glow the nucleus dies against the page. */}
+      {ambient && (
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `
+              radial-gradient(circle 15% at 50% 50%, ${style.core}30 0%, transparent 70%),
+              radial-gradient(circle 40% at 50% 50%, ${style.accent}14 0%, transparent 74%)
+            `,
+          }}
+        />
+      )}
+
       {/* Painted ground: a bloom under the nucleus so the core reads as the
           brightest thing on screen even before a single node has resolved.
           Omitted in ambient mode — it is opaque, and would cover the app's own
