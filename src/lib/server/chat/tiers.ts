@@ -26,7 +26,7 @@ import type { TierId, TierInfo, TierRates } from '@/types/chat';
  * 01:00–04:00 and 06:00–10:00 UTC (7h/day). `old` is the flat rate in effect
  * until the switch; `offPeak`/`peak` apply after it, chosen by UTC hour.
  */
-const DEEPSEEK_RATES: Record<string, TierRates> = {
+export const DEEPSEEK_RATES: Record<string, TierRates> = {
   'deepseek-v4-flash': {
     old: { inputMiss: 0.14, cacheHit: 0.0028, output: 0.28 },
     offPeak: { inputMiss: 0.22, cacheHit: 0.007, output: 0.66 },

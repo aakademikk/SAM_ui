@@ -27,7 +27,11 @@ export interface FleetDispatchResult {
 export interface FleetSpendEntry {
   /** Number of fleet jobs run for this persona (7-day retention). */
   jobs: number;
-  /** Sum of the CLI-reported `total_cost_usd` across those jobs. */
+  /**
+   * Cost across those jobs. Anthropic runs use the CLI's `total_cost_usd`;
+   * DeepSeek runs are recomputed from raw tokens, because the CLI prices every
+   * model against an Anthropic table and overstates DeepSeek by ~12x.
+   */
   costUsd: number;
 }
 
@@ -36,4 +40,11 @@ export interface FleetSpend {
   totalCostUsd: number;
   /** How many fleet jobs were scanned this call. */
   scannedJobs: number;
+  /**
+   * DeepSeek jobs whose served model differed from the one dispatched. The
+   * endpoint answers 200 with a substitute for an unknown id, so a non-zero
+   * count here means spend figures and results are attributed to the wrong
+   * model — not a cosmetic warning.
+   */
+  modelMismatches?: number;
 }

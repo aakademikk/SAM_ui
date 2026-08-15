@@ -173,6 +173,13 @@ export interface CreateArgsOptions {
    * from `.env.local`) silently redirecting a child to the wrong provider.
    */
   env?: Record<string, string | null>;
+  /**
+   * Fired once the process has closed and its meta is written. Runs
+   * detached — a throw here must never affect the job, which has already
+   * finished. Used to report third-party spend to the estate cost ledger,
+   * where the cost is only knowable after the run.
+   */
+  onExit?: (record: JobRecord) => void | Promise<void>;
 }
 
 function mergeEnv(overrides?: Record<string, string | null>): NodeJS.ProcessEnv {
@@ -247,7 +254,7 @@ class JobManager {
       env: mergeEnv(opts.env),
     });
 
-    return this.attach(record, child, output);
+    return this.attach(record, child, output, opts.onExit);
   }
 
   /** Allocate an ID, output writer and initial record. */
@@ -278,6 +285,7 @@ class JobManager {
     record: JobRecord,
     child: ChildProcess,
     output: OutputWriter,
+    onExit?: CreateArgsOptions['onExit'],
   ): Promise<JobRecord> {
     record.status = 'running';
     record.startedAt = new Date().toISOString();
@@ -306,6 +314,12 @@ class JobManager {
       this.jobs.delete(record.id);
       this.completedIds.push(record.id);
       this.prune();
+
+      if (onExit) {
+        // Detached and swallowed: the job is already done and recorded, so a
+        // failing reporter must not surface as a job failure.
+        void Promise.resolve(onExit(record)).catch(() => {});
+      }
     });
 
     child.on('error', async (err) => {

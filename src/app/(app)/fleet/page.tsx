@@ -18,16 +18,11 @@ import { AgentStreamParser, type AgentStreamState } from '@/lib/agentStream';
 import { MessageBlocks } from '@/components/chat/MessageBlocks';
 import { authService } from '@/lib/authService';
 import { formatCost, formatTokens } from '@/lib/costing';
+import { modelsForPersona } from '@/lib/fleetModels';
 
 import type { FleetPersona, FleetSpend } from '@/types/fleet';
 import type { JobSummary } from '@/types/jobs';
 
-const MODELS = [
-  { id: 'haiku', label: 'Haiku', hint: 'fast · cheap · workers' },
-  { id: 'sonnet', label: 'Sonnet', hint: 'balanced · generals' },
-  { id: 'opus', label: 'Opus', hint: 'max capability · expensive' },
-] as const;
-const MODEL_IDS = MODELS.map((m) => m.id);
 
 const PHASE_LABEL: Record<AgentStreamState['phase'], string> = {
   starting: 'Starting session',
@@ -38,7 +33,9 @@ const PHASE_LABEL: Record<AgentStreamState['phase'], string> = {
 };
 
 function personaFromLabel(command: string): { persona: string; model: string } {
-  const m = command.match(/^fleet:([a-z0-9_-]+) \(([a-z]+)\)/);
+  // Model ids are no longer bare aliases — `deepseek-v4-flash` carries digits
+  // and hyphens, and an `[a-z]+` class would silently fail to match it.
+  const m = command.match(/^fleet:([a-z0-9_-]+) \(([a-z0-9.-]+)\)/);
   return m
     ? { persona: m[1], model: m[2] }
     : { persona: command.slice(0, 16), model: '' };
@@ -196,8 +193,16 @@ export default function FleetPage() {
 
   const selectPersona = useCallback((name: string) => {
     setSelectedPersona(name);
+    const allowed = modelsForPersona(name).map((m) => m.id);
     const p = personas.find((x) => x.name === name);
-    if (p && (MODEL_IDS as readonly string[]).includes(p.model)) setModel(p.model);
+
+    if (p && allowed.includes(p.model)) {
+      setModel(p.model);
+      return;
+    }
+    // Switching from a DeepSeek-cleared General to one that is not would
+    // otherwise leave a disallowed model selected and dispatch would 400.
+    setModel((current) => (allowed.includes(current) ? current : allowed[0] ?? 'sonnet'));
   }, [personas]);
 
   /* ── Render ───────────────────────────────────────────────────────────── */
@@ -226,6 +231,14 @@ export default function FleetPage() {
             <span className="font-mono text-void-100">{formatCost(totalSpend)}</span>
           </div>
           <span className="text-[10px] text-dim-500">fleet spend (7d)</span>
+          {/* Silent model substitution would otherwise only show up as spend
+              drifting from expectation, which is exactly what nobody checks. */}
+          {(spend?.modelMismatches ?? 0) > 0 && (
+            <span className="block text-[10px] text-amber-400">
+              {spend?.modelMismatches} run
+              {spend?.modelMismatches === 1 ? '' : 's'} served a different model
+            </span>
+          )}
         </div>
       </header>
 
@@ -266,7 +279,7 @@ export default function FleetPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {MODELS.map((m) => {
+          {modelsForPersona(selectedPersona).map((m) => {
             const active = model === m.id;
             return (
               <button
