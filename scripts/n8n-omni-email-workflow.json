@@ -12,28 +12,41 @@
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "webhookId": "sam-omni-email"
     },
     {
       "parameters": {
-        "jsCode": "// Second gate. SAM already resolved and confirmed the recipient, but this\n// webhook must not be a pass-through: a confused or compromised caller should\n// still be unable to mail an arbitrary address.\n//\n// Keep this list in step with the vault notes carrying an `email:` field.\n// Anything not on it is refused, not sent.\nconst ALLOWED = [\n  'michael@parkfords.co.uk',\n  'ccawood21@gmail.com',\n  'horizon4blinds@gmail.com',\n];\n\nconst body = $input.first().json.body ?? $input.first().json;\nconst to = String(body.to ?? '').trim().toLowerCase();\nconst subject = String(body.subject ?? '').slice(0, 200);\nconst text = String(body.body ?? '').slice(0, 10000);\n\nif (!to || !ALLOWED.includes(to)) {\n  return [{ json: { ok: false, code: 403, reason: `Recipient not on the allowlist: ${to || '(empty)'}` } }];\n}\nif (!text.trim()) {\n  return [{ json: { ok: false, code: 400, reason: 'Empty body' } }];\n}\n\nreturn [{ json: { ok: true, to, subject, text, name: String(body.name ?? '') } }];"
+        "jsCode": "// Second gate. SAM already resolved and confirmed the recipient, but this\n// webhook must not be a pass-through: a confused or compromised caller should\n// still be unable to mail an arbitrary address.\n//\n// Keep this list in step with the vault notes carrying an `email:` field.\n// Anything not on it is refused, not sent.\nconst ALLOWED = [\n  'michael@parkfords.co.uk',\n  'ccawood21@gmail.com',\n  'horizon4blinds@gmail.com',\n  'aakademikk01@gmail.com',\n];\n\nconst body = $input.first().json.body ?? $input.first().json;\nconst to = String(body.to ?? '').trim().toLowerCase();\nconst subject = String(body.subject ?? '').slice(0, 200);\nconst text = String(body.body ?? '').slice(0, 10000);\n\nif (!to || !ALLOWED.includes(to)) {\n  return [{ json: { ok: false, code: 403, reason: `Recipient not on the allowlist: ${to || '(empty)'}` } }];\n}\nif (!text.trim()) {\n  return [{ json: { ok: false, code: 400, reason: 'Empty body' } }];\n}\n\nreturn [{ json: { ok: true, to, subject, text, name: String(body.name ?? '') } }];"
       },
       "id": "validate",
       "name": "Validate recipient",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [220, 0]
+      "position": [
+        220,
+        0
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "version": 2 },
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
           "conditions": [
             {
               "leftValue": "={{ $json.ok }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
             }
           ],
           "combinator": "and"
@@ -44,7 +57,10 @@
       "name": "Allowed?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [440, 0]
+      "position": [
+        440,
+        0
+      ]
     },
     {
       "parameters": {
@@ -58,7 +74,10 @@
       "name": "Gmail — send",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [660, -100],
+      "position": [
+        660,
+        -100
+      ],
       "credentials": {}
     },
     {
@@ -71,7 +90,10 @@
       "name": "200 OK",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [880, -100]
+      "position": [
+        880,
+        -100
+      ]
     },
     {
       "parameters": {
@@ -84,20 +106,67 @@
       "name": "Refuse",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [660, 120]
+      "position": [
+        660,
+        120
+      ]
     }
   ],
   "connections": {
-    "Webhook": { "main": [[{ "node": "Validate recipient", "type": "main", "index": 0 }]] },
-    "Validate recipient": { "main": [[{ "node": "Allowed?", "type": "main", "index": 0 }]] },
-    "Allowed?": {
+    "Webhook": {
       "main": [
-        [{ "node": "Gmail — send", "type": "main", "index": 0 }],
-        [{ "node": "Refuse", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Validate recipient",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Gmail — send": { "main": [[{ "node": "200 OK", "type": "main", "index": 0 }]] }
+    "Validate recipient": {
+      "main": [
+        [
+          {
+            "node": "Allowed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Allowed?": {
+      "main": [
+        [
+          {
+            "node": "Gmail — send",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Refuse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail — send": {
+      "main": [
+        [
+          {
+            "node": "200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" },
+  "settings": {
+    "executionOrder": "v1"
+  },
   "pinData": {}
 }

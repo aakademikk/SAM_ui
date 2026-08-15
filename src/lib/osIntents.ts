@@ -15,9 +15,40 @@ export type OsIntent =
   | { kind: 'open'; app: string }
   | { kind: 'call'; who: string; place: boolean }
   | { kind: 'sms'; who: string; message: string }
+  | { kind: 'email'; who: string; subject: string; body: string }
   | { kind: 'torch'; on: boolean }
   | { kind: 'timer'; ms: number; label: string }
   | { kind: 'reminder'; ms: number; text: string };
+
+/**
+ * Where an intent can actually run.
+ *
+ *   server  — SAM_ui's own API. Works from the phone and the desktop alike.
+ *   phone   — the Android OS bridge. Loopback on the phone, so phone-only.
+ *   desktop — the desktop bridge. PC-only.
+ *
+ * The runner uses this to decide whether a missing bridge means "fall through
+ * to the agent" or "this simply is not a thing this device can do". Without it
+ * email would be silently dropped on the desktop, where there is no bridge at
+ * all — see SAM_Omni_Plan, "The honest split".
+ */
+export type IntentClass = 'server' | 'phone' | 'desktop';
+
+export function intentClass(intent: OsIntent): IntentClass {
+  return intent.kind === 'email' ? 'server' : 'phone';
+}
+
+/**
+ * Whether the action must be confirmed before it happens.
+ *
+ * True for anything that reaches a third party and cannot be taken back.
+ * Deliberately false for local, reversible actions — a confirmation on
+ * "flashlight on" trains you to press yes without reading, which is how the
+ * confirmations that matter stop working.
+ */
+export function confirmsBeforeActing(intent: OsIntent): boolean {
+  return intent.kind === 'email' || intent.kind === 'sms' || intent.kind === 'call';
+}
 
 /* ========================================================================== */
 /* Duration parsing                                                           */
@@ -116,6 +147,30 @@ export function matchOsIntent(input: string): OsIntent | null {
   if (m) {
     const ms = parseDuration(m[2]);
     if (ms > 0) return { kind: 'reminder', ms, text: m[1].trim() };
+  }
+
+  /* ---- Email ----------------------------------------------------------- */
+  // Before SMS: "email X saying ..." and "text X saying ..." share a shape, and
+  // "send an email to X" would otherwise be eaten by nothing at all.
+  // Optional "about <subject>": "email mike about the invoice saying it's ready".
+  m = text.match(
+    // The colon form binds tight to the name — people write "Brad: quote", not
+    // "Brad : quote" — so it cannot share the leading \s+ that the word forms
+    // need.
+    /^(?:send\s+(?:an?\s+)?email\s+to|email)\s+(.+?)(?:\s+about\s+(.+?))?(?:\s+(?:saying|that says)|\s*:)\s+(.+)$/i,
+  );
+  if (m) {
+    const who = m[1].trim();
+    // "email someone" is not a name. "me" *is* resolvable — Colin's own note
+    // carries it as an alias — and the separator this pattern requires already
+    // rules out the vague "email me the report" form.
+    if (/^(?:someone|somebody|him|her|them)$/i.test(who)) return null;
+    return {
+      kind: 'email',
+      who,
+      subject: (m[2] ?? '').trim(),
+      body: m[3].trim(),
+    };
   }
 
   /* ---- Messaging ------------------------------------------------------- */
