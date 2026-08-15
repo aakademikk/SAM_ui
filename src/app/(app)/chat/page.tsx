@@ -42,8 +42,6 @@ const MAX_RECONNECTS = 5;
 const STUCK_WARN_MS = 90_000;
 /** Auto-kill a turn that has produced nothing for this long. */
 const STUCK_KILL_MS = 150_000;
-/** Above this many context tokens, a fast-tier session starts fresh instead of resuming. */
-const MAX_FAST_RESUME_TOKENS = 80_000;
 
 /**
  * A turn in flight. Persisted so that leaving the tab — which unmounts this
@@ -62,17 +60,6 @@ function loadMessages(): ChatMessage[] {
     if (raw) return JSON.parse(raw) as ChatMessage[];
   } catch { /* corrupted */ }
   return [];
-}
-
-/** Total context (input + cache read) of the most recent finished turn, if known. */
-function lastContextTokens(messages: ChatMessage[]): number | undefined {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i];
-    if (m.role === 'assistant' && m.usage) {
-      return m.usage.inputTokens + m.usage.cacheReadTokens;
-    }
-  }
-  return undefined;
 }
 
 const PHASE_LABEL: Record<AgentPhase, string> = {
@@ -125,8 +112,6 @@ export default function ChatPage() {
   const lastMeaningfulRef = useRef(0);
   /** Set once the watchdog auto-kills, so it doesn't hammer stop(). */
   const autoKilledRef = useRef(false);
-  /** Latest messages for the resume gate, without churning send's identity. */
-  const messagesRef = useRef<ChatMessage[]>(messages);
 
   /* ── Persistence ─────────────────────────────────────────────────────── */
 
@@ -134,10 +119,6 @@ export default function ChatPage() {
     const stored = localStorage.getItem(TIER_KEY);
     if (stored === 'fast' || stored === 'max') setTier(stored);
   }, []);
-
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -430,16 +411,11 @@ export default function ChatPage() {
       setPhase('starting');
 
       try {
-        let resumeSessionId = localStorage.getItem(SESSION_KEY) ?? undefined;
-        if (tier === 'fast' && resumeSessionId) {
-          // Resuming a very long fast-tier session is what feeds the DeepSeek
-          // thinking runaway; past the budget, start fresh rather than inherit
-          // the whole context.
-          const context = lastContextTokens(messagesRef.current);
-          if (context !== undefined && context > MAX_FAST_RESUME_TOKENS) {
-            resumeSessionId = undefined;
-          }
-        }
+        // Always resume the conversation — every fresh session re-reads the
+        // whole context (that's the "starting session / rereads everything"
+        // behaviour). Runaway turns are the watchdog's job; the old token gate
+        // existed only to fit under the removed budget cap.
+        const resumeSessionId = localStorage.getItem(SESSION_KEY) ?? undefined;
         const started = await startAgentTurn({ message, tier, resumeSessionId });
 
         const run: ActiveRun = {
