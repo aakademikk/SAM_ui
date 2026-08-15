@@ -38,6 +38,12 @@ const PENDING_KEY = 'sam-agent-pending';
 const MAX_STORED = 40;
 /** Dropped connections are retried before a turn is declared lost. */
 const MAX_RECONNECTS = 5;
+/** A fast-tier turn stuck in pure thinking (no text/tool output) for this long is a runaway. */
+const STUCK_WARN_MS = 90_000;
+/** Auto-kill a turn that has produced nothing for this long. */
+const STUCK_KILL_MS = 150_000;
+/** Above this many context tokens, a fast-tier session starts fresh instead of resuming. */
+const MAX_FAST_RESUME_TOKENS = 80_000;
 
 /**
  * A turn in flight. Persisted so that leaving the tab — which unmounts this
@@ -58,6 +64,17 @@ function loadMessages(): ChatMessage[] {
   return [];
 }
 
+/** Total context (input + cache read) of the most recent finished turn, if known. */
+function lastContextTokens(messages: ChatMessage[]): number | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === 'assistant' && m.usage) {
+      return m.usage.inputTokens + m.usage.cacheReadTokens;
+    }
+  }
+  return undefined;
+}
+
 const PHASE_LABEL: Record<AgentPhase, string> = {
   starting: 'Starting session',
   thinking: 'Thinking',
@@ -72,6 +89,8 @@ export default function ChatPage() {
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState<AgentPhase>('starting');
   const [elapsed, setElapsed] = useState(0);
+  /** True while a turn is running but producing no real output — likely a runaway. */
+  const [stuck, setStuck] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsStepUp, setNeedsStepUp] = useState(false);
   /** Opened by the Android wake word rather than by tapping the icon. */
@@ -100,6 +119,14 @@ export default function ChatPage() {
   const retriesRef = useRef(0);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attachRef = useRef<((run: ActiveRun) => void) | null>(null);
+  /** Last time the parser saw real progress (anything but thinking telemetry). */
+  const lastProgressRef = useRef(Date.now());
+  /** Meaningful-event count already credited to lastProgressRef. */
+  const lastMeaningfulRef = useRef(0);
+  /** Set once the watchdog auto-kills, so it doesn't hammer stop(). */
+  const autoKilledRef = useRef(false);
+  /** Latest messages for the resume gate, without churning send's identity. */
+  const messagesRef = useRef<ChatMessage[]>(messages);
 
   /* ── Persistence ─────────────────────────────────────────────────────── */
 
@@ -107,6 +134,10 @@ export default function ChatPage() {
     const stored = localStorage.getItem(TIER_KEY);
     if (stored === 'fast' || stored === 'max') setTier(stored);
   }, []);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -186,6 +217,10 @@ export default function ChatPage() {
     activeJobRef.current = run.jobId;
 
     const parser = new AgentStreamParser();
+    lastProgressRef.current = Date.now();
+    lastMeaningfulRef.current = 0;
+    autoKilledRef.current = false;
+    setStuck(false);
     setRunning(true);
     setPhase('starting');
     setError(null);
@@ -222,6 +257,7 @@ export default function ChatPage() {
 
       setRunning(false);
       setPhase('done');
+      setStuck(false);
       activeJobRef.current = null;
       if (!muted && !lost && spoken) void speak(run.assistantId, spoken);
     };
@@ -230,6 +266,12 @@ export default function ChatPage() {
       if (event.type === 'output') {
         retriesRef.current = 0;
         const state = parser.push(event.text);
+        // Only real progress (text, tool calls, results) resets the stuck
+        // clock — a flood of thinking telemetry must not.
+        if (state.meaningful > lastMeaningfulRef.current) {
+          lastMeaningfulRef.current = state.meaningful;
+          lastProgressRef.current = Date.now();
+        }
         setPhase(state.phase);
         // Persist the session id the moment it appears, not at the end — a
         // turn interrupted mid-flight must still be resumable next time.
@@ -388,7 +430,16 @@ export default function ChatPage() {
       setPhase('starting');
 
       try {
-        const resumeSessionId = localStorage.getItem(SESSION_KEY) ?? undefined;
+        let resumeSessionId = localStorage.getItem(SESSION_KEY) ?? undefined;
+        if (tier === 'fast' && resumeSessionId) {
+          // Resuming a very long fast-tier session is what feeds the DeepSeek
+          // thinking runaway; past the budget, start fresh rather than inherit
+          // the whole context.
+          const context = lastContextTokens(messagesRef.current);
+          if (context !== undefined && context > MAX_FAST_RESUME_TOKENS) {
+            resumeSessionId = undefined;
+          }
+        }
         const started = await startAgentTurn({ message, tier, resumeSessionId });
 
         const run: ActiveRun = {
@@ -447,6 +498,34 @@ export default function ChatPage() {
     if (!jobId) return;
     try { await jobsService.kill(jobId); } catch { /* already gone */ }
   }, []);
+
+  /* ── Stuck watchdog — a pure-thinking runaway must not pin the tab ─────── */
+
+  // A turn that emits nothing but DeepSeek thinking telemetry is a runaway,
+  // not a working agent. Warn once the quiet stretch is long, then kill it.
+  useEffect(() => {
+    if (!running) {
+      setStuck(false);
+      return;
+    }
+    lastProgressRef.current = Date.now();
+    const id = setInterval(() => {
+      const stuckMs = Date.now() - lastProgressRef.current;
+      if (stuckMs > STUCK_KILL_MS) {
+        if (!autoKilledRef.current) {
+          autoKilledRef.current = true;
+          setStuck(true);
+          setError('SAM got stuck thinking with no progress and was stopped. Try again.');
+          void stop();
+        }
+      } else if (stuckMs > STUCK_WARN_MS) {
+        setStuck(true);
+      } else {
+        setStuck(false);
+      }
+    }, 2_000);
+    return () => clearInterval(id);
+  }, [running, stop]);
 
   /* ── Messages relayed from the Terminal tab ──────────────────────────── */
 
@@ -635,6 +714,14 @@ export default function ChatPage() {
                 <Square size={9} /> stop
               </button>
             </div>
+          </div>
+        )}
+
+        {stuck && running && (
+          <div className="flex flex-col items-center gap-2">
+            <span className="text-xs text-amber-300 bg-amber-900/20 px-3 py-1.5 rounded-full border border-amber-700/40">
+              SAM is stuck — thinking with no progress. Stopping automatically.
+            </span>
           </div>
         )}
 

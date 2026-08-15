@@ -17,7 +17,7 @@ import { jobsService, type JobEvent } from '@/lib/jobsService';
 import { AgentStreamParser, type AgentStreamState } from '@/lib/agentStream';
 import { MessageBlocks } from '@/components/chat/MessageBlocks';
 import { authService } from '@/lib/authService';
-import { formatCost, formatTokens } from '@/lib/costing';
+import { computeRunCost, formatCost, formatTokens } from '@/lib/costing';
 import { modelsForPersona } from '@/lib/fleetModels';
 
 import type { FleetPersona, FleetSpend } from '@/types/fleet';
@@ -116,6 +116,15 @@ export default function FleetPage() {
   // Tear down any replay stream on unmount.
   useEffect(() => closeReplay, [closeReplay]);
 
+  // A replay renders in the stream section *above* the run list — scroll it
+  // into view so the click lands where the output appears, not off-screen.
+  const streamSectionRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (replayLabel) {
+      streamSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [replayLabel]);
+
   const handleReplay = useCallback((job: JobSummary) => {
     closeReplay();
     setError(null);
@@ -211,7 +220,16 @@ export default function FleetPage() {
   const running = activeRun !== null;
   const elapsed = activeRun ? Math.max(0, Math.floor((Date.now() - activeRun.startedAt) / 1000)) : 0;
   const totalSpend = spend?.totalCostUsd ?? 0;
+  const fleetCost = Object.values(spend?.personas ?? {}).reduce((s, e) => s + e.costUsd, 0);
+  const claudeCost = spend?.claude?.costUsd ?? 0;
   const usage = streamState?.usage;
+
+  // DeepSeek runs are priced locally from token counts — the CLI's own figure
+  // is Opus-priced and must never be shown for them (see lib/costing.ts).
+  const shownCost =
+    streamState?.done
+      ? computeRunCost(replayLabel?.model ?? model, usage, streamState.reportedCostUsd)
+      : undefined;
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6 pb-24">
@@ -230,7 +248,10 @@ export default function FleetPage() {
             <Wallet size={12} className="text-accent" />
             <span className="font-mono text-void-100">{formatCost(totalSpend)}</span>
           </div>
-          <span className="text-[10px] text-dim-500">fleet spend (7d)</span>
+          <span className="text-[10px] text-dim-500">total spend (7d)</span>
+          <span className="block text-[9px] text-dim-500">
+            fleet {formatCost(fleetCost)} · claude sessions {formatCost(claudeCost)}
+          </span>
           {/* Silent model substitution would otherwise only show up as spend
               drifting from expectation, which is exactly what nobody checks. */}
           {(spend?.modelMismatches ?? 0) > 0 && (
@@ -353,7 +374,10 @@ export default function FleetPage() {
 
       {/* Live run / last result */}
       {streamState && (
-        <section className="rounded-xl border border-void-700 bg-void-900/60 overflow-hidden">
+        <section
+          ref={streamSectionRef}
+          className="rounded-xl border border-void-700 bg-void-900/60 overflow-hidden"
+        >
           <div className="flex items-center gap-2 px-3 py-2 border-b border-void-700 bg-void-950/40">
             <span className="text-xs font-semibold text-dim-100 uppercase tracking-wide">
               {replayLabel?.persona || selectedPersona || 'run'}
@@ -390,10 +414,13 @@ export default function FleetPage() {
 
           {streamState.done && (
             <div className="px-3 py-2.5 border-t border-void-700 bg-void-950/40 grid grid-cols-2 md:grid-cols-5 gap-2 text-[10px]">
-              {streamState.reportedCostUsd !== undefined && (
-                <div>
+              {shownCost && (
+                <div title={shownCost.basis === 'computed' ? 'Computed from DeepSeek rates' : 'CLI-reported'}>
                   <p className="text-dim-500 uppercase tracking-wide">Cost</p>
-                  <p className="font-mono text-void-100">{formatCost(streamState.reportedCostUsd)}</p>
+                  <p className="font-mono text-void-100">
+                    {formatCost(shownCost.usd)}
+                    {shownCost.basis === 'computed' && <span className="text-dim-500"> *</span>}
+                  </p>
                 </div>
               )}
               {usage && (
@@ -477,6 +504,27 @@ export default function FleetPage() {
         </div>
       </section>
 
+      {/* Claude Code session usage — the other half of the 7-day spend picture */}
+      {spend?.claude && spend.claude.costUsd > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-dim-200 uppercase tracking-wider">
+            Claude sessions (7d)
+          </h2>
+          <div className="rounded-xl border border-void-700 divide-y divide-void-700 overflow-hidden">
+            {Object.entries(spend.claude.projects)
+              .sort(([, a], [, b]) => b.costUsd - a.costUsd)
+              .map(([name, p]) => (
+                <div key={name} className="flex items-center justify-between px-3 py-2 bg-void-900/60">
+                  <span className="text-xs font-medium text-dim-100">{name}</span>
+                  <span className="text-[10px] font-mono text-dim-500">
+                    {p.sessions} session{p.sessions > 1 ? 's' : ''} · {formatCost(p.costUsd)}
+                  </span>
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
+
       {/* Recent fleet runs */}
       {recentJobs.length > 0 && (
         <section className="space-y-2">
@@ -492,10 +540,8 @@ export default function FleetPage() {
                   key={job.id}
                   type="button"
                   onClick={() => handleReplay(job)}
-                  disabled={running}
                   className="w-full flex items-center gap-3 px-3 py-2 bg-void-900/60 text-left
-                             hover:bg-void-900 transition-colors disabled:opacity-50
-                             disabled:cursor-not-allowed"
+                             hover:bg-void-900 transition-colors"
                 >
                   <span
                     className={`w-1.5 h-1.5 rounded-full shrink-0 ${

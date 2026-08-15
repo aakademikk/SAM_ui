@@ -18,6 +18,12 @@
  * served. That is checked against the model the job was dispatched on: the
  * DeepSeek endpoint answers 200 with a *different* model for an unknown id, so
  * without this a Flash job silently billed as Pro would never be noticed.
+ *
+ * Claude Code session usage (normal sessions + subagent runs) is priced locally
+ * from transcript token counts by `claudeCosts()` and merged into the same
+ * response, so the Fleet tab's cost section is the whole estate in one place.
+ * That scan is approximate (local pricing, calendar-day window) and degrades to
+ * fleet-only if it fails — see `src/lib/server/claudeCosts.ts`.
  */
 
 import fsp from 'node:fs/promises';
@@ -32,6 +38,7 @@ import { requireSession } from '@/lib/server/auth/guard';
 import { isDeepSeekModel } from '@/lib/fleetModels';
 import { DEEPSEEK_RATES } from '@/lib/server/chat/tiers';
 import { deepseekWindow } from '@/lib/costing';
+import { claudeCosts } from '@/lib/server/claudeCosts';
 
 import type { FleetSpend } from '@/types/fleet';
 
@@ -168,6 +175,16 @@ export async function GET(request: Request) {
   }
 
   spend.totalCostUsd = Object.values(spend.personas).reduce((sum, e) => sum + e.costUsd, 0);
+
+  // Merge Claude Code session usage so the tab shows the whole estate. Failure
+  // degrades to fleet-only — the scan is a convenience, the job store is not.
+  try {
+    const claude = await claudeCosts();
+    spend.claude = claude;
+    spend.totalCostUsd += claude.costUsd;
+  } catch {
+    // Fleet-only view this call.
+  }
 
   return envelope(spend, 'sam.fleet.spend', startedAt, estate.tick);
 }

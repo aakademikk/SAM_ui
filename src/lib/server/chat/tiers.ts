@@ -12,32 +12,14 @@
  * env by name only.
  */
 
-import type { TierId, TierInfo, TierRates } from '@/types/chat';
+import type { TierId, TierInfo } from '@/types/chat';
 
-/* ========================================================================== */
-/* Pricing — USD per 1M tokens                                                */
-/* ========================================================================== */
+import { DEEPSEEK_RATES } from '@/lib/rates';
 
-/**
- * DeepSeek published rates. Only used for locally-computed costs; the Claude
- * tier trusts the CLI's own figure, which is accurate for first-party models.
- *
- * Peak/off-peak billing effective 2026-08-16 16:00 UTC — peak windows are
- * 01:00–04:00 and 06:00–10:00 UTC (7h/day). `old` is the flat rate in effect
- * until the switch; `offPeak`/`peak` apply after it, chosen by UTC hour.
- */
-export const DEEPSEEK_RATES: Record<string, TierRates> = {
-  'deepseek-v4-flash': {
-    old: { inputMiss: 0.14, cacheHit: 0.0028, output: 0.28 },
-    offPeak: { inputMiss: 0.22, cacheHit: 0.007, output: 0.66 },
-    peak: { inputMiss: 0.44, cacheHit: 0.014, output: 1.32 },
-  },
-  'deepseek-v4-pro': {
-    old: { inputMiss: 0.435, cacheHit: 0.003625, output: 0.87 },
-    offPeak: { inputMiss: 0.66, cacheHit: 0.022, output: 1.98 },
-    peak: { inputMiss: 1.32, cacheHit: 0.044, output: 3.96 },
-  },
-};
+/* Rate tables live in @/lib/rates — pure data, client-safe, shared by the
+   chat tiers, the fleet spend scan, transcript costing and the fleet page's
+   per-run cost line. Re-exported here so existing server importers stay put. */
+export { DEEPSEEK_RATES };
 
 const DEFAULT_FAST_MODEL = 'deepseek-v4-flash';
 
@@ -58,9 +40,10 @@ export function tierInfo(tier: TierId): TierInfo {
       model,
       thirdParty: true,
       // Sent to the client so spend can be computed from token counts. The
-      // CLI's own total_cost_usd prices DeepSeek against an Anthropic rate
-      // table and overstates it by ~12x (measured $0.2428 vs $0.0195 actual),
-      // so it must never be displayed for this tier.
+      // CLI's own total_cost_usd prices unknown models at its Opus 4.5 default
+      // ($5/$0.5 cache/$25 per MTok), overstating DeepSeek by up to ~100x
+      // (measured 2026-08-15: $0.535 reported vs $0.0075 actual), so it must
+      // never be displayed for this tier.
       rates: DEEPSEEK_RATES[model],
     };
   }

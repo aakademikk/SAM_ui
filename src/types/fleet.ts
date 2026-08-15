@@ -35,11 +35,32 @@ export interface FleetSpendEntry {
   costUsd: number;
 }
 
+export interface ClaudeProjectCost {
+  /** Transcript files with any in-window cost, per project. */
+  sessions: number;
+  costUsd: number;
+}
+
+export interface ClaudeSpend {
+  /** Transcript files (sessions + subagent runs) with in-window cost. */
+  sessions: number;
+  costUsd: number;
+  /** Per-project breakdown, keyed by the project's cwd basename. */
+  projects: Record<string, ClaudeProjectCost>;
+  /** Transcript files actually re-parsed this call (cache misses). */
+  scannedFiles: number;
+}
+
 export interface FleetSpend {
   personas: Record<string, FleetSpendEntry>;
   totalCostUsd: number;
   /** How many fleet jobs were scanned this call. */
   scannedJobs: number;
+  /**
+   * Claude Code session usage merged into totalCostUsd (same 7-day window).
+   * Absent only if the transcript scan failed — the tab still shows fleet-only.
+   */
+  claude?: ClaudeSpend;
   /**
    * DeepSeek jobs whose served model differed from the one dispatched. The
    * endpoint answers 200 with a substitute for an unknown id, so a non-zero

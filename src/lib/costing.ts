@@ -1,12 +1,15 @@
 /**
  * SAM — Turn costing. Pure, client-safe.
  *
- * The CLI reports `total_cost_usd` for every run, but it prices all models
- * against an Anthropic rate table. Measured against DeepSeek that overstates
- * spend by ~12x ($0.2428 reported vs $0.0195 actual), which would make the
- * cheap tier look dearer than the expensive one. So any tier that ships rates
- * gets costed from its raw token counts instead.
+ * The CLI reports `total_cost_usd` for every run, but it prices unknown
+ * models at its Opus 4.5 default ($5/$0.5 cache/$25 per MTok) — against
+ * DeepSeek that overstates spend by up to ~100x (measured 2026-08-15:
+ * $0.535 reported vs $0.0075 actual), which would make the cheap tier look
+ * dearer than the expensive one. So any tier that ships rates gets costed
+ * from its raw token counts instead.
  */
+
+import { DEEPSEEK_RATES } from '@/lib/rates';
 
 import type { TierInfo, TokenUsage, TurnCost } from '@/types/chat';
 
@@ -37,6 +40,36 @@ export function computeCost(
   if (!usage) return undefined;
 
   const { inputMiss, cacheHit, output } = tier.rates[deepseekWindow(new Date())];
+  const usd =
+    (usage.inputTokens * inputMiss +
+      usage.cacheReadTokens * cacheHit +
+      usage.outputTokens * output) /
+    1_000_000;
+
+  return { usd, basis: 'computed' };
+}
+
+/**
+ * Cost a completed run by model id. DeepSeek ids are recomputed from token
+ * counts at the published rates; anything else trusts the CLI's figure.
+ * The fleet page has a model id but no TierInfo, so it uses this instead of
+ * `computeCost`.
+ */
+export function computeRunCost(
+  model: string,
+  usage: TokenUsage | undefined,
+  reportedUsd: number | undefined,
+): TurnCost | undefined {
+  const table = DEEPSEEK_RATES[model];
+  if (!table) {
+    return reportedUsd === undefined
+      ? undefined
+      : { usd: reportedUsd, basis: 'reported' };
+  }
+
+  if (!usage) return undefined;
+
+  const { inputMiss, cacheHit, output } = table[deepseekWindow(new Date())];
   const usd =
     (usage.inputTokens * inputMiss +
       usage.cacheReadTokens * cacheHit +

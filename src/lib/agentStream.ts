@@ -22,6 +22,8 @@ export interface AgentStreamState {
   /** The CLI's own figure. Only trustworthy for first-party models. */
   reportedCostUsd?: number;
   durationMs?: number;
+  /** Events that are not DeepSeek thinking-token telemetry — real progress. */
+  meaningful: number;
   done: boolean;
 }
 
@@ -82,6 +84,7 @@ export class AgentStreamParser {
   readonly state: AgentStreamState = {
     blocks: [],
     phase: 'starting',
+    meaningful: 0,
     done: false,
   };
 
@@ -145,6 +148,13 @@ export class AgentStreamParser {
   /* ---------------------------------------------------------------------- */
 
   private apply(event: StreamEvent) {
+    // DeepSeek streams every extended-thinking token as a system/thinking_tokens
+    // telemetry event. A model stuck in a thinking loop emits nothing else, so
+    // only those are excluded from the progress counter the chat watchdog uses.
+    const isThinkingTelemetry =
+      event.type === 'system' && event.subtype === 'thinking_tokens';
+    if (!isThinkingTelemetry) this.state.meaningful++;
+
     switch (event.type) {
       case 'system':
         if (event.subtype === 'init') {
