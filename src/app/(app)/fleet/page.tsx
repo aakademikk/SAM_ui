@@ -221,7 +221,7 @@ export default function FleetPage() {
   const elapsed = activeRun ? Math.max(0, Math.floor((Date.now() - activeRun.startedAt) / 1000)) : 0;
   const totalSpend = spend?.totalCostUsd ?? 0;
   const fleetCost = Object.values(spend?.personas ?? {}).reduce((s, e) => s + e.costUsd, 0);
-  const claudeCost = spend?.claude?.costUsd ?? 0;
+  const claudeTokens = spend?.claude?.tokens ?? 0;
   const usage = streamState?.usage;
 
   // DeepSeek runs are priced locally from token counts — the CLI's own figure
@@ -250,7 +250,7 @@ export default function FleetPage() {
           </div>
           <span className="text-[10px] text-dim-500">total spend (7d)</span>
           <span className="block text-[9px] text-dim-500">
-            fleet {formatCost(fleetCost)} · claude sessions {formatCost(claudeCost)}
+            fleet {formatCost(fleetCost)} · sessions {formatTokens(claudeTokens)}
           </span>
           {/* Silent model substitution would otherwise only show up as spend
               drifting from expectation, which is exactly what nobody checks. */}
@@ -504,20 +504,24 @@ export default function FleetPage() {
         </div>
       </section>
 
-      {/* Claude Code session usage — the other half of the 7-day spend picture */}
-      {spend?.claude && spend.claude.costUsd > 0 && (
+      {/* Claude Code session usage — subscription turns are tokens, not dollars */}
+      {spend?.claude && spend.claude.sessions > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-dim-200 uppercase tracking-wider">
             Claude sessions (7d)
           </h2>
+          <p className="text-[10px] text-dim-500 -mt-1">
+            Pro is flat — sessions show tokens; only DeepSeek turns are priced.
+          </p>
           <div className="rounded-xl border border-void-700 divide-y divide-void-700 overflow-hidden">
             {Object.entries(spend.claude.projects)
-              .sort(([, a], [, b]) => b.costUsd - a.costUsd)
+              .sort(([, a], [, b]) => b.tokens - a.tokens)
               .map(([name, p]) => (
                 <div key={name} className="flex items-center justify-between px-3 py-2 bg-void-900/60">
                   <span className="text-xs font-medium text-dim-100">{name}</span>
                   <span className="text-[10px] font-mono text-dim-500">
-                    {p.sessions} session{p.sessions > 1 ? 's' : ''} · {formatCost(p.costUsd)}
+                    {p.sessions} session{p.sessions > 1 ? 's' : ''} · {formatTokens(p.tokens)}
+                    {p.costUsd > 0 ? ` · ${formatCost(p.costUsd)}` : ''}
                   </span>
                 </div>
               ))}

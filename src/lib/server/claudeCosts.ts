@@ -1,21 +1,20 @@
 /**
- * SAM — Claude Code session costing.
+ * SAM — Claude Code session usage.
  *
- * Prices Claude Code sessions (normal sessions *and* subagent runs) locally from
- * transcript token counts, so the Fleet tab's cost section shows the whole
- * estate in one place instead of splitting it across the tab, the ledger and
- * the Anthropic console.
+ * Scans Claude Code transcripts (normal sessions *and* subagent runs) so the
+ * Fleet tab shows the whole estate in one place instead of splitting it across
+ * the tab, the ledger and the Anthropic console.
  *
- * Transcripts carry no cost figure — only `message.usage` per assistant turn —
- * so every turn is priced from its token counts:
+ * Costing is deliberately provider-split:
  *
- *   - DeepSeek:  recomputed via DEEPSEEK_RATES. The CLI overstates DeepSeek by
- *                ~12x against its Anthropic table, so it is never trusted here,
- *                matching the fleet spend route.
- *   - Anthropic: ANTHROPIC_RATES below, with prompt-cache economics
- *                (reads 0.1× input, writes 1.25× input) and Sonnet 5's intro
- *                price while it runs (to 2026-08-31).
- *   - Unknown models are skipped, not guessed.
+ *   - DeepSeek: recomputed via DEEPSEEK_RATES — that is real out-of-pocket
+ *     spend and is priced from token counts (the CLI's own figure is
+ *     Opus-priced and overstates by up to ~100x; see lib/costing.ts).
+ *   - Anthropic: not priced at all. Sessions run on the flat Pro plan, so
+ *     API-rate pricing (Opus $5/$25 etc.) invents hundreds of dollars of
+ *     spend that nobody paid — measured ~$300/7d of pure fiction. Anthropic
+ *     turns are counted in tokens instead, the honest metric for subscription
+ *     usage. (A future API-billed mode would price these turns.)
  *
  * The scan is incremental so a page load does not re-parse ~400MB of history:
  * a cache at ~/.sam/claude-costs.json keys each transcript on (mtimeMs, size)
@@ -38,29 +37,10 @@ import type { ClaudeSpend } from '@/types/fleet';
 const TRANSCRIPTS_ROOT = path.join(os.homedir(), '.claude', 'projects');
 const CACHE_PATH = path.join(os.homedir(), '.sam', 'claude-costs.json');
 const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-const CACHE_VERSION = 2; // bump on any pricing/scan change so stale buckets are re-scanned
+const CACHE_VERSION = 3; // bump on any pricing/scan change so stale buckets are re-scanned
 /** Bounds a single request's scan work — a cold cache warms over a few loads. */
 const MAX_SCAN_BYTES = 256 * 1024 * 1024;
 const MAX_DEPTH = 8;
-
-/** Prompt-cache economics: reads ≈ 0.1× input, writes ≈ 1.25× input (5m TTL). */
-const CACHE_READ_MULT = 0.1;
-const CACHE_WRITE_MULT = 1.25;
-
-/** Anthropic first-party API rates, USD per 1M tokens (claude-api reference, cached 2026-06-24). */
-const ANTHROPIC_RATES: Record<string, { input: number; output: number }> = {
-  'claude-fable-5': { input: 10, output: 50 },
-  'claude-opus-5': { input: 5, output: 25 },
-  'claude-opus-4-8': { input: 5, output: 25 },
-  'claude-opus-4-7': { input: 5, output: 25 },
-  'claude-opus-4-6': { input: 5, output: 25 },
-  'claude-sonnet-5': { input: 3, output: 15 }, // intro 2/10 to 2026-08-31 — see sonnet5Rates
-  'claude-sonnet-4-6': { input: 3, output: 15 },
-  'claude-haiku-4-5': { input: 1, output: 5 },
-};
-
-/** 2026-09-01 00:00 UTC — Sonnet 5's intro price ends 2026-08-31. */
-const SONNET5_INTRO_END = Date.UTC(2026, 8, 1);
 
 interface AssistantEvent {
   type?: string;
@@ -78,8 +58,8 @@ interface AssistantEvent {
   };
 }
 
-/** Per-calendar-day cost of one transcript, keyed `YYYY-MM-DD` (UTC). */
-type DayCosts = Record<string, number>;
+/** Per-calendar-day cost + tokens of one transcript, keyed `YYYY-MM-DD` (UTC). */
+type DayCosts = Record<string, { cost: number; tokens: number }>;
 
 interface CacheEntry {
   mtimeMs: number;
@@ -93,56 +73,38 @@ interface CacheShape {
   files: Record<string, CacheEntry>;
 }
 
-type Rates =
-  | { kind: 'anthropic'; input: number; output: number }
-  | { kind: 'deepseek'; inputMiss: number; cacheHit: number; output: number };
-
-/** Transcript ids may carry a dated suffix (`claude-sonnet-4-6-20250514`). */
-function normalizeModel(model: string): string {
-  return model.replace(/-\d{8}$/, '');
-}
-
-function sonnet5Rates(tsMs: number): { input: number; output: number } {
-  return tsMs < SONNET5_INTRO_END
-    ? { input: 2, output: 10 }
-    : { input: 3, output: 15 };
-}
-
-function ratesFor(model: string, tsMs: number): Rates | null {
-  const m = normalizeModel(model);
-  if (m === 'claude-sonnet-5') return { kind: 'anthropic', ...sonnet5Rates(tsMs) };
-  const anthropic = ANTHROPIC_RATES[m];
-  if (anthropic) return { kind: 'anthropic', ...anthropic };
-  const deepseek = DEEPSEEK_RATES[m];
-  if (deepseek) return { kind: 'deepseek', ...deepseek[deepseekWindow(new Date(tsMs))] };
-  return null;
-}
-
-/** Price one assistant turn in USD from its token counts and the model's rates. */
+/**
+ * Price one assistant turn in USD from its token counts — DeepSeek only.
+ * Anthropic turns run on the flat Pro plan and are counted in tokens instead
+ * of being priced at API rates that nobody pays.
+ */
 function priceEvent(
   model: string,
   usage: NonNullable<AssistantEvent['message']>['usage'],
   tsMs: number,
 ): number {
-  const rates = ratesFor(model, tsMs);
+  const rates = DEEPSEEK_RATES[model];
   if (!rates) return 0;
 
   const input = usage?.input_tokens ?? 0;
-  const cacheWrite = usage?.cache_creation_input_tokens ?? 0;
   const cacheRead = usage?.cache_read_input_tokens ?? 0;
   const output = usage?.output_tokens ?? 0;
 
-  if (rates.kind === 'deepseek') {
-    // Cache writes bill at the full (miss) input rate and the transcript's
-    // input_tokens already includes them — same basis as the fleet spend route.
-    return (input * rates.inputMiss + cacheRead * rates.cacheHit + output * rates.output) / 1_000_000;
-  }
+  const table = rates[deepseekWindow(new Date(tsMs))];
+  // Cache writes bill at the full (miss) input rate and the transcript's
+  // input_tokens already includes them — same basis as the fleet spend route.
+  return (input * table.inputMiss + cacheRead * table.cacheHit + output * table.output) / 1_000_000;
+}
+
+/** Total tokens a turn moved through the model — the honest volume metric. */
+function eventTokens(
+  usage: NonNullable<AssistantEvent['message']>['usage'],
+): number {
   return (
-    (input * rates.input +
-      cacheRead * rates.input * CACHE_READ_MULT +
-      cacheWrite * rates.input * CACHE_WRITE_MULT +
-      output * rates.output) /
-    1_000_000
+    (usage?.input_tokens ?? 0) +
+    (usage?.cache_creation_input_tokens ?? 0) +
+    (usage?.cache_read_input_tokens ?? 0) +
+    (usage?.output_tokens ?? 0)
   );
 }
 
@@ -181,9 +143,13 @@ async function scanFile(file: string, mtimeMs: number): Promise<DayCosts> {
     seen.add(key);
     const tsMs = eventTimeMs(ev, mtimeMs);
     const cost = priceEvent(model, usage, tsMs);
-    if (cost <= 0) continue;
+    const tokens = eventTokens(usage);
+    if (cost <= 0 && tokens <= 0) continue;
     const day = new Date(tsMs).toISOString().slice(0, 10);
-    days[day] = (days[day] ?? 0) + cost;
+    const bucket = days[day] ?? { cost: 0, tokens: 0 };
+    bucket.cost += cost;
+    bucket.tokens += tokens;
+    days[day] = bucket;
   }
   return days;
 }
@@ -293,24 +259,31 @@ export async function claudeCosts(): Promise<ClaudeSpend> {
 
   await saveCache({ version: CACHE_VERSION, updatedAt: now, files: next });
 
-  const projects: Record<string, { sessions: number; costUsd: number }> = {};
+  const projects: Record<string, { sessions: number; costUsd: number; tokens: number }> = {};
   let sessions = 0;
   let costUsd = 0;
+  let tokens = 0;
 
   for (const [file, entry] of Object.entries(next)) {
     let fileCost = 0;
-    for (const [day, cost] of Object.entries(entry.days)) {
-      if (day >= minDay) fileCost += cost;
+    let fileTokens = 0;
+    for (const [day, bucket] of Object.entries(entry.days)) {
+      if (day >= minDay) {
+        fileCost += bucket.cost;
+        fileTokens += bucket.tokens;
+      }
     }
-    if (fileCost <= 0) continue;
+    if (fileCost <= 0 && fileTokens <= 0) continue;
     costUsd += fileCost;
+    tokens += fileTokens;
     sessions += 1;
     const label = projectLabel(file);
-    const p = projects[label] ?? { sessions: 0, costUsd: 0 };
+    const p = projects[label] ?? { sessions: 0, costUsd: 0, tokens: 0 };
     p.sessions += 1;
     p.costUsd += fileCost;
+    p.tokens += fileTokens;
     projects[label] = p;
   }
 
-  return { sessions, costUsd, projects, scannedFiles };
+  return { sessions, costUsd, tokens, projects, scannedFiles };
 }

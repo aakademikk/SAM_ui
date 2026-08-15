@@ -39,12 +39,17 @@ export interface ClaudeProjectCost {
   /** Transcript files with any in-window cost, per project. */
   sessions: number;
   costUsd: number;
+  /** Total tokens processed (input + cache reads/writes + output). */
+  tokens: number;
 }
 
 export interface ClaudeSpend {
-  /** Transcript files (sessions + subagent runs) with in-window cost. */
+  /** Transcript files (sessions + subagent runs) with in-window activity. */
   sessions: number;
+  /** Real spend only — DeepSeek turns. Anthropic usage is flat Pro. */
   costUsd: number;
+  /** Total tokens processed (input + cache reads/writes + output). */
+  tokens: number;
   /** Per-project breakdown, keyed by the project's cwd basename. */
   projects: Record<string, ClaudeProjectCost>;
   /** Transcript files actually re-parsed this call (cache misses). */

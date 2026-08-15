@@ -19,11 +19,12 @@
  * DeepSeek endpoint answers 200 with a *different* model for an unknown id, so
  * without this a Flash job silently billed as Pro would never be noticed.
  *
- * Claude Code session usage (normal sessions + subagent runs) is priced locally
- * from transcript token counts by `claudeCosts()` and merged into the same
- * response, so the Fleet tab's cost section is the whole estate in one place.
- * That scan is approximate (local pricing, calendar-day window) and degrades to
- * fleet-only if it fails — see `src/lib/server/claudeCosts.ts`.
+ * Claude Code session usage (normal sessions + subagent runs) is counted by
+ * `claudeCosts()` — DeepSeek turns priced, Anthropic turns as tokens (flat
+ * Pro) — and merged into the same response, so the Fleet tab shows the whole
+ * estate in one place. That scan is approximate (local pricing, calendar-day
+ * window) and degrades to fleet-only if it fails — see
+ * `src/lib/server/claudeCosts.ts`.
  */
 
 import fsp from 'node:fs/promises';
