@@ -6,7 +6,7 @@
  * job like any other, so reconnection and resume come for free.
  */
 
-import type { FleetPersona, FleetDispatchResult, FleetSpend } from '@/types/fleet';
+import type { FleetPersona, FleetDispatchResult, FleetSpend, FleetPersonaJob } from '@/types/fleet';
 import { ApiError } from '@/lib/dashboardService';
 
 const BASE = '/api/fleet';
@@ -69,5 +69,16 @@ export const fleetService = {
   /** Cost-to-date per persona across the retained job store. */
   async spend(signal?: AbortSignal): Promise<FleetSpend> {
     return request<FleetSpend>('/spend', { signal });
+  },
+
+  /** A persona's last 10 fleet jobs, costed, newest first. */
+  async jobsByPersona(
+    persona: string,
+    signal?: AbortSignal,
+  ): Promise<{ persona: string; jobs: FleetPersonaJob[] }> {
+    return request<{ persona: string; jobs: FleetPersonaJob[] }>(
+      `/jobs?persona=${encodeURIComponent(persona)}`,
+      { signal },
+    );
   },
 };

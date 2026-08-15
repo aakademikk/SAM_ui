@@ -31,14 +31,11 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
-import { readFrames } from '@/lib/server/jobs/manager';
 import { envelope } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
 import { requireSession } from '@/lib/server/auth/guard';
 
-import { isDeepSeekModel } from '@/lib/fleetModels';
-import { DEEPSEEK_RATES } from '@/lib/server/chat/tiers';
-import { deepseekWindow } from '@/lib/costing';
+import { costFleetJob } from '@/lib/server/fleet/jobCosts';
 import { claudeCosts } from '@/lib/server/claudeCosts';
 
 import type { FleetSpend } from '@/types/fleet';
@@ -47,65 +44,6 @@ export const dynamic = 'force-dynamic';
 
 const JOBS_ROOT = path.join(os.homedir(), '.sam', 'jobs');
 const MAX_SCAN = 128;
-
-/** Price a DeepSeek run from its raw token counts, in the window it ran in. */
-function deepSeekCostUsd(
-  model: string,
-  usage: { input_tokens?: number; cache_read_input_tokens?: number; output_tokens?: number } | undefined,
-): number | null {
-  const table = DEEPSEEK_RATES[model];
-  if (!table || !usage) return null;
-  const rates = table[deepseekWindow(new Date())];
-  return (
-    ((usage.input_tokens ?? 0) * rates.inputMiss +
-      (usage.cache_read_input_tokens ?? 0) * rates.cacheHit +
-      (usage.output_tokens ?? 0) * rates.output) /
-    1_000_000
-  );
-}
-
-interface ResultEvent {
-  type?: string;
-  total_cost_usd?: number;
-  usage?: {
-    input_tokens?: number;
-    cache_read_input_tokens?: number;
-    output_tokens?: number;
-    output_tokens_details?: { thinking_tokens?: number };
-  };
-  modelUsage?: Record<string, { canonicalModel?: string; provider?: string }>;
-}
-
-/**
- * Last `result` event in a job's stream.
- *
- * The CLI interleaves warnings and hook chatter with the JSON, and a line does
- * not reliably begin with `{` — so scan for brace positions and decode from
- * each, rather than requiring the object to start the line.
- */
-async function resultEvent(id: string): Promise<ResultEvent | null> {
-  const frames = await readFrames(id, 0);
-  if (frames.length === 0) return null;
-
-  const text = Buffer.concat(frames.map((f) => f.data)).toString('utf-8');
-  let found: ResultEvent | null = null;
-
-  for (const line of text.split('\n')) {
-    if (!line.includes('"type":"result"')) continue;
-    for (let i = line.indexOf('{'); i !== -1; i = line.indexOf('{', i + 1)) {
-      try {
-        const event = JSON.parse(line.slice(i)) as ResultEvent;
-        if (event.type === 'result') {
-          found = event;
-          break;
-        }
-      } catch {
-        // Not a complete object at this brace — try the next one.
-      }
-    }
-  }
-  return found;
-}
 
 export async function GET(request: Request) {
   const session = await requireSession(request);
@@ -150,28 +88,15 @@ export async function GET(request: Request) {
     const dispatchedModel = match[2] ?? '';
 
     spend.scannedJobs += 1;
-    const event = await resultEvent(dir);
+    const costed = await costFleetJob(dir, dispatchedModel);
 
-    let cost: number | null = null;
-    if (event) {
-      if (isDeepSeekModel(dispatchedModel)) {
-        cost = deepSeekCostUsd(dispatchedModel, event.usage);
-        // Served-model check. Only meaningful for DeepSeek: Anthropic aliases
-        // resolve to a dated id, so a string compare there is noise.
-        const served = Object.values(event.modelUsage ?? {})
-          .map((m) => m.canonicalModel)
-          .filter(Boolean);
-        if (served.length > 0 && !served.includes(dispatchedModel)) {
-          spend.modelMismatches = (spend.modelMismatches ?? 0) + 1;
-        }
-      } else if (typeof event.total_cost_usd === 'number') {
-        cost = event.total_cost_usd;
-      }
+    if (costed.modelMismatch) {
+      spend.modelMismatches = (spend.modelMismatches ?? 0) + 1;
     }
 
     const entry = spend.personas[persona] ?? { jobs: 0, costUsd: 0 };
     entry.jobs += 1;
-    if (cost !== null) entry.costUsd += cost;
+    if (costed.costUsd !== null) entry.costUsd += costed.costUsd;
     spend.personas[persona] = entry;
   }
 

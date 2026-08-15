@@ -8,6 +8,8 @@
  * layer over them.
  */
 
+import type { JobStatus } from '@/types/jobs';
+
 export interface FleetPersona {
   /** Matches the persona file's `name` frontmatter. */
   name: string;
@@ -73,4 +75,31 @@ export interface FleetSpend {
    * model — not a cosmetic warning.
    */
   modelMismatches?: number;
+}
+
+/** One fleet job in a persona's run history. Cost is derived from the job's
+ * `result` event — DeepSeek recomputed from raw tokens, Anthropic trusted from
+ * the CLI figure — so the run list and the spend scan can never disagree. */
+export interface FleetPersonaJob {
+  id: string;
+  /** Display-only dispatch label, `fleet:<persona> (<model>) — <brief>`. */
+  command: string;
+  status: JobStatus;
+  exitCode: number | null;
+  createdAt: string;
+  endedAt: string | null;
+  /** Dispatched model from the label — the cost-basis selector. */
+  model: string;
+  costUsd: number | null;
+  costBasis: 'computed' | 'reported';
+  usage?: {
+    inputTokens: number;
+    cacheReadTokens: number;
+    outputTokens: number;
+  };
+  servedModel?: string;
+  durationMs?: number;
+  sessionId?: string;
+  /** DeepSeek run whose served model differed from the one dispatched. */
+  modelMismatch?: boolean;
 }

@@ -10,6 +10,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Bot, Send, Square, Lock, Loader2, Wallet, Clock, ChevronRight } from 'lucide-react';
 
 import { fleetService } from '@/lib/fleetService';
@@ -463,11 +464,11 @@ export default function FleetPage() {
           {personas.map((p) => {
             const entry = spend?.personas[p.name];
             return (
-              <button
+              <Link
                 key={p.name}
-                type="button"
-                onClick={() => selectPersona(p.name)}
-                className={`text-left rounded-xl border p-3 transition-colors ${
+                href={`/fleet/${encodeURIComponent(p.name)}`}
+                title={`View ${p.name}'s last 10 runs`}
+                className={`group text-left rounded-xl border p-3 transition-colors ${
                   p.name === selectedPersona
                     ? 'border-accent/40 bg-accent/5'
                     : 'border-void-700 bg-void-900/60 hover:border-void-600'
@@ -498,7 +499,14 @@ export default function FleetPage() {
                     </span>
                   ))}
                 </div>
-              </button>
+                <span className="mt-2 flex items-center gap-0.5 text-[10px] text-dim-500 group-hover:text-accent transition-colors">
+                  view runs
+                  <ChevronRight
+                    size={11}
+                    className="transition-transform group-hover:translate-x-0.5"
+                  />
+                </span>
+              </Link>
             );
           })}
         </div>
