@@ -40,6 +40,18 @@ export interface OsIntentResult {
 
 const NOT_HANDLED: OsIntentResult = { handled: false };
 
+/**
+ * Is this client a phone?
+ *
+ * Used only to decide whether a missing phone bridge should fall back to the
+ * desktop. It never grants capability — a wrong answer here makes SAM refuse,
+ * not act on the wrong machine.
+ */
+function onPhone(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
 /** Looks like a phone number rather than a contact name. */
 function isNumber(value: string): boolean {
   return /^[\d\s+()-]{3,}$/.test(value);
@@ -315,11 +327,27 @@ export async function tryOsIntent(message: string): Promise<OsIntentResult> {
   if (cls === 'phone' || cls === 'device') {
     if (!osBridgeAvailable()) {
       // One probe: availability is unknown until something has been tried.
-      const apps = await findApps('');
-      // A phone-only action with no phone bridge falls through to the agent.
-      // A device action can still go to the desktop, so it is not rejected here.
-      if (!osBridgeAvailable() && apps.length === 0 && cls === 'phone') return NOT_HANDLED;
+      await findApps('');
     }
+  }
+
+  // A device-class action said *on a phone* must never quietly act on the PC.
+  // Before the SAM app is installed there is no phone bridge, so "open
+  // calculator" on the phone was reaching the desktop and opening it there —
+  // and "open torch" was coming back "no app called torch" from the desktop's
+  // app list. Holding a phone and being answered by the desk is worse than
+  // being told no.
+  if ((cls === 'phone' || cls === 'device') && !osBridgeAvailable() && onPhone()) {
+    return {
+      handled: true,
+      reply: 'That needs the SAM app on this phone — it is not installed yet, so I have no phone controls here.',
+    };
+  }
+
+  // A phone-only action on the desktop is refused honestly rather than silently
+  // handed to the agent, which would answer as though it had done something.
+  if (cls === 'phone' && !osBridgeAvailable()) {
+    return { handled: true, reply: 'That is a phone action — say it on your phone.' };
   }
 
   if (cls === 'desktop') {
