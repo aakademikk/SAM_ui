@@ -17,25 +17,47 @@ export type OsIntent =
   | { kind: 'sms'; who: string; message: string }
   | { kind: 'email'; who: string; subject: string; body: string }
   | { kind: 'torch'; on: boolean }
+  | { kind: 'volume'; level: number }
+  | { kind: 'media'; action: 'play-pause' | 'next' | 'previous' | 'stop' }
+  | { kind: 'lock' }
   | { kind: 'timer'; ms: number; label: string }
   | { kind: 'reminder'; ms: number; text: string };
 
 /**
  * Where an intent can actually run.
  *
- *   server  — SAM_ui's own API. Works from the phone and the desktop alike.
+ *   server  — SAM_ui's own API. Works from any authenticated client.
  *   phone   — the Android OS bridge. Loopback on the phone, so phone-only.
- *   desktop — the desktop bridge. PC-only.
+ *   desktop — the desktop bridge, reached through the server, which sits on the
+ *             same machine as it. The *server* is the actor, so these are not
+ *             restricted to a browser running on the PC.
+ *   device  — either bridge can serve it; whichever is present wins.
  *
  * The runner uses this to decide whether a missing bridge means "fall through
  * to the agent" or "this simply is not a thing this device can do". Without it
  * email would be silently dropped on the desktop, where there is no bridge at
  * all — see SAM_Omni_Plan, "The honest split".
  */
-export type IntentClass = 'server' | 'phone' | 'desktop';
+export type IntentClass = 'server' | 'phone' | 'desktop' | 'device';
 
 export function intentClass(intent: OsIntent): IntentClass {
-  return intent.kind === 'email' ? 'server' : 'phone';
+  switch (intent.kind) {
+    case 'email':
+      return 'server';
+    // Only the phone has a SIM, a torch, or a dialler.
+    case 'sms':
+    case 'call':
+    case 'torch':
+      return 'phone';
+    // Only the desktop has a session to lock, a sink to set, or a player.
+    case 'volume':
+    case 'media':
+    case 'lock':
+      return 'desktop';
+    // Both ends can do these — whichever device is listening handles it.
+    default:
+      return 'device';
+  }
 }
 
 /**
@@ -147,6 +169,30 @@ export function matchOsIntent(input: string): OsIntent | null {
   if (m) {
     const ms = parseDuration(m[2]);
     if (ms > 0) return { kind: 'reminder', ms, text: m[1].trim() };
+  }
+
+  /* ---- Volume ---------------------------------------------------------- */
+  m = lower.match(/^(?:set\s+)?volume\s+(?:to\s+)?(\d{1,3})\s*%?$/);
+  if (m) {
+    const level = Number(m[1]);
+    // Clamped rather than rejected — "volume 300" means loud, not a mistake.
+    return { kind: 'volume', level: Math.max(0, Math.min(100, level)) };
+  }
+  if (/^(?:mute|volume\s+(?:off|mute))$/.test(lower)) return { kind: 'volume', level: 0 };
+
+  /* ---- Media ----------------------------------------------------------- */
+  if (/^(?:pause|pause\s+(?:the\s+)?music|play|resume|play\s+(?:the\s+)?music)$/.test(lower)) {
+    return { kind: 'media', action: 'play-pause' };
+  }
+  if (/^(?:next|skip)(?:\s+(?:track|song))?$/.test(lower)) return { kind: 'media', action: 'next' };
+  if (/^(?:previous|back|last)(?:\s+(?:track|song))$/.test(lower)) {
+    return { kind: 'media', action: 'previous' };
+  }
+
+  /* ---- Lock ------------------------------------------------------------ */
+  // "lock" alone is too easy to say by accident mid-sentence; require the noun.
+  if (/^lock\s+(?:the\s+|my\s+)?(?:screen|session|pc|computer|desktop|machine)$/.test(lower)) {
+    return { kind: 'lock' };
   }
 
   /* ---- Email ----------------------------------------------------------- */

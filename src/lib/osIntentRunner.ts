@@ -24,6 +24,13 @@ import {
   setTorch,
 } from './osBridge';
 import { intentClass, matchOsIntent, type OsIntent } from './osIntents';
+import {
+  desktopLock,
+  desktopMedia,
+  desktopVolume,
+  openDesktopApp,
+  probeDesktopBridge,
+} from './desktopBridge';
 
 export interface OsIntentResult {
   handled: boolean;
@@ -165,7 +172,43 @@ async function run(intent: OsIntent): Promise<OsIntentResult> {
     case 'email':
       return previewEmail(intent);
 
+    case 'volume': {
+      const res = await desktopVolume(intent.level);
+      if (!res?.ok) return NOT_HANDLED;
+      return { handled: true, reply: intent.level === 0 ? 'Muted.' : `Volume ${intent.level}%.` };
+    }
+
+    case 'media': {
+      const res = await desktopMedia(intent.action);
+      if (!res?.ok) return NOT_HANDLED;
+      const said =
+        intent.action === 'play-pause' ? 'Toggled playback.'
+        : intent.action === 'next' ? 'Next track.'
+        : intent.action === 'previous' ? 'Previous track.'
+        : 'Stopped.';
+      return { handled: true, reply: said };
+    }
+
+    case 'lock': {
+      const res = await desktopLock();
+      if (!res?.ok) return NOT_HANDLED;
+      return { handled: true, reply: 'Locking the screen.' };
+    }
+
     case 'open': {
+      // Device-class: the phone bridge owns this when we are on the phone,
+      // the desktop bridge when we are not.
+      if (!osBridgeAvailable()) {
+        const res = await openDesktopApp(intent.app);
+        if (!res) return NOT_HANDLED;
+        if (res.ambiguous?.length) {
+          return { handled: true, reply: `Which one — ${res.ambiguous.join(', ')}?` };
+        }
+        return res.ok
+          ? { handled: true, reply: `Opening ${res.app}.` }
+          : { handled: true, reply: res.reason ?? `Could not open “${intent.app}”.` };
+      }
+
       const apps = await findApps(intent.app);
       if (apps.length === 0) return { handled: true, reply: `No app called “${intent.app}”.` };
       const app = apps[0];
@@ -264,14 +307,26 @@ export async function tryOsIntent(message: string): Promise<OsIntentResult> {
   const intent = matchOsIntent(message);
   if (!intent) return NOT_HANDLED;
 
-  // Server-class intents are SAM_ui's own API — they work from the desktop and
-  // the phone alike, and must not be gated on a phone bridge that will never
-  // exist on a PC. Device-class intents still fall through to the agent when
-  // their bridge is absent.
-  if (intentClass(intent) !== 'server' && !osBridgeAvailable()) {
-    // One probe: availability is unknown until something has been tried.
-    const apps = await findApps('');
-    if (!osBridgeAvailable() && apps.length === 0) return NOT_HANDLED;
+  // Route by class. Getting this wrong is how an intent gets silently dropped:
+  // gating email on a phone bridge would kill it on the desktop, and gating a
+  // desktop action on the same bridge would kill it everywhere.
+  const cls = intentClass(intent);
+
+  if (cls === 'phone' || cls === 'device') {
+    if (!osBridgeAvailable()) {
+      // One probe: availability is unknown until something has been tried.
+      const apps = await findApps('');
+      // A phone-only action with no phone bridge falls through to the agent.
+      // A device action can still go to the desktop, so it is not rejected here.
+      if (!osBridgeAvailable() && apps.length === 0 && cls === 'phone') return NOT_HANDLED;
+    }
+  }
+
+  if (cls === 'desktop') {
+    // Probed once; the client caches the answer, so this costs a round trip
+    // only the first time a desktop command is used.
+    const up = await probeDesktopBridge();
+    if (!up) return NOT_HANDLED;
   }
 
   try {
