@@ -81,4 +81,9 @@ export const fleetService = {
       { signal },
     );
   },
+
+  /** Newest fleet runs across all personas, from the retained store. */
+  async runs(signal?: AbortSignal): Promise<{ jobs: FleetPersonaJob[] }> {
+    return request<{ jobs: FleetPersonaJob[] }>('/runs', { signal });
+  },
 };

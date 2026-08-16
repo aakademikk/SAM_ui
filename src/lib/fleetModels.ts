@@ -59,12 +59,21 @@ export function isDeepSeekModel(id: string): boolean {
  * against the same CLI, same tools and same working directory. It is
  * supervision: chat is interactive and a fleet job is dispatch-and-forget, so
  * an unattended General with write and bash reach is a different proposition to
- * one you are watching. These two are read-only by definition (see their
- * persona files), so that concern does not apply to them at all.
+ * one you are watching. That line held for cerberus + prometheus (read-only by
+ * definition — see their persona files).
  *
- * Widen deliberately, once real runs have been reviewed — not by default.
+ * Widened to all five Generals on Colin's call 2026-08-16. The write-capable
+ * three already held the MCP `llm()` router tool (per-call, context-flat); this
+ * clears the full dispatch-on-DeepSeek path for them too. DeepSeek dispatch
+ * remains gated behind the dispatch route's step-up auth either way.
  */
-export const DEEPSEEK_ALLOWED_PERSONAS: readonly string[] = ['cerberus', 'prometheus'];
+export const DEEPSEEK_ALLOWED_PERSONAS: readonly string[] = [
+  'cerberus',
+  'prometheus',
+  'hephaestus',
+  'hermes',
+  'calliope',
+];
 
 export function personaMayUseDeepSeek(persona: string): boolean {
   return DEEPSEEK_ALLOWED_PERSONAS.includes(persona);

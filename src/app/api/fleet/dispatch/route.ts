@@ -18,8 +18,8 @@
  *                       reasoning block on every call, measured at 2.9x billed
  *                       output for no quality gain.
  *
- * DeepSeek dispatch is limited to the read-only Generals. See
- * lib/fleetModels.ts for why that line is drawn at supervision, not provider.
+ * DeepSeek dispatch is cleared for all five Generals — see
+ * lib/fleetModels.ts for the policy. The env is still stated in full either way.
  */
 
 import os from 'node:os';
@@ -84,8 +84,7 @@ export async function POST(request: Request) {
   // exactly the failure this route already guards against elsewhere.
   if (requestedModel && fleetModel(requestedModel) && !usable(requestedModel)) {
     return failure(
-      `Persona '${persona.name}' is not cleared for '${requestedModel}'. ` +
-        'DeepSeek dispatch is limited to the read-only Generals.',
+      `Persona '${persona.name}' is not cleared for '${requestedModel}'.`,
       400,
     );
   }

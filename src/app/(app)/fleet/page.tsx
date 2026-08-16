@@ -70,9 +70,12 @@ export default function FleetPage() {
 
   const refreshLists = useCallback(async () => {
     try {
-      const [s, jobs] = await Promise.all([fleetService.spend(), jobsService.list()]);
+      // Recent runs come from the retained job store (/api/fleet/runs), not the
+      // in-memory manager list — so they survive server restarts and include
+      // runs recorded by the sam-fleet-run helper, not just dispatch-route jobs.
+      const [s, runs] = await Promise.all([fleetService.spend(), fleetService.runs()]);
       setSpend(s);
-      setRecentJobs(jobs.filter((j) => j.command.startsWith('fleet:')).slice(0, 8));
+      setRecentJobs(runs.jobs);
     } catch {
       // roster still usable without spend
     }
