@@ -41,6 +41,7 @@ const OPS: Record<string, ['GET' | 'POST', string]> = {
   volume: ['POST', '/os/volume'],
   lock: ['POST', '/os/lock'],
   health: ['GET', '/os/health'],
+  wake: ['GET', '/os/wake'],
 };
 
 let cachedToken: string | null = null;

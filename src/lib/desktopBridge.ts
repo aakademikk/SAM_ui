@@ -60,3 +60,13 @@ export const desktopNotify = (title: string, body: string) => call({ op: 'notify
 export const desktopMedia = (action: string) => call({ op: 'media', action });
 export const desktopVolume = (level: number) => call({ op: 'volume', level });
 export const desktopLock = () => call({ op: 'lock' });
+
+/**
+ * Latest wake-word event. The counter only ever increments, so a client acts
+ * on a *change*, never on the value — which means a page opened long after a
+ * detection does not immediately think it was woken.
+ */
+export async function desktopWakeSeq(): Promise<number | null> {
+  const res = (await call({ op: 'wake' })) as unknown as { seq?: number } | null;
+  return typeof res?.seq === 'number' ? res.seq : null;
+}

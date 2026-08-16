@@ -17,6 +17,7 @@ import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Lock, Square } from 'lucide
 
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { HandsFreeMic } from '@/components/voice/HandsFreeMic';
+import { desktopWakeSeq } from '@/lib/desktopBridge';
 import { MessageBlocks } from '@/components/chat/MessageBlocks';
 import { readMessage as readCrossTab } from '@/lib/crossTab';
 import { jobsService } from '@/lib/jobsService';
@@ -535,6 +536,43 @@ export default function ChatPage() {
       setHandsFree(true);
       setHandsFreeFailed(null);
     }
+  }, []);
+
+  /* ── Desktop wake word ───────────────────────────────────────────────── */
+
+  // The phone is *launched* at /chat?wake=1 when its wake word fires. On the
+  // desktop this page is already open, so there is nothing to navigate — the
+  // bridge publishes a counter instead and this watches it change. Polling
+  // rather than a socket because the voice service's WebSocket accepts a
+  // single connection, which the voice widget already holds.
+  useEffect(() => {
+    if (/android|iphone|ipad|ipod/i.test(navigator.userAgent)) return;
+
+    let alive = true;
+    let seen: number | null = null;
+
+    const tick = async () => {
+      const seq = await desktopWakeSeq();
+      if (!alive || seq === null) return;
+      // First read only establishes the baseline; a page opened hours after a
+      // detection must not think it was just woken.
+      if (seen === null) {
+        seen = seq;
+        return;
+      }
+      if (seq === seen) return;
+      seen = seq;
+      setWokenByVoice(true);
+      setHandsFree(true);
+      setHandsFreeFailed(null);
+    };
+
+    void tick();
+    const id = setInterval(tick, 2000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
   }, []);
 
   const toggleTier = () => {

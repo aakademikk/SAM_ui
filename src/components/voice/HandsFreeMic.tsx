@@ -261,6 +261,18 @@ export function HandsFreeMic({
         }
       }
       const rms = Math.sqrt(sum / (buf?.length ?? 1));
+
+      // Diagnostic only — deliberately NOT React state. An earlier attempt set
+      // state here at 5/s and the hands-free path stopped working; whatever the
+      // mechanism, instrumentation must not be able to change behaviour. Read
+      // it from the browser console as `__vad`.
+      (window as unknown as { __vad?: unknown }).__vad = {
+        rms: Number(rms.toFixed(4)),
+        threshold: VOICE_THRESHOLD,
+        recording: recordingRef.current,
+        speechMs: Math.round(utterSinceRef.current),
+        silentMs: Math.round(silentSinceRef.current),
+      };
       // Only the recording dot needs the live level — updating React state
       // every idle frame would re-render the composer 60×/s for nothing.
       if (recordingRef.current) setLevel(rms);
