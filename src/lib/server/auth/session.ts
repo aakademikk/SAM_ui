@@ -56,6 +56,28 @@ function getKey(): Uint8Array {
 }
 
 /* ========================================================================== */
+/* Desktop-presence binding (Cerberus item 2, 2026-08-15)                      */
+/* ========================================================================== */
+//
+// The step-up cookie is a stateless JWT, so it cannot be revoked on its own.
+// The desktop-presence watcher (sam-presence.timer → sam-presence-check.sh)
+// bumps ~/.sam/presence-epoch the moment the desktop locks or idles. Step-up
+// cookies carry the epoch at issuance; verifyStepUp rejects any whose epoch is
+// stale — so the 12-hour cross-platform window dies within one timer tick of
+// the desktop going idle. Re-arm is one fresh biometric.
+const PRESENCE_EPOCH_PATH = path.join(os.homedir(), '.sam', 'presence-epoch');
+
+async function getPresenceEpoch(): Promise<number> {
+  try {
+    const raw = await fs.promises.readFile(PRESENCE_EPOCH_PATH, 'utf-8');
+    const n = Number.parseInt(raw.trim(), 10);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/* ========================================================================== */
 /* Cookie helpers                                                              */
 /* ========================================================================== */
 
@@ -116,6 +138,13 @@ export interface SessionPayload {
   device: string;
   /** When the session was created (epoch seconds). */
   iat: number;
+  /**
+   * Desktop-presence epoch at issuance. Only step-up cookies carry it;
+   * verifyStepUp rejects any cookie whose epoch is stale. Absent on cookies
+   * issued before the presence binding landed (2026-08-15) — those are
+   * rejected, failing closed.
+   */
+  presEpoch?: number;
 }
 
 /* ========================================================================== */
@@ -137,6 +166,7 @@ async function verify(token: string): Promise<SessionPayload | null> {
       sub: payload.sub as string,
       device: payload.device as string,
       iat: payload.iat as number,
+      presEpoch: payload.presEpoch as number | undefined,
     };
   } catch {
     return null;
@@ -154,7 +184,10 @@ export async function createSessionCookies(
 ): Promise<string[]> {
   const stepUpAge = stepUpMaxAge(attachment);
   const sessionJwt = await sign(payload, SESSION_MAX_AGE);
-  const stepupJwt = await sign(payload, stepUpAge);
+  const stepupJwt = await sign(
+    { ...payload, presEpoch: await getPresenceEpoch() },
+    stepUpAge,
+  );
 
   return [
     cookieString(SESSION_COOKIE, sessionJwt, SESSION_MAX_AGE),
@@ -168,7 +201,10 @@ export async function createStepUpCookie(
   attachment?: AuthenticatorAttachment | null,
 ): Promise<string> {
   const stepUpAge = stepUpMaxAge(attachment);
-  const stepupJwt = await sign(payload, stepUpAge);
+  const stepupJwt = await sign(
+    { ...payload, presEpoch: await getPresenceEpoch() },
+    stepUpAge,
+  );
   return cookieString(STEPUP_COOKIE, stepupJwt, stepUpAge);
 }
 
@@ -183,7 +219,13 @@ export async function verifySession(cookieHeader: string | null): Promise<Sessio
 export async function verifyStepUp(cookieHeader: string | null): Promise<SessionPayload | null> {
   const token = extractCookie(cookieHeader, STEPUP_COOKIE);
   if (!token) return null;
-  return verify(token);
+  const payload = await verify(token);
+  if (!payload) return null;
+  // Desktop-presence binding: if the desktop has locked or idled since this
+  // cookie was issued, the write window is dead. Fails closed — a cookie with
+  // no presEpoch (issued before the binding landed) is rejected too.
+  if (payload.presEpoch !== (await getPresenceEpoch())) return null;
+  return payload;
 }
 
 /** Remove all auth cookies. */
