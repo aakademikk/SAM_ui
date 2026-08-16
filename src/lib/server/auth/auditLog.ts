@@ -28,6 +28,20 @@ export async function logCommand(entry: AuditEntry) {
   }
 }
 
+export async function logEnrolment(deviceName: string) {
+  const line = JSON.stringify({
+    event: 'enrolment',
+    deviceName,
+    tokenConsumed: true,
+    timestamp: new Date().toISOString(),
+  }) + '\n';
+  try {
+    await fsp.appendFile(AUDIT_PATH, line);
+  } catch {
+    // Audit failure is non-fatal.
+  }
+}
+
 export async function readAuditLog(limit = 100): Promise<AuditEntry[]> {
   try {
     const raw = await fsp.readFile(AUDIT_PATH, 'utf-8');

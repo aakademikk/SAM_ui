@@ -14,6 +14,7 @@
  */
 
 import { getJobManager, type OutputFrame } from '@/lib/server/jobs/manager';
+import { requireSession } from '@/lib/server/auth/guard';
 import { failure } from '@/lib/server/respond';
 
 export const dynamic = 'force-dynamic';
@@ -22,6 +23,11 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // Job output includes chat transcripts — reading it must not be open to any
+  // tailnet client (Job 07 adjacent finding, fixed with Policy B).
+  const session = await requireSession(request);
+  if (session instanceof Response) return session;
+
   const { id } = await params;
   const manager = getJobManager();
 

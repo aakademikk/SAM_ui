@@ -1,8 +1,9 @@
 /**
  * /register — WebAuthn passkey registration.
  *
- * Run once from the desktop to create the first passkey. Additional
- * devices can be registered from Settings (authenticated session required).
+ * Policy B (2026-08-16): every enrolment — including the first — requires a
+ * one-time token minted on the desktop. Run `sam-enrol` there and paste the
+ * token here; it expires in 10 minutes and is single-use.
  */
 
 'use client';
@@ -14,19 +15,20 @@ import { authService } from '@/lib/authService';
 export default function RegisterPage() {
   const router = useRouter();
   const [deviceName, setDeviceName] = useState('Desktop');
+  const [enrolmentToken, setEnrolmentToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!deviceName.trim()) return;
+    if (!deviceName.trim() || !enrolmentToken.trim()) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      await authService.register(deviceName.trim());
+      await authService.register(deviceName.trim(), enrolmentToken.trim());
       setSuccess(true);
       setTimeout(() => router.push('/'), 1500);
     } catch (err) {
@@ -79,6 +81,31 @@ export default function RegisterPage() {
           </div>
         ) : (
           <form onSubmit={onSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="enrolmentToken" className="block text-sm text-dim-200 mb-1">
+                Enrolment token
+              </label>
+              <input
+                id="enrolmentToken"
+                type="text"
+                value={enrolmentToken}
+                onChange={(e) => setEnrolmentToken(e.target.value)}
+                className="w-full bg-void-900 border border-void-600 rounded px-3 py-2
+                           text-void-100 text-sm focus:border-accent focus:outline-none font-mono"
+                placeholder="sam-enrol-..."
+                required
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <p className="text-[11px] text-dim-500 mt-1">
+                Run{' '}
+                <code className="bg-void-800 px-1 py-0.5 rounded text-dim-300">
+                  sam-enrol
+                </code>{' '}
+                on the desktop, then paste the token here. Single-use, expires in 10 minutes.
+              </p>
+            </div>
+
             <div>
               <label htmlFor="deviceName" className="block text-sm text-dim-200 mb-1">
                 Device name

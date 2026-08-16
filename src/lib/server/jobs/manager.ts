@@ -7,6 +7,7 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
+import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -43,7 +44,11 @@ let idCounter = 0;
 function nextId(): string {
   idCounter++;
   const ts = Date.now().toString(36);
-  const rand = Math.floor(Math.random() * 46656).toString(36);
+  // 128-bit random instead of the old 36^3 ≈ 46k-value middle segment — job
+  // IDs are now unguessable, so the stream route's auth guard is the boundary
+  // rather than ID obscurity (Job 07 adjacent finding). The underscore layout
+  // is unchanged so time-based retention parsing (split('_')[1]) still works.
+  const rand = crypto.randomUUID().replaceAll('-', '');
   const seq = idCounter.toString(36);
   return `job_${ts}_${rand}_${seq}`;
 }

@@ -7,6 +7,8 @@
 import { verifyRegistrationResponse } from '@simplewebauthn/server';
 import type { RegistrationResponseJSON } from '@simplewebauthn/server';
 import { getCredentialStore, getChallenge } from '@/lib/server/auth/store';
+import { logEnrolment } from '@/lib/server/auth/auditLog';
+import { getRegisterLimiter } from '@/lib/server/auth/rateLimit';
 import { createSessionCookies, type SessionPayload } from '@/lib/server/auth/session';
 import { RP_ID, ORIGIN } from '@/lib/server/auth/webauthn';
 import { envelope, failure, readJson } from '@/lib/server/respond';
@@ -16,6 +18,13 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   const startedAt = Date.now();
+
+  // Missing in the original route (Job 07 finding): a brute-force guard on the
+  // verify step. Token bucket mirrors register/options.
+  const ip = request.headers.get('x-forwarded-for') ?? 'unknown';
+  if (!getRegisterLimiter().consume(ip)) {
+    return failure('Too many registration attempts. Wait a minute.', 429);
+  }
 
   const body = await readJson(request);
   const deviceName = typeof body.deviceName === 'string' ? body.deviceName.trim().slice(0, 64) : 'unknown';
@@ -57,6 +66,9 @@ export async function POST(request: Request) {
       deviceName,
       createdAt: new Date().toISOString(),
     });
+
+    // Every enrolment is an audited act (Policy B).
+    await logEnrolment(deviceName);
 
     // Create session cookies
     const sessionPayload: SessionPayload = {

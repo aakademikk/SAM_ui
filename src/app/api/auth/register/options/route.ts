@@ -1,9 +1,15 @@
 /**
  * POST /api/auth/register/options — generate WebAuthn registration options.
+ *
+ * Policy B (2026-08-16): every enrolment — including the first — requires a
+ * one-time token minted by the desktop CLI (`sam-enrol`). The token is
+ * consumed here, before any options are generated, so an unauthorised
+ * tailnet client cannot even reach the WebAuthn prompt.
  */
 
 import { generateRegistrationOptions } from '@simplewebauthn/server';
 import { getCredentialStore, setChallenge } from '@/lib/server/auth/store';
+import { consumeEnrolmentToken } from '@/lib/server/auth/enrolmentToken';
 import { getRegisterLimiter } from '@/lib/server/auth/rateLimit';
 import { RP_ID, RP_NAME } from '@/lib/server/auth/webauthn';
 import { envelope, failure, readJson } from '@/lib/server/respond';
@@ -20,6 +26,18 @@ export async function POST(request: Request) {
   }
 
   const body = await readJson(request);
+
+  // Policy B gate: consume the one-time enrolment token before anything else.
+  // 401 = missing/invalid/expired; 410 = already used (kept distinct so a
+  // replay is obvious rather than silently retried).
+  const token = typeof body.enrolmentToken === 'string' ? body.enrolmentToken : '';
+  if (!token) {
+    return failure('An enrolment token is required. Run sam-enrol on the desktop.', 401);
+  }
+  if (!(await consumeEnrolmentToken(token))) {
+    return failure('Enrolment token invalid or already used. Run sam-enrol again.', 410);
+  }
+
   const userId = typeof body.userId === 'string' ? body.userId.trim().slice(0, 64) : '';
   const deviceName = typeof body.deviceName === 'string' ? body.deviceName.trim().slice(0, 64) : '';
   if (!deviceName) {

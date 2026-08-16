@@ -61,10 +61,10 @@ export const authService = {
   },
 
   /** Register a new passkey (step 1: options → create → step 2: verify). */
-  async register(deviceName: string): Promise<void> {
+  async register(deviceName: string, enrolmentToken: string): Promise<void> {
     const options = await request<Record<string, unknown>>('/register/options', {
       method: 'POST',
-      body: { deviceName },
+      body: { deviceName, enrolmentToken },
     });
 
     const registrationResponse = await startRegistration({
