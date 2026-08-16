@@ -21,6 +21,11 @@ import { getEstate } from '@/lib/server/telemetry';
 import { requireStepUp } from '@/lib/server/auth/guard';
 import { logCommand } from '@/lib/server/auth/auditLog';
 import { tierEnv, tierInfo, fastTierAvailable } from '@/lib/server/chat/tiers';
+import {
+  acquireSessionLock,
+  holdSessionLock,
+  releaseSessionLock,
+} from '@/lib/server/chat/sessionLock';
 import type { TierId } from '@/types/chat';
 
 export const dynamic = 'force-dynamic';
@@ -76,26 +81,55 @@ export async function POST(request: Request) {
     '--verbose',
   ];
 
+  // A session is a single file on disk that two concurrent `--resume`
+  // processes would fight over, so the holding turn keeps it locked for its
+  // lifetime. A second resume attempt is refused until the turn finishes or
+  // the lock goes stale, naming the device that holds it.
+  let resumeSessionId: string | null = null;
   if (validSessionId(body.resumeSessionId)) {
-    args.push('--resume', body.resumeSessionId);
+    const acquired = acquireSessionLock(body.resumeSessionId, stepUp.device);
+    if (!acquired.ok) {
+      return failure(
+        `This conversation is already in use on '${acquired.device}'. ` +
+          'Let it finish there, or stop it from that device.',
+        409,
+      );
+    }
+    resumeSessionId = body.resumeSessionId;
+    args.push('--resume', resumeSessionId);
   }
 
   const info = tierInfo(tier);
 
-  const job = await getJobManager().createArgs(claudeBin(), args, {
-    // Display-only label. Never executed, and deliberately not the full argv:
-    // the message text would otherwise land in the job list and audit log.
-    label: `sam-agent (${info.label}) — ${message.slice(0, 60)}${message.length > 60 ? '…' : ''}`,
-    cwd: agentCwd(),
-    env: {
-      ...tierEnv(tier),
-      // The SessionStart hook launches the visualiser and a voice-line
-      // terminal tab. That is desirable when Colin opens a session at his
-      // desk, and decidedly not when a phone message spawns one. The service
-      // inherits a live DISPLAY, so a GUI check would not catch this.
-      SAM_SKIP_SERVICE_LAUNCH: '1',
-    },
-  });
+  const job = await getJobManager()
+    .createArgs(claudeBin(), args, {
+      // Display-only label. Never executed, and deliberately not the full argv:
+      // the message text would otherwise land in the job list and audit log.
+      label: `sam-agent (${info.label}) — ${message.slice(0, 60)}${message.length > 60 ? '…' : ''}`,
+      cwd: agentCwd(),
+      env: {
+        ...tierEnv(tier),
+        // The SessionStart hook launches the visualiser and a voice-line
+        // terminal tab. That is desirable when Colin opens a session at his
+        // desk, and decidedly not when a phone message spawns one. The service
+        // inherits a live DISPLAY, so a GUI check would not catch this.
+        SAM_SKIP_SERVICE_LAUNCH: '1',
+      },
+      // The turn ends the moment the process closes; drop the lock so the next
+      // resume — from this device or another — can take it immediately.
+      onExit: resumeSessionId
+        ? () => releaseSessionLock(resumeSessionId)
+        : undefined,
+    })
+    .catch((err: unknown) => {
+      // The lock was taken before the spawn; if the spawn itself fails, release
+      // it rather than wedging the session on a turn that never ran.
+      if (resumeSessionId) releaseSessionLock(resumeSessionId);
+      throw err;
+    });
+
+  // The job now exists — pin the lock to it and start its heartbeat.
+  if (resumeSessionId) holdSessionLock(resumeSessionId, job.id);
 
   await logCommand({
     jobId: job.id,
