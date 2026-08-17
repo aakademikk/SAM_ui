@@ -75,6 +75,11 @@ export function tierEnv(tier: TierId): Record<string, string | null> {
       ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL ?? null,
       ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN ?? null,
       ANTHROPIC_MODEL: fastModel(),
+      // DeepSeek's Anthropic-compatible endpoint reasons by default, billing the
+      // thinking block as output and delaying the visible answer. Kill it, as the
+      // fleet helper already does (record-fleet-run.mjs). Measured ~2.9x output
+      // bloat + 11% empty answers with reasoning on (Fleet_Model_Routing).
+      MAX_THINKING_TOKENS: '0',
     };
   }
 

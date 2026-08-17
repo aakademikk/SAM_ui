@@ -148,6 +148,11 @@ export function matchOsIntent(input: string): OsIntent | null {
     lower.match(new RegExp(`^(?:turn\\s+)?(?:the\\s+)?${torchWord}\\s+(on|off)$`)) ??
     lower.match(new RegExp(`^turn\\s+(on|off)\\s+(?:the\\s+)?${torchWord}$`));
   if (m) return { kind: 'torch', on: m[1] === 'on' };
+  // "open torch" — people launch the torch like an app. Must precede the
+  // generic open matcher, or it reads as an app named torch and comes back
+  // "No app called torch".
+  m = lower.match(new RegExp(`^(?:open|launch|start)\\s+(?:the\\s+)?${torchWord}$`));
+  if (m) return { kind: 'torch', on: true };
 
   /* ---- Timers ---------------------------------------------------------- */
   m = lower.match(/^(?:set\s+(?:a\s+)?)?timer\s+(?:for\s+)?(.+)$/);

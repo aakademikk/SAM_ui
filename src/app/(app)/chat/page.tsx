@@ -71,11 +71,23 @@ const PHASE_LABEL: Record<AgentPhase, string> = {
   done: '',
 };
 
+/** Server-side phase names (stream route) that the parser cannot produce —
+    they name the silent gaps before any model output. */
+const SERVER_PHASE_LABEL: Record<string, string> = {
+  spawn: 'Booting SAM',
+  boot: 'Starting',
+  context: 'Loading context',
+  model: 'Replying',
+  done: '',
+};
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
   const [input, setInput] = useState('');
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState<AgentPhase>('starting');
+  /** Latest server-side phase ping, with ms since process start. */
+  const [serverPhase, setServerPhase] = useState<{ phase: string; ms: number } | null>(null);
   const [elapsed, setElapsed] = useState(0);
   /** True while a turn is running but producing no real output — likely a runaway. */
   const [stuck, setStuck] = useState(false);
@@ -205,6 +217,7 @@ export default function ChatPage() {
     setStuck(false);
     setRunning(true);
     setPhase('starting');
+    setServerPhase(null);
     setError(null);
 
     const patch = (fn: (m: ChatMessage) => ChatMessage) =>
@@ -245,7 +258,12 @@ export default function ChatPage() {
     };
 
     streamRef.current = jobsService.stream(run.jobId, (event) => {
-      if (event.type === 'output') {
+      if (event.type === 'phase') {
+        // Server-named pre-output gap (spawn/context) — the parser has
+        // nothing to say until the first byte, so trust the ping for the
+        // status line.
+        setServerPhase({ phase: event.phase, ms: event.ms });
+      } else if (event.type === 'output') {
         retriesRef.current = 0;
         const state = parser.push(event.text);
         // Only real progress (text, tool calls, results) resets the stuck
@@ -595,6 +613,21 @@ export default function ChatPage() {
 
   /* ── Render ──────────────────────────────────────────────────────────── */
 
+  // Prefer the server's phase name while the parser is still in a pre-output
+  // gap (starting/thinking); it names the delay truthfully and carries ms
+  // since process start. Once content flows, the parser's label wins.
+  const serverLabel =
+    serverPhase && (phase === 'starting' || phase === 'thinking')
+      ? SERVER_PHASE_LABEL[serverPhase.phase]
+      : null;
+  const statusLabel = serverLabel || PHASE_LABEL[phase] || 'Working';
+  const statusSeconds =
+    serverLabel && serverPhase
+      ? `${(serverPhase.ms / 1000).toFixed(1)}s`
+      : elapsed > 1
+        ? `${elapsed}s`
+        : '';
+
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] md:min-h-screen">
       {/* Status bar — tier is a capability and a cost, so it stays visible */}
@@ -712,13 +745,16 @@ export default function ChatPage() {
           </div>
         ))}
 
-        {/* Live progress — the cold start is real, so show what it is doing */}
+        {/* Live progress — the cold start is real, so show what it is doing.
+            The status line prefers the server's phase ping (Booting SAM /
+            Loading context / Replying) with ms since process start while the
+            parser is still in a pre-output gap. */}
         {running && (
           <div className="flex justify-start">
             <div className="flex items-center gap-2 text-xs text-dim-400 px-3 py-1.5">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-              <span>{PHASE_LABEL[phase] || 'Working'}…</span>
-              {elapsed > 1 && <span className="font-mono text-dim-500">{elapsed}s</span>}
+              <span>{statusLabel}…</span>
+              {statusSeconds && <span className="font-mono text-dim-500">{statusSeconds}</span>}
               <button
                 type="button"
                 onClick={stop}

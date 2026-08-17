@@ -338,9 +338,14 @@ export async function tryOsIntent(message: string): Promise<OsIntentResult> {
   // app list. Holding a phone and being answered by the desk is worse than
   // being told no.
   if ((cls === 'phone' || cls === 'device') && !osBridgeAvailable() && onPhone()) {
+    // The bridge probe just failed. The app is usually installed but its
+    // service is not running (it starts when the app is opened, and does not
+    // survive a reboot or a force-stop yet). Tell the truth and give the fix,
+    // rather than claiming the app is missing — that is how "open torch"
+    // ended up insisting the phone was app-less while the service was up.
     return {
       handled: true,
-      reply: 'That needs the SAM app on this phone — it is not installed yet, so I have no phone controls here.',
+      reply: 'The SAM app is not reachable right now — open it once to start the phone controls, then try again.',
     };
   }
 

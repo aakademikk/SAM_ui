@@ -53,6 +53,8 @@ export interface JobStreamHandle {
 export type JobEvent =
   | { type: 'meta'; job: JobRecord }
   | { type: 'output'; seq: number; text: string }
+  /** Server-side phase ping — see the stream route's doc comment. */
+  | { type: 'phase'; phase: string; ms: number }
   | { type: 'closed'; status: 'exited' | 'killed' | 'lost'; exitCode: number | null };
 
 /**
@@ -177,6 +179,15 @@ function dispatchSSE(
     }
     case 'output': {
       onEvent({ type: 'output', seq: id ? parseInt(id, 10) : 0, text: data });
+      break;
+    }
+    case 'phase': {
+      try {
+        const info = JSON.parse(data) as { phase: string; ms: number };
+        onEvent({ type: 'phase', phase: info.phase, ms: info.ms });
+      } catch {
+        // malformed ping — ignore
+      }
       break;
     }
     case 'closed': {

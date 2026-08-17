@@ -9,6 +9,13 @@
  * A final event with event: "closed" is sent when the job exits.
  * The first event is always event: "meta" with the job record.
  *
+ * Server-side phase pings are emitted as event: "phase" with
+ *   data: { "phase": "spawn"|"boot"|"context"|"model"|"done", "ms": <since start> }
+ * naming the silent pre-output gaps (process boot, session/context load, first
+ * model output) and heartbeating once a second while one is open, so a client
+ * can show liveness instead of an indefinite spinner. Phase events carry no id
+ * and are re-derived on reconnect rather than replayed.
+ *
  * Query params:
  *   ?resume=1  — skip meta, only send new output (for reconnect)
  */
@@ -52,18 +59,93 @@ export async function GET(
 
       let lastSeq = fromSeq;
 
+      /* ── Server-side phase pings ────────────────────────────────────────
+         The client can derive content phases (thinking/working/streaming)
+         from the stream itself, but the silent stretches before any model
+         output are indistinguishable from a dead connection. These pings
+         name the phase truthfully — process boot vs session/context load vs
+         first model output — with ms since process start, and heartbeat
+         once a second while one of those gaps is open so the client can
+         show liveness rather than an indefinite spinner.
+         Only stream-json jobs get the init/assistant scan; other jobs still
+         get spawn/boot/done, which costs them nothing. */
+
+      type PhaseId = 'spawn' | 'boot' | 'context' | 'model' | 'done';
+
+      const startMs = job.startedAt ? Date.parse(job.startedAt) : Date.now();
+      // Mutable phase state in a const holder — a bare `let phase` would get
+      // narrowed to its initial 'spawn' inside these closures by TS, which is
+      // exactly wrong for a variable that only changes at runtime.
+      const live = {
+        phase: 'spawn' as PhaseId,
+        sawOutput: false,
+        sawInit: false,
+        sawAssistant: false,
+        lastPing: Date.now(),
+      };
+
+      const phaseMs = () => Math.max(0, Date.now() - startMs);
+
+      const emitPhase = () => {
+        enqueue(`event: phase\n`);
+        enqueue(`data: ${JSON.stringify({ phase: live.phase, ms: phaseMs() })}\n\n`);
+      };
+
+      /** Marker scan, not a JSON parser: stream-json lines are one object per
+          line, so a line-prefix match is exact. Detects the CLI's init (CLI
+          ready, session file loading) and the first assistant event (the
+          model is producing). */
+      const scanFrame = (text: string) => {
+        if (live.phase === 'done') return;
+
+        if (!live.sawOutput) {
+          live.sawOutput = true;
+          // Not stream-json (a terminal job) — the first byte is the last
+          // signal we can name. Emit boot and stop scanning.
+          if (!text.trimStart().startsWith('{')) {
+            live.phase = 'boot';
+            emitPhase();
+            return;
+          }
+        }
+
+        for (const line of text.split('\n')) {
+          const trimmed = line.trimStart();
+          if (!trimmed.startsWith('{')) continue;
+          if (!live.sawInit) {
+            if (
+              trimmed.startsWith('{"type":"system"') &&
+              trimmed.includes('"subtype":"init"')
+            ) {
+              live.sawInit = true;
+              live.phase = 'context';
+              emitPhase();
+            }
+          } else if (!live.sawAssistant && trimmed.startsWith('{"type":"assistant"')) {
+            live.sawAssistant = true;
+            live.phase = 'model';
+            emitPhase();
+          }
+        }
+      };
+
       // 1. Send job metadata first (only on fresh connect)
       if (fromSeq === 0) {
         enqueue(`id: 0\n`);
         enqueue(`event: meta\n`);
         enqueue(`data: ${JSON.stringify(job)}\n\n`);
+        // Spawn ping only when nothing has been written yet — a reconnect to
+        // an already-running job must not claim it is booting again.
+        if (job.lastSeq === 0) emitPhase();
       }
 
       // 2. Replay any buffered output from the requested sequence
       try {
         const frames = await manager.getOutput(id, fromSeq);
         for (const frame of frames) {
+          const text = frame.data.toString('utf-8');
           enqueue(formatFrame(frame));
+          scanFrame(text);
           lastSeq = Math.max(lastSeq, frame.seq);
         }
       } catch {
@@ -72,6 +154,10 @@ export async function GET(
 
       // 3. If job is already done, send closed and stop
       if (job.status === 'exited' || job.status === 'killed') {
+        if (live.phase !== 'done') {
+          live.phase = 'done';
+          emitPhase();
+        }
         enqueue(`event: closed\n`);
         enqueue(`data: ${JSON.stringify({ status: job.status, exitCode: job.exitCode })}\n\n`);
         controller.close();
@@ -94,14 +180,30 @@ export async function GET(
           if (current.lastSeq > lastSeq) {
             const newFrames = await manager.getOutput(id, lastSeq);
             for (const frame of newFrames) {
+              const text = frame.data.toString('utf-8');
               enqueue(formatFrame(frame));
+              scanFrame(text);
               lastSeq = Math.max(lastSeq, frame.seq);
             }
+          }
+
+          // Heartbeat while stuck in a pre-output gap, so the client can tell
+          // "still working" from "connection died".
+          if (
+            (live.phase === 'spawn' || live.phase === 'context') &&
+            Date.now() - live.lastPing >= 1000
+          ) {
+            live.lastPing = Date.now();
+            emitPhase();
           }
 
           // Job finished
           if (current.status === 'exited' || current.status === 'killed') {
             clearInterval(pollInterval);
+            if (live.phase !== 'done') {
+              live.phase = 'done';
+              emitPhase();
+            }
             enqueue(`event: closed\n`);
             enqueue(`data: ${JSON.stringify({ status: current.status, exitCode: current.exitCode })}\n\n`);
             controller.close();

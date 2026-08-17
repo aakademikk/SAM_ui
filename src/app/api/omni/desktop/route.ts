@@ -32,6 +32,27 @@ const BRIDGE = process.env.SAM_OS_BRIDGE_URL ?? 'http://127.0.0.1:8790';
 const TOKEN_PATH = path.join(os.homedir(), '.sam', 'os-bridge-token');
 const TIMEOUT_MS = 6000;
 
+/**
+ * Per-machine desktop bridges. Device-class commands must act on the machine
+ * the user is on, not always this one — "open calculator" from the laptop
+ * should open the laptop's calculator. The relay sees the connecting client's
+ * tailnet IP in X-Forwarded-For (set by `tailscale serve`; browsers cannot
+ * forge it), so it routes to that machine's bridge. Anything unmapped — the
+ * server itself, the phone for desktop-class actions — falls back to this
+ * box's own bridge. Shared token: every desktop bridge holds the same
+ * os-bridge-token, so one secret works for all of them.
+ */
+const CLIENT_BRIDGES = new Map<string, string>();
+for (const entry of (process.env.SAM_CLIENT_BRIDGES ?? '').split(',')) {
+  const [ip, url] = entry.split('=', 2).map((s) => s?.trim());
+  if (ip && url) CLIENT_BRIDGES.set(ip, url);
+}
+
+function bridgeFor(forwardedFor: string | null): string {
+  const ip = forwardedFor?.split(',')[0]?.trim();
+  return (ip && CLIENT_BRIDGES.get(ip)) || BRIDGE;
+}
+
 /** op -> [method, bridge path]. Anything not listed here cannot be reached. */
 const OPS: Record<string, ['GET' | 'POST', string]> = {
   apps: ['GET', '/os/apps'],
@@ -77,7 +98,8 @@ export async function POST(request: Request) {
   const query = op === 'apps' && typeof body.q === 'string' ? `?q=${encodeURIComponent(body.q)}` : '';
 
   try {
-    const res = await fetch(`${BRIDGE}${bridgePath}${query}`, {
+    const target = bridgeFor(request.headers.get('x-forwarded-for'));
+    const res = await fetch(`${target}${bridgePath}${query}`, {
       method,
       headers: { 'content-type': 'application/json', 'X-Sam-Token': token },
       body: method === 'POST' ? JSON.stringify(body) : undefined,
