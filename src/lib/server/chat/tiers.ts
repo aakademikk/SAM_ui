@@ -1,12 +1,14 @@
 /**
  * SAM — Chat model tiers.
  *
- * Two backends, chosen per message:
- *   fast — DeepSeek. Cheap, on a separate rate-limit pool, slower per turn.
+ * Three tiers, chosen per message:
+ *   fast — DeepSeek flash. Cheap, on a separate rate-limit pool, slower per turn.
+ *   pro  — DeepSeek pro. Same endpoint, stronger model, ~3x the cost of fast.
  *   max  — whatever the Claude CLI is configured to use by default.
  *
  * The split exists for cost and quota reasons: routing every mobile message
- * through the Claude subscription competes directly with desktop work.
+ * through the Claude subscription competes directly with desktop work, and
+ * the two DeepSeek tiers split cheap and strong without touching that quota.
  *
  * No credential values live in this file. Tier env is assembled from process
  * env by name only.
@@ -22,6 +24,7 @@ import { DEEPSEEK_RATES } from '@/lib/rates';
 export { DEEPSEEK_RATES };
 
 const DEFAULT_FAST_MODEL = 'deepseek-v4-flash';
+const DEFAULT_PRO_MODEL = 'deepseek-v4-pro';
 
 /* ========================================================================== */
 /* Tier definitions                                                            */
@@ -29,6 +32,10 @@ const DEFAULT_FAST_MODEL = 'deepseek-v4-flash';
 
 export function fastModel(): string {
   return process.env.SAM_FAST_MODEL ?? DEFAULT_FAST_MODEL;
+}
+
+export function proModel(): string {
+  return process.env.SAM_PRO_MODEL ?? DEFAULT_PRO_MODEL;
 }
 
 export function tierInfo(tier: TierId): TierInfo {
@@ -47,6 +54,16 @@ export function tierInfo(tier: TierId): TierInfo {
       rates: DEEPSEEK_RATES[model],
     };
   }
+  if (tier === 'pro') {
+    const model = proModel();
+    return {
+      id: 'pro',
+      label: 'Pro',
+      model,
+      thirdParty: true,
+      rates: DEEPSEEK_RATES[model],
+    };
+  }
   return {
     id: 'max',
     label: 'Max',
@@ -56,8 +73,8 @@ export function tierInfo(tier: TierId): TierInfo {
   };
 }
 
-/** True when the fast tier has somewhere to point at. */
-export function fastTierAvailable(): boolean {
+/** True when either DeepSeek tier has somewhere to point at. */
+export function deepseekTierAvailable(): boolean {
   return Boolean(process.env.ANTHROPIC_BASE_URL && process.env.ANTHROPIC_AUTH_TOKEN);
 }
 
@@ -70,24 +87,28 @@ export function fastTierAvailable(): boolean {
  * runs against DeepSeek while the UI claims otherwise.
  */
 export function tierEnv(tier: TierId): Record<string, string | null> {
-  if (tier === 'fast') {
-    return {
-      ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL ?? null,
-      ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN ?? null,
-      ANTHROPIC_MODEL: fastModel(),
-      // DeepSeek's Anthropic-compatible endpoint reasons by default, billing the
-      // thinking block as output and delaying the visible answer. Kill it, as the
-      // fleet helper already does (record-fleet-run.mjs). Measured ~2.9x output
-      // bloat + 11% empty answers with reasoning on (Fleet_Model_Routing).
-      MAX_THINKING_TOKENS: '0',
-    };
-  }
+  if (tier === 'fast') return deepseekEnv(fastModel());
+  if (tier === 'pro') return deepseekEnv(proModel());
 
   return {
     ANTHROPIC_BASE_URL: null,
     ANTHROPIC_AUTH_TOKEN: null,
     ANTHROPIC_API_KEY: null,
     ANTHROPIC_MODEL: process.env.SAM_MAX_MODEL ?? null,
+  };
+}
+
+/** Env overlay for a DeepSeek tier — same endpoint, different model. */
+function deepseekEnv(model: string): Record<string, string | null> {
+  return {
+    ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL ?? null,
+    ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN ?? null,
+    ANTHROPIC_MODEL: model,
+    // DeepSeek's Anthropic-compatible endpoint reasons by default, billing the
+    // thinking block as output and delaying the visible answer. Kill it, as the
+    // fleet helper already does (record-fleet-run.mjs). Measured ~2.9x output
+    // bloat + 11% empty answers with reasoning on (Fleet_Model_Routing).
+    MAX_THINKING_TOKENS: '0',
   };
 }
 

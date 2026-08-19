@@ -26,6 +26,14 @@ import { failure } from '@/lib/server/respond';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * A client that isn't consuming the stream (phone locked, tab backgrounded)
+ * makes `enqueue` buffer without bound. Replays work from disk, so after this
+ * long without a drain we close with 'lost' — the client reconnects and picks
+ * up from its last sequence number, nothing is lost.
+ */
+const BACKPRESSURE_CLOSE_MS = 30_000;
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -43,6 +51,12 @@ export async function GET(
     return failure('Job not found.', 404);
   }
 
+  // A record claiming 'running' with no live process behind it is an orphan
+  // left by a service restart. Polling it would loop forever on a frozen
+  // sequence number, so treat it as killed: the client finalises the turn
+  // instead of hanging until the stuck watchdog fires.
+  const orphaned = job.status === 'running' && !manager.isLive(id);
+
   const url = new URL(request.url);
   const resumeParam = url.searchParams.get('resume');
   const lastEventId = parseInt(request.headers.get('last-event-id') ?? '0', 10) || 0;
@@ -58,6 +72,10 @@ export async function GET(
       };
 
       let lastSeq = fromSeq;
+      // Last time the stream's internal queue drained (desiredSize >= 0). A
+      // long deficit means the client has stopped consuming — close the stream
+      // rather than buffer without bound; the client reconnects and replays.
+      let lastDrain = Date.now();
 
       /* ── Server-side phase pings ────────────────────────────────────────
          The client can derive content phases (thinking/working/streaming)
@@ -152,14 +170,14 @@ export async function GET(
         // output file not readable yet — fine, proceed to live
       }
 
-      // 3. If job is already done, send closed and stop
-      if (job.status === 'exited' || job.status === 'killed') {
+      // 3. If job is already done (or orphaned), send closed and stop
+      if (job.status === 'exited' || job.status === 'killed' || orphaned) {
         if (live.phase !== 'done') {
           live.phase = 'done';
           emitPhase();
         }
         enqueue(`event: closed\n`);
-        enqueue(`data: ${JSON.stringify({ status: job.status, exitCode: job.exitCode })}\n\n`);
+        enqueue(`data: ${JSON.stringify({ status: orphaned ? 'killed' : job.status, exitCode: job.exitCode })}\n\n`);
         controller.close();
         return;
       }
@@ -174,6 +192,33 @@ export async function GET(
             enqueue(`data: ${JSON.stringify({ status: 'lost' })}\n\n`);
             controller.close();
             return;
+          }
+
+          // Orphan re-check: the record claims running but the process is gone
+          // (external kill). Close instead of polling a corpse forever.
+          if (current.status === 'running' && !manager.isLive(id)) {
+            clearInterval(pollInterval);
+            enqueue(`event: closed\n`);
+            enqueue(`data: ${JSON.stringify({ status: 'killed', exitCode: null })}\n\n`);
+            controller.close();
+            return;
+          }
+
+          // Backpressure: a client that stopped reading (phone locked, tab
+          // backgrounded) makes enqueue buffer without bound. Replays work
+          // from disk, so after BACKPRESSURE_CLOSE_MS without a drain close
+          // with 'lost' — the client reconnects and picks up where it left off.
+          const desiredSize = controller.desiredSize;
+          if (desiredSize !== null) {
+            if (desiredSize >= 0) {
+              lastDrain = Date.now();
+            } else if (Date.now() - lastDrain > BACKPRESSURE_CLOSE_MS) {
+              clearInterval(pollInterval);
+              enqueue(`event: closed\n`);
+              enqueue(`data: ${JSON.stringify({ status: 'lost', exitCode: null })}\n\n`);
+              controller.close();
+              return;
+            }
           }
 
           // Check for new output

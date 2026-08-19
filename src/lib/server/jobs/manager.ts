@@ -204,8 +204,50 @@ class JobManager {
   private jobs = new Map<string, RunningJob>();
   private completedIds: string[] = [];
 
+  constructor() {
+    // A fresh process can't have live children — any record left 'running' on
+    // disk is a zombie from a service restart. Flip it now so a reconnect gets
+    // a terminal status instead of a stream that polls a frozen record forever.
+    void this.reconcileOrphans();
+  }
+
   async ensure() {
     await ensureRoot();
+  }
+
+  /**
+   * Scan the job store once at boot and finalise records claiming 'running'.
+   * Their processes died with the previous server instance; the in-memory
+   * map is empty, so 'running' is a lie by construction.
+   */
+  private async reconcileOrphans() {
+    await ensureRoot();
+    let entries;
+    try {
+      entries = await fsp.readdir(JOBS_ROOT, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !entry.name.startsWith('job_')) continue;
+      const file = metaPath(entry.name);
+      try {
+        const raw = await fsp.readFile(file, 'utf-8');
+        const record = JSON.parse(raw) as JobRecord;
+        if (record.status === 'running') {
+          record.status = 'killed';
+          record.endedAt = new Date().toISOString();
+          await fsp.writeFile(file, JSON.stringify(record, null, 2));
+        }
+      } catch {
+        // Unreadable or malformed meta — not ours to fix.
+      }
+    }
+  }
+
+  /** True if the job has a live process in this process's memory. */
+  isLive(id: string): boolean {
+    return this.jobs.has(id);
   }
 
   /** Create and start a new job from a raw shell command string. */

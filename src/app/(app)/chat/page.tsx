@@ -125,12 +125,18 @@ export default function ChatPage() {
   const lastMeaningfulRef = useRef(0);
   /** Set once the watchdog auto-kills, so it doesn't hammer stop(). */
   const autoKilledRef = useRef(false);
+  /**
+   * Set when this client asked the server to kill the job. A 'killed' close
+   * we initiated (stop button, watchdog) is not an interruption; one we
+   * didn't means the service restarted under the run and the turn is dead.
+   */
+  const stopInitiatedRef = useRef(false);
 
   /* ── Persistence ─────────────────────────────────────────────────────── */
 
   useEffect(() => {
     const stored = localStorage.getItem(TIER_KEY);
-    if (stored === 'fast' || stored === 'max') setTier(stored);
+    if (stored === 'fast' || stored === 'pro' || stored === 'max') setTier(stored);
   }, []);
 
   useEffect(() => {
@@ -214,6 +220,7 @@ export default function ChatPage() {
     lastProgressRef.current = Date.now();
     lastMeaningfulRef.current = 0;
     autoKilledRef.current = false;
+    stopInitiatedRef.current = false;
     setStuck(false);
     setRunning(true);
     setPhase('starting');
@@ -223,7 +230,10 @@ export default function ChatPage() {
     const patch = (fn: (m: ChatMessage) => ChatMessage) =>
       setMessages((prev) => prev.map((m) => (m.id === run.assistantId ? fn(m) : m)));
 
-    const finalise = (exitCode: number | null, lost: boolean) => {
+    const finalise = (
+      exitCode: number | null,
+      status: 'exited' | 'killed' | 'lost',
+    ) => {
       const state = parser.finish(exitCode);
       const cost = computeCost(run.tier, state.usage, state.reportedCostUsd);
 
@@ -231,18 +241,27 @@ export default function ChatPage() {
       localStorage.removeItem(ACTIVE_KEY);
       if (cost) setSessionCost((c) => c + cost.usd);
 
+      const lost = status === 'lost';
+      // A 'killed' close we didn't initiate means the service restarted under
+      // this run. The job is gone; don't reconnect and don't auto-speak a
+      // truncated answer — say what happened so it reads as an interruption,
+      // not a silent dead-end.
+      const interrupted = status === 'killed' && !stopInitiatedRef.current;
+
       // Spoken text comes from the parser's final blocks directly, NOT from a
       // value written inside the setMessages updater below — React defers that
       // updater to the next render, so anything assigned in it would still be
       // unset here and auto-speak would silently never fire.
-      const spoken = lost
+      const spoken = lost || interrupted
         ? ''
         : spokenText({ id: run.assistantId, role: 'assistant', blocks: state.blocks, done: true });
       patch((m) => ({
         ...m,
         blocks: lost
           ? [...state.blocks, { kind: 'error' as const, text: 'Lost connection to this run.' }]
-          : [...state.blocks],
+          : interrupted
+            ? [...state.blocks, { kind: 'error' as const, text: 'This run was interrupted — the service restarted. Send your message again.' }]
+            : [...state.blocks],
         sessionId: state.sessionId,
         usage: state.usage,
         cost,
@@ -254,7 +273,7 @@ export default function ChatPage() {
       setPhase('done');
       setStuck(false);
       activeJobRef.current = null;
-      if (!muted && !lost && spoken) void speak(run.assistantId, spoken);
+      if (!muted && !lost && !interrupted && spoken) void speak(run.assistantId, spoken);
     };
 
     streamRef.current = jobsService.stream(run.jobId, (event) => {
@@ -287,7 +306,7 @@ export default function ChatPage() {
           reconnectRef.current = setTimeout(() => attachRef.current?.(run), delay);
           return;
         }
-        finalise(event.exitCode, event.status === 'lost');
+        finalise(event.exitCode, event.status);
       }
     });
   }, [muted, speak]);
@@ -300,6 +319,12 @@ export default function ChatPage() {
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
+
+      // Coming back from a lock/background: reset the stuck clock before any
+      // watchdog tick can run, so time spent with the screen off is never
+      // counted against a job that was working the whole time. attachToRun
+      // also resets it; this makes the reset independent of finding a run.
+      lastProgressRef.current = Date.now();
 
       const raw = localStorage.getItem(ACTIVE_KEY);
       if (!raw) return;
@@ -491,6 +516,7 @@ export default function ChatPage() {
   const stop = useCallback(async () => {
     const jobId = activeJobRef.current;
     if (!jobId) return;
+    stopInitiatedRef.current = true;
     try { await jobsService.kill(jobId); } catch { /* already gone */ }
   }, []);
 
@@ -505,6 +531,12 @@ export default function ChatPage() {
     }
     lastProgressRef.current = Date.now();
     const id = setInterval(() => {
+      // A locked or backgrounded phone is not a stuck job — the WebView is
+      // suspended and legitimately receives no stream events while the run
+      // carries on server-side. Counting that wall-clock silence against the
+      // job would kill a healthy long turn the moment the screen unlocks, so
+      // the watchdog only counts time the page is actually visible.
+      if (document.visibilityState !== 'visible') return;
       const stuckMs = Date.now() - lastProgressRef.current;
       if (stuckMs > STUCK_KILL_MS) {
         if (!autoKilledRef.current) {
@@ -593,8 +625,11 @@ export default function ChatPage() {
     };
   }, []);
 
+  /** Three-tier cycle — Fast → Pro → Max → Fast. The button shows the current
+      tier; tapping steps to the next one. */
+  const NEXT_TIER: Record<TierId, TierId> = { fast: 'pro', pro: 'max', max: 'fast' };
   const toggleTier = () => {
-    const next: TierId = tier === 'fast' ? 'max' : 'fast';
+    const next = NEXT_TIER[tier];
     setTier(next);
     localStorage.setItem(TIER_KEY, next);
   };
@@ -640,16 +675,26 @@ export default function ChatPage() {
                       transition-colors disabled:opacity-40 ${
             tier === 'fast'
               ? 'text-accent bg-accent/10 border-accent/30'
-              : 'text-amber-300 bg-amber-900/20 border-amber-700/40'
+              : tier === 'pro'
+                ? 'text-sky-300 bg-sky-900/20 border-sky-700/40'
+                : 'text-amber-300 bg-amber-900/20 border-amber-700/40'
           }`}
           title={
             tier === 'fast'
-              ? 'Fast tier — cheap, separate quota, sends context to DeepSeek. Tap for Max.'
-              : 'Max tier — Claude, uses your subscription quota. Tap for Fast.'
+              ? 'Fast tier — DeepSeek flash, cheap, separate quota. Tap for Pro.'
+              : tier === 'pro'
+                ? 'Pro tier — DeepSeek pro, stronger, ~3x the cost of Fast. Tap for Max.'
+                : 'Max tier — Claude, uses your subscription quota. Tap for Fast.'
           }
         >
-          {tier === 'fast' ? <Zap size={12} /> : <Sparkles size={12} />}
-          {tier === 'fast' ? 'Fast' : 'Max'}
+          {tier === 'fast' ? (
+            <Zap size={12} />
+          ) : tier === 'pro' ? (
+            <Cpu size={12} />
+          ) : (
+            <Sparkles size={12} />
+          )}
+          {tier === 'fast' ? 'Fast' : tier === 'pro' ? 'Pro' : 'Max'}
         </button>
 
         {sessionCost > 0 && (

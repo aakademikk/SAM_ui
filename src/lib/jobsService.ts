@@ -108,10 +108,25 @@ export function streamJob(
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      // Set when a terminal `closed` event is parsed, so a connection that ends
+      // silently afterwards (no closed event) is reported as lost, not
+      // double-reported on top of a real exit.
+      let sawClosed = false;
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          // The server closed the TCP stream without sending a terminal
+          // `closed` event — a network drop, an idle reset while the phone was
+          // backgrounded, or a server crash. The job may still be running
+          // server-side, so this is a lost connection, not a finished job:
+          // emit it so the reconnect path triggers instead of leaving the
+          // stream dead until the stuck watchdog kills the run.
+          if (!sawClosed && !abort.signal.aborted) {
+            onEvent({ type: 'closed', status: 'lost', exitCode: null });
+          }
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
 
@@ -128,6 +143,7 @@ export function streamJob(
             // Empty line = dispatch event
             if (currentEvent && currentData.length > 0) {
               dispatchSSE(currentEvent, currentData.join('\n'), currentId, onEvent);
+              if (currentEvent === 'closed') sawClosed = true;
             }
             currentEvent = undefined;
             currentData = [];

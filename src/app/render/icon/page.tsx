@@ -6,13 +6,16 @@
  * so the app icon is a genuine frame of the visualiser rather than a drawing
  * of one — and regenerating it after a visualiser change is one command.
  *
+ * Renders the vault graph visualiser (the site-wide ambient field) rather than
+ * the classic widget, so the icon tracks the visualiser Colin actually sees.
+ *
  * Query params:
  *   ?state=idle|listening|thinking|speaking|alert   (default: idle)
  *   ?zoom=1.4                                        scales the mesh up so it
  *                                                    fills a small icon better
  */
 
-import { VisualiserWidget } from '@/components/visualiser/VisualiserWidget';
+import { VaultGraphVisualiser } from '@/components/visualiser/VaultGraphVisualiser';
 import type { VisualiserState } from '@/hooks/useVisualiserState';
 
 const STATES: VisualiserState[] = ['idle', 'listening', 'thinking', 'speaking', 'alert'];
@@ -34,7 +37,7 @@ export default async function IconRenderPage({
         className="absolute inset-0 origin-center"
         style={{ transform: `scale(${zoom})` }}
       >
-        <VisualiserWidget state={state} hud={false} />
+        <VaultGraphVisualiser state={state} />
       </div>
     </div>
   );

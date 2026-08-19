@@ -333,7 +333,7 @@ export function BootSequence({ onDone, once = false, visualiser = 'classic' }: B
           top: `${Math.min(100, progress * 130)}%`,
           opacity: progress > 0.06 && progress < 0.82 ? 0.5 : 0,
           background:
-            'linear-gradient(90deg, transparent, rgba(34,211,238,0.9) 50%, transparent)',
+            'linear-gradient(90deg, transparent, rgba(61,255,90,0.9) 50%, transparent)',
           transition: 'opacity 200ms linear',
         }}
       />
@@ -363,12 +363,12 @@ export function BootSequence({ onDone, once = false, visualiser = 'classic' }: B
                 key={ch}
                 className="font-mono text-[clamp(38px,11vw,72px)] font-bold leading-none"
                 style={{
-                  color: online ? '#ffffff' : `rgba(160,230,255,${0.35 + lock * 0.5})`,
+                  color: online ? '#ffffff' : `rgba(170,255,190,${0.35 + lock * 0.5})`,
                   filter: `blur(${(1 - lock) * 10}px)`,
                   opacity: lock,
                   textShadow: online
-                    ? '0 0 24px rgba(34,211,238,0.75), 0 0 70px rgba(34,211,238,0.35)'
-                    : `0 0 ${lock * 18}px rgba(34,211,238,${lock * 0.5})`,
+                    ? '0 0 24px rgba(61,255,90,0.75), 0 0 70px rgba(61,255,90,0.35)'
+                    : `0 0 ${lock * 18}px rgba(61,255,90,${lock * 0.5})`,
                   transition: 'color 500ms ease-out, text-shadow 500ms ease-out',
                 }}
               >
@@ -383,14 +383,14 @@ export function BootSequence({ onDone, once = false, visualiser = 'classic' }: B
           className="relative mt-4 h-px bg-flux-400/60"
           style={{
             width: `${Math.min(1, Math.max(0, (progress - 0.2) / 0.5)) * 190}px`,
-            boxShadow: '0 0 10px rgba(34,211,238,0.5)',
+            boxShadow: '0 0 10px rgba(61,255,90,0.5)',
           }}
         />
 
         <p
           className="relative mt-4 font-mono text-[10px] tracking-[0.42em]"
           style={{
-            color: online ? '#a5f3fc' : 'rgba(103,232,249,0.8)',
+            color: online ? '#b0ffbe' : 'rgba(140,255,160,0.8)',
             opacity: wordmarkIn ? 1 : 0,
             textShadow: '0 0 12px rgba(1,6,14,0.95), 0 0 4px rgba(1,6,14,1)',
             transition: 'opacity 600ms ease-out, color 500ms ease-out',
@@ -429,12 +429,12 @@ export function BootSequence({ onDone, once = false, visualiser = 'classic' }: B
                     style={{
                       backgroundColor:
                         status === 'ok'
-                          ? '#22d3ee'
+                          ? '#3dff5a'
                           : status === 'warn'
                             ? '#fbbf24'
                             : 'rgba(148,163,184,0.5)',
                       boxShadow:
-                        status === 'ok' ? '0 0 8px rgba(34,211,238,0.9)' : 'none',
+                        status === 'ok' ? '0 0 8px rgba(61,255,90,0.9)' : 'none',
                     }}
                   />
                   <span className="shrink-0 text-dim-500">{line.label}</span>
@@ -444,7 +444,7 @@ export function BootSequence({ onDone, once = false, visualiser = 'classic' }: B
                     style={{
                       color:
                         status === 'ok'
-                          ? '#a5f3fc'
+                          ? '#b0ffbe'
                           : status === 'warn'
                             ? '#fbbf24'
                             : 'rgba(139,148,180,0.8)',
@@ -464,7 +464,7 @@ export function BootSequence({ onDone, once = false, visualiser = 'classic' }: B
                 className="h-px bg-flux-400"
                 style={{
                   width: `${pct}%`,
-                  boxShadow: '0 0 8px rgba(34,211,238,0.8)',
+                  boxShadow: '0 0 8px rgba(61,255,90,0.8)',
                 }}
               />
             </div>

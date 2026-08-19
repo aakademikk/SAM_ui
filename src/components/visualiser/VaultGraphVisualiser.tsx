@@ -35,19 +35,32 @@ import type { VaultGraph } from '@/types/vaultGraph';
 /* ========================================================================== */
 
 /**
- * Per-state colour and tempo. Note there is no `warning` state — the store
- * calls it `alert`, and that is the red one. `listening` exists in the type but
- * nothing currently sets it.
+ * Per-state colour and tempo. The field is the Leonardo emerald — every node
+ * and every edge pulse green — except speaking (silver/white) and alert (kept
+ * red: the one real alarm colour). `mix` is pinned to 1.0 so the folder tints
+ * never bleed through: the graph is one colour now, not the vault's folder map.
+ * Note there is no `warning` state — the store calls it `alert`. `listening`
+ * exists in the type but nothing currently sets it.
  */
 const STATE_STYLE: Record<VisualiserState, { core: string; accent: string; tempo: number; mix: number }> = {
-  idle: { core: '#22d3ee', accent: '#a855f7', tempo: 1.0, mix: 0.22 },
-  listening: { core: '#38bdf8', accent: '#22d3ee', tempo: 1.4, mix: 0.34 },
-  thinking: { core: '#a855f7', accent: '#e879f9', tempo: 2.1, mix: 0.52 },
-  speaking: { core: '#22d3ee', accent: '#5eead4', tempo: 1.75, mix: 0.46 },
-  alert: { core: '#f43f5e', accent: '#fb7185', tempo: 2.7, mix: 0.78 },
+  idle: { core: '#3dff5a', accent: '#9dff70', tempo: 1.0, mix: 1.0 },
+  listening: { core: '#4dff5a', accent: '#8eff6e', tempo: 1.4, mix: 1.0 },
+  thinking: { core: '#6bff5a', accent: '#b8ff70', tempo: 2.1, mix: 1.0 },
+  speaking: { core: '#d3dfe8', accent: '#ffffff', tempo: 1.75, mix: 1.0 },
+  alert: { core: '#f43f5e', accent: '#fb7185', tempo: 2.7, mix: 1.0 },
 };
 
-/** Node tint by top-level folder — the vault's own structure, kept legible. */
+/**
+ * The hub node (most-connected note, dead centre) renders this many times
+ * larger than the next-largest note — the "eye" of the graph.
+ */
+const HUB_SIZE = 2.0;
+
+/**
+ * Node tint by top-level folder. Kept for the geometry — with uMix at 1.0 the
+ * state colour fully overrides these, so the field is monochrome now. Drop mix
+ * back down if the folder map should ever return.
+ */
 const FOLDER_COLOR: Record<string, string> = {
   '00 - Inbox': '#94a3b8',
   '01 - Daily Notes': '#34d399',
@@ -109,11 +122,13 @@ const NODE_VERT = /* glsl */ `
   attribute float aSeed;
   attribute float aWeight;   // 0..1 by degree — drives size and brightness
   attribute float aRadius;   // 0..1 distance from the nucleus
+  attribute float aHub;      // 1 for the most-connected note at dead centre
   attribute vec3  aColor;
 
   varying float vPulse;
   varying float vWeight;
   varying float vReveal;
+  varying float vHub;
   varying vec3  vColor;
 
   void main() {
@@ -144,11 +159,14 @@ const NODE_VERT = /* glsl */ `
 
     vPulse = 0.5 + 0.5 * sin(uTime * 1.15 * uTempo + phase * 1.7);
     vWeight = aWeight;
+    vHub = aHub;
     vColor = aColor;
 
     gl_Position = projectionMatrix * mvPosition;
 
-    float size = uSize * mix(0.60, 2.30, pow(aWeight, 0.75));
+    // The hub renders as a clear iris above the surrounding ring — bigger than
+    // even the next-best-connected notes, so the graph reads as an eye.
+    float size = uSize * mix(0.60, 2.30, pow(aWeight, 0.75)) * mix(1.0, ${HUB_SIZE.toFixed(2)}, aHub);
     gl_PointSize = size * uPixelRatio * (0.80 + 0.30 * vPulse) * reveal;
   }
 `;
@@ -162,6 +180,7 @@ const NODE_FRAG = /* glsl */ `
   varying float vPulse;
   varying float vWeight;
   varying float vReveal;
+  varying float vHub;
   varying vec3  vColor;
 
   void main() {
@@ -173,8 +192,8 @@ const NODE_FRAG = /* glsl */ `
     float core = pow(halo, 7.0);
     float spec = pow(halo, 30.0);          // the hard white centre
 
-    // Folder identity stays readable, pulled toward the state colour by uMix —
-    // so a state change recolours the whole field without erasing its structure.
+    // With uMix at 1.0 the state colour owns the node outright — the whole
+    // field is one colour; the folder map is no longer legible.
     vec3 stateTint = mix(uCore, uAccent, vPulse);
     vec3 color = mix(vColor, stateTint, uMix);
 
@@ -183,8 +202,13 @@ const NODE_FRAG = /* glsl */ `
     color = mix(color * 0.55 + uAccent * 0.22, color, core);
     color += vec3(spec) * (0.55 + 0.45 * vWeight);
 
+    // The hub is the eye: an accent-coloured iris ring just inside the rim,
+    // riding a brighter body so it owns the centre of the graph.
+    float iris = smoothstep(0.44, 0.30, d) * (1.0 - smoothstep(0.12, 0.24, d));
+    color += uAccent * vHub * (0.30 + 0.55 * iris);
+
     float alpha = (halo * 0.30 + core * 0.98 + spec * 1.15)
-                * uOpacity * vReveal * (0.38 + 0.62 * vWeight);
+                * uOpacity * vReveal * (0.43 + 0.62 * vWeight) * (1.0 + vHub * 0.5);
 
     gl_FragColor = vec4(color, alpha);
   }
@@ -253,7 +277,7 @@ const EDGE_FRAG = /* glsl */ `
     // at its very centre — adding flat white was what made these read as wires.
     vec3 color = trace + uCore * packet * 0.55 + vec3(packet * packet * 0.30);
 
-    float base = 0.052 + 0.05 * vWeight;
+    float base = 0.060 + 0.05 * vWeight;
     float alpha = (base + packet * 0.62 + wake * 0.18) * uOpacity * vReveal * falloff;
 
     gl_FragColor = vec4(color, alpha);
@@ -295,10 +319,12 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
     const radiusOf = nodes.map((n) => Math.min(1, Math.hypot(n.x, n.y)));
     const weightOf = nodes.map((n) => Math.pow(n.degree / maxDegree, 0.6));
 
+    const hubIndex = graph.hub;
     const positions = new Float32Array(count * 3);
     const seeds = new Float32Array(count);
     const weights = new Float32Array(count);
     const radii = new Float32Array(count);
+    const hubs = new Float32Array(count);
     const colors = new Float32Array(count * 3);
     const scratch = new THREE.Color();
 
@@ -313,6 +339,7 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
       seeds[i] = rng();
       weights[i] = weightOf[i];
       radii[i] = radiusOf[i];
+      hubs[i] = i === hubIndex ? 1 : 0;
 
       scratch.set(FOLDER_COLOR[n.folder] ?? FOLDER_FALLBACK);
       colors[i * 3] = scratch.r;
@@ -325,6 +352,7 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
     nodeGeo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
     nodeGeo.setAttribute('aWeight', new THREE.BufferAttribute(weights, 1));
     nodeGeo.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
+    nodeGeo.setAttribute('aHub', new THREE.BufferAttribute(hubs, 1));
     nodeGeo.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
 
     /* edges — authored inner endpoint first so packets travel outward */
@@ -447,6 +475,12 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
       groupRef.current.rotation.z = Math.sin(t * 0.045) * 0.035;
       groupRef.current.rotation.y = Math.sin(t * 0.06) * 0.10;
       groupRef.current.rotation.x = Math.cos(t * 0.05) * 0.06;
+
+      // Breathing: the whole field swells and eases on a ~10s cycle with a
+      // slower sub-wave, so SAM reads as alive rather than as a still image.
+      // The JSX `scale` prop covers the static (reduced-motion) case.
+      const breath = 1.0 + Math.sin(t * 0.65) * 0.024 + Math.sin(t * 0.17) * 0.010;
+      groupRef.current.scale.setScalar(scale * breath);
     }
   });
 

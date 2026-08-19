@@ -20,7 +20,7 @@ import { envelope, failure, readJson } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
 import { requireStepUp } from '@/lib/server/auth/guard';
 import { logCommand } from '@/lib/server/auth/auditLog';
-import { tierEnv, tierInfo, fastTierAvailable } from '@/lib/server/chat/tiers';
+import { tierEnv, tierInfo, deepseekTierAvailable } from '@/lib/server/chat/tiers';
 import {
   acquireSessionLock,
   holdSessionLock,
@@ -64,10 +64,12 @@ export async function POST(request: Request) {
     return failure(`Message too long (max ${MAX_MESSAGE_CHARS} chars).`, 413);
   }
 
-  const tier: TierId = body.tier === 'max' ? 'max' : 'fast';
-  if (tier === 'fast' && !fastTierAvailable()) {
+  // Unknown tier ids fall back to the cheap default rather than erroring.
+  const tier: TierId = body.tier === 'max' || body.tier === 'pro' ? body.tier : 'fast';
+  if (tier !== 'max' && !deepseekTierAvailable()) {
     return failure(
-      'Fast tier is not configured. Set ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN, or use the Max tier.',
+      `${tier === 'fast' ? 'Fast' : 'Pro'} tier is not configured. ` +
+        'Set ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN, or use the Max tier.',
       503,
     );
   }

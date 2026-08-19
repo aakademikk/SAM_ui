@@ -22,10 +22,13 @@ OUT="$ROOT/public/icons"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# Standard icons show the mesh large; maskable icons pull it in so it survives
+# The vault graph fills the frame differently from the old symmetric mesh: at
+# zoom 1.0 the whole graph sits dead-centre (hub = the "eye"). Anything past
+# ~1.2 drags the off-centre hub toward the corner, so keep the standard icon
+# at the natural zoom. Maskable pulls in a touch so the outer rim survives
 # Android's circular/squircle crop, which keeps only the middle ~80%.
-STANDARD_ZOOM=1.5
-MASKABLE_ZOOM=1.15
+STANDARD_ZOOM=1.0
+MASKABLE_ZOOM=1.1
 RENDER_PX=512
 
 BROWSER=""
