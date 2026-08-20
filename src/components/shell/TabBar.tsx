@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Settings,
   Bot,
+  Radio,
 } from 'lucide-react';
 
 const TABS = [
@@ -19,6 +20,7 @@ const TABS = [
   { id: 'terminal', label: 'Term', href: '/terminal', icon: Terminal },
   { id: 'chat', label: 'Chat', href: '/chat', icon: MessageSquare },
   { id: 'fleet', label: 'Fleet', href: '/fleet', icon: Bot },
+  { id: 'operations', label: 'Ops', href: '/operations', icon: Radio },
   { id: 'settings', label: 'Prefs', href: '/settings', icon: Settings },
 ] as const;
 
@@ -40,7 +42,7 @@ export function TabBar() {
           <Link
             key={tab.id}
             href={tab.href}
-            className={`flex flex-col items-center justify-center gap-0.5 min-w-0 px-3 py-1
+            className={`flex flex-col items-center justify-center gap-0.5 min-w-0 px-2 py-1
               ${active
                 ? 'text-accent'
                 : 'text-void-100'
