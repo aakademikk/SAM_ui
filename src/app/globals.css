@@ -392,10 +392,12 @@
   }
 }
 
-/* Chat column height — tracks the Android soft keyboard via the visual
-   viewport var set by useVisualViewport; falls back to 100dvh. */
+/* Chat column height. 100dvh shrinks with the Android soft keyboard because
+   the root viewport sets interactive-widget=resizes-content — the browser
+   resizes the layout viewport itself, so no JS tracking is needed (and the
+   JS race with the IME's scroll-into-view is what broke the composer before). */
 .sam-chat-root {
-  height: calc(var(--sam-vv-height, 100dvh) - 3.5rem);
+  height: calc(100dvh - 3.5rem);
 }
 @media (min-width: 768px) {
   .sam-chat-root {

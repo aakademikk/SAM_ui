@@ -23,7 +23,6 @@ import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Lock, Square, Wrench } from
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { HandsFreeMic } from '@/components/voice/HandsFreeMic';
 import { desktopWakeSeq } from '@/lib/desktopBridge';
-import { useVisualViewport } from '@/components/shell/useVisualViewport';
 import { splitBlocks, AnswerBlocks } from '@/components/chat/MessageBlocks';
 import { WorkPanel } from '@/components/chat/WorkPanel';
 import { readMessage as readCrossTab } from '@/lib/crossTab';
@@ -129,9 +128,6 @@ export default function ChatPage() {
   const speechRef = useRef<SpeechHandle | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  /** Root of the chat column — tracks the Android soft keyboard height. */
-  const containerRef = useRef<HTMLDivElement>(null);
-  useVisualViewport({ containerRef, keyBarHeight: 0 });
   const streamRef = useRef<{ close(): void } | null>(null);
   /** Serialises sends — see the guard at the top of send(). */
   const sendLockRef = useRef(false);
@@ -763,7 +759,7 @@ export default function ChatPage() {
         : '';
 
   return (
-    <div ref={containerRef} className="sam-chat-root flex flex-col md:flex-row">
+    <div className="sam-chat-root flex flex-col md:flex-row">
       {/* Chat column — answers only. Work streams into the panel below. */}
       <div className="flex-1 flex flex-col min-w-0">
       {/* Status bar — tier is a capability and a cost, so it stays visible */}
