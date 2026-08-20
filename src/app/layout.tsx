@@ -31,6 +31,11 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
+  // Android-only: resize the LAYOUT viewport when the soft keyboard opens so the
+  // composer and tab bar ride above it natively. Without this, the keyboard is
+  // dismissed because the JS-driven resize (--sam-vv-height) races the IME's own
+  // scroll-into-view during the open animation.
+  interactiveWidget: 'resizes-content',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

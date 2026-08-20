@@ -17,11 +17,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Lock, Square, Wrench } from 'lucide-react';
 
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { HandsFreeMic } from '@/components/voice/HandsFreeMic';
 import { desktopWakeSeq } from '@/lib/desktopBridge';
+import { useVisualViewport } from '@/components/shell/useVisualViewport';
 import { splitBlocks, AnswerBlocks } from '@/components/chat/MessageBlocks';
 import { WorkPanel } from '@/components/chat/WorkPanel';
 import { readMessage as readCrossTab } from '@/lib/crossTab';
@@ -117,6 +119,8 @@ export default function ChatPage() {
   const [tier, setTier] = useState<TierId>('fast');
   const [sessionCost, setSessionCost] = useState(0);
   const [audioBlocked, setAudioBlocked] = useState(false);
+  /** Mobile layout — drives which work-panel mount renders. */
+  const [isNarrow, setIsNarrow] = useState(false);
   /** Work panel — which assistant message's thinking/tool calls are shown, and
       whether the panel is open. The main thread renders answers only. */
   const [workOpen, setWorkOpen] = useState(false);
@@ -125,6 +129,9 @@ export default function ChatPage() {
   const speechRef = useRef<SpeechHandle | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  /** Root of the chat column — tracks the Android soft keyboard height. */
+  const containerRef = useRef<HTMLDivElement>(null);
+  useVisualViewport({ containerRef, keyBarHeight: 0 });
   const streamRef = useRef<{ close(): void } | null>(null);
   /** Serialises sends — see the guard at the top of send(). */
   const sendLockRef = useRef(false);
@@ -150,12 +157,23 @@ export default function ChatPage() {
   /** Id of the assistant message the panel is targeting — tells a reconnect
       to the same run apart from a brand-new turn. */
   const activeWorkIdRef = useRef<string | null>(null);
+  /** True when the panel auto-opened for a fresh turn — on mobile it slides
+      away again when the turn lands, so the answer is readable. */
+  const autoOpenedRef = useRef(false);
 
   /* ── Persistence ─────────────────────────────────────────────────────── */
 
   useEffect(() => {
     const stored = localStorage.getItem(TIER_KEY);
     if (stored === 'fast' || stored === 'pro' || stored === 'max') setTier(stored);
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsNarrow(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
   }, []);
 
   useEffect(() => {
@@ -252,7 +270,12 @@ export default function ChatPage() {
     activeWorkIdRef.current = run.assistantId;
     setWorkMessageId(run.assistantId);
     if (freshTurn) workDismissedRef.current = false;
-    if (freshTurn && !isNarrowScreen() && !workDismissedRef.current) setWorkOpen(true);
+    // Auto-open on every screen now — on mobile the sheet slides up so the
+    // thinking is actually visible, then drops again when the turn lands.
+    if (freshTurn && !workDismissedRef.current) {
+      autoOpenedRef.current = true;
+      setWorkOpen(true);
+    }
 
     const patch = (fn: (m: ChatMessage) => ChatMessage) =>
       setMessages((prev) => prev.map((m) => (m.id === run.assistantId ? fn(m) : m)));
@@ -300,6 +323,9 @@ export default function ChatPage() {
       setPhase('done');
       setStuck(false);
       activeJobRef.current = null;
+      // The mobile sheet covered the chat to show the working; once the answer
+      // is here, put it away. Manually-opened panels stay.
+      if (isNarrowScreen() && autoOpenedRef.current) setWorkOpen(false);
       if (!muted && !lost && !interrupted && spoken) void speak(run.assistantId, spoken);
     };
 
@@ -593,7 +619,12 @@ export default function ChatPage() {
     return () => window.removeEventListener('storage', check);
   }, []);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => {
+    // Desktop only. On a phone this fired while the boot overlay still covers
+    // the screen; the layout churn as it unmounts dismissed the keyboard and
+    // the input went dead until the tab was remounted. On touch it opens on tap.
+    if (window.matchMedia('(pointer: fine)').matches) inputRef.current?.focus();
+  }, []);
 
   /* ── Wake-word launch ────────────────────────────────────────────────── */
 
@@ -675,18 +706,21 @@ export default function ChatPage() {
     setWorkMessageId(null);
     workDismissedRef.current = false;
     activeWorkIdRef.current = null;
+    autoOpenedRef.current = false;
   };
 
   /* ── Work panel helpers ──────────────────────────────────────────────── */
 
   const openWork = (id: string) => {
     workDismissedRef.current = false;
+    autoOpenedRef.current = false;
     setWorkMessageId(id);
     setWorkOpen(true);
   };
 
   const closeWork = () => {
     workDismissedRef.current = true;
+    autoOpenedRef.current = false;
     setWorkOpen(false);
   };
 
@@ -729,7 +763,7 @@ export default function ChatPage() {
         : '';
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-3.5rem)] md:h-screen">
+    <div ref={containerRef} className="sam-chat-root flex flex-col md:flex-row">
       {/* Chat column — answers only. Work streams into the panel below. */}
       <div className="flex-1 flex flex-col min-w-0">
       {/* Status bar — tier is a capability and a cost, so it stays visible */}
@@ -828,11 +862,11 @@ export default function ChatPage() {
                 <button
                   type="button"
                   onClick={() => openWork(msg.id)}
-                  className={`mt-1.5 flex items-center gap-1.5 text-[10px] transition-colors ${
-                    selected ? 'text-accent' : 'text-dim-400 hover:text-dim-200'
+                  className={`mt-1.5 flex items-center gap-1.5 text-[11px] font-medium transition-colors ${
+                    selected ? 'text-accent' : 'text-dim-300 hover:text-dim-100'
                   }`}
                 >
-                  <Wrench size={11} />
+                  <Wrench size={12} />
                   View work
                   <span className="text-dim-500">· {work.length}</span>
                 </button>
@@ -1011,7 +1045,7 @@ export default function ChatPage() {
 
       {/* Work panel — desktop: in-flow side panel. The main thread stays
           answers-only; everything SAM did to get there lives here. */}
-      {workOpen && workMessage && (
+      {workOpen && workMessage && !isNarrow && (
         <aside className="hidden md:flex w-[320px] lg:w-[380px] shrink-0 border-l border-void-700 h-full">
           <WorkPanel
             title={panelTitle}
@@ -1026,24 +1060,32 @@ export default function ChatPage() {
         </aside>
       )}
 
-      {/* Work panel — mobile: overlay drawer. */}
-      {workOpen && workMessage && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-black/60" onClick={closeWork} aria-hidden="true" />
-          <div className="absolute right-0 top-0 bottom-0 w-[85%] max-w-sm border-l border-void-700">
-            <WorkPanel
-              title={panelTitle}
-              running={panelRunning}
-              phaseLabel={statusLabel}
-              statusSeconds={statusSeconds}
-              stuck={stuck}
-              blocks={workBlocks}
-              onClose={closeWork}
-              onStop={stop}
+      {/* Work panel — mobile: bottom sheet. Portaled to <body> so it escapes
+          main's z-10 stacking context — inside main it could never rise above
+          the tab bar (root z-50), which is what clipped the old drawer. */}
+      {workOpen && workMessage && isNarrow &&
+        createPortal(
+          <div className="fixed inset-0 z-[100]">
+            <div
+              className="absolute inset-0 bg-black/60"
+              onClick={closeWork}
+              aria-hidden="true"
             />
-          </div>
-        </div>
-      )}
+            <div className="absolute inset-x-0 bottom-0 h-[68%] rounded-t-2xl border-t border-void-700 overflow-hidden">
+              <WorkPanel
+                title={panelTitle}
+                running={panelRunning}
+                phaseLabel={statusLabel}
+                statusSeconds={statusSeconds}
+                stuck={stuck}
+                blocks={workBlocks}
+                onClose={closeWork}
+                onStop={stop}
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

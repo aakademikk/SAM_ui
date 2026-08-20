@@ -392,6 +392,17 @@
   }
 }
 
+/* Chat column height — tracks the Android soft keyboard via the visual
+   viewport var set by useVisualViewport; falls back to 100dvh. */
+.sam-chat-root {
+  height: calc(var(--sam-vv-height, 100dvh) - 3.5rem);
+}
+@media (min-width: 768px) {
+  .sam-chat-root {
+    height: 100dvh;
+  }
+}
+
 /* ============================ keyframes ==================================== */
 
 @keyframes sam-shimmer {

@@ -180,25 +180,27 @@ function ThinkingCard({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div>
+    <div className="rounded-lg border border-void-700 bg-void-900/40 overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-[11px] text-dim-400
-                   hover:text-dim-200 transition-colors"
+        className="w-full flex items-center gap-2 px-2.5 py-2 text-left
+                   hover:bg-void-800/60 transition-colors"
         aria-expanded={open}
       >
-        <Brain size={11} className="shrink-0" />
-        <span>{open ? 'Hide thinking' : 'Thought it through'}</span>
+        <Brain size={13} className="text-accent shrink-0" />
+        <span className="text-xs font-medium text-dim-200">
+          {open ? 'Hide thinking' : 'Thought it through'}
+        </span>
         <ChevronRight
-          size={11}
-          className={`transition-transform ${open ? 'rotate-90' : ''}`}
+          size={12}
+          className={`text-dim-400 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
         />
       </button>
       {open && (
         <p
-          className="mt-1.5 pl-3 border-l-2 border-void-700 text-[11px] leading-relaxed
-                     text-dim-400 whitespace-pre-wrap max-h-64 overflow-y-auto"
+          className="px-2.5 pb-2.5 pl-5 border-l-2 border-accent/40 text-xs leading-relaxed
+                     text-dim-200 whitespace-pre-wrap max-h-64 overflow-y-auto"
         >
           {text}
         </p>
