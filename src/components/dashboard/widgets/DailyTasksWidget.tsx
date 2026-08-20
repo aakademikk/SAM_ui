@@ -120,14 +120,16 @@ function TaskRow({ task, index, showMeta }: { task: DailyTask; index: number; sh
         {task.priority}
       </span>
 
-      <button
-        type="button"
-        onClick={() => deleteTask(task.id)}
-        aria-label={`Delete: ${task.title}`}
-        className="shrink-0 rounded-[3px] p-1 text-dim-200 opacity-0 transition hover:bg-alarm-500/15 hover:text-alarm-300 focus-visible:opacity-100 group-hover/task:opacity-100"
-      >
-        <Trash2 size={11} />
-      </button>
+      {!task.id.startsWith('task_priorities_') && (
+        <button
+          type="button"
+          onClick={() => deleteTask(task.id)}
+          aria-label={`Delete: ${task.title}`}
+          className="shrink-0 rounded-[3px] p-1 text-dim-200 opacity-0 transition hover:bg-alarm-500/15 hover:text-alarm-300 focus-visible:opacity-100 group-hover/task:opacity-100"
+        >
+          <Trash2 size={11} />
+        </button>
+      )}
     </motion.div>
   );
 }

@@ -1,9 +1,11 @@
 /**
  * SAM — real task telemetry.
  *
- * Reads Colin's actual priorities file. Read-only: dashboard mutations
- * (add/toggle/delete) only touch the in-memory estate, not this file —
- * the vault stays the single source of truth and SAM updates it by hand.
+ * Reads Colin's actual priorities file and, since 2026-08-20, writes to it:
+ * a dashboard toggle flips the checkbox mark in the vault (`setTaskDone`),
+ * so the vault stays the single source of truth and the done-state survives
+ * restarts and re-reads. The completion log / custom tasks live separately
+ * in taskState.ts.
  */
 
 import fs from 'node:fs';
@@ -20,6 +22,9 @@ const SECTION_META: Record<string, { tag: string; priority: TaskPriority }> = {
 };
 
 const CHECKBOX_RE = /^-\s*\[( |x|X)\]\s*(.+)$/;
+
+/** Match groups: 1 = `- [`, 2 = mark, 3 = `] `, 4 = body. Preserves spacing. */
+const MARK_RE = /^(-\s*\[)( |x|X)(\]\s*)(.+)$/;
 
 function cleanTitle(raw: string): string {
   return raw
@@ -81,4 +86,42 @@ export function readTasks(): DailyTask[] {
   const tasks = readNow();
   cached = { at: Date.now(), tasks };
   return tasks;
+}
+
+/** Drops the readTasks cache so a just-written vault line is seen immediately. */
+export function invalidateTasksCache() {
+  cached = null;
+}
+
+/**
+ * Flips the checkbox mark for the vault task matching `task.title` in
+ * Active Priorities.md. Best-effort: a title that no longer exists in the file
+ * (edited or removed in the vault) is left alone — the in-memory estate still
+ * flips for the response, and the next file read settles it.
+ */
+export function setTaskDone(task: DailyTask, done: boolean): void {
+  try {
+    const text = fs.readFileSync(PRIORITIES_PATH, 'utf-8');
+    const lines = text.split('\n');
+    let section: string | null = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const heading = lines[i].match(/^##\s+(.+)$/);
+      if (heading) {
+        section = heading[1].trim();
+        continue;
+      }
+      if (!section || !(section in SECTION_META)) continue;
+
+      const match = lines[i].match(MARK_RE);
+      if (!match) continue;
+      if (cleanTitle(match[4]) !== task.title) continue;
+
+      lines[i] = `${match[1]}${done ? 'x' : ' '}${match[3]}${match[4]}`;
+      fs.writeFileSync(PRIORITIES_PATH, lines.join('\n'), 'utf-8');
+      return;
+    }
+  } catch {
+    // Vault write failures are swallowed — the API response still reflects the toggle.
+  }
 }

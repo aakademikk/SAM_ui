@@ -35,7 +35,15 @@ import type {
 import { clamp, makeRng } from '@/lib/utils';
 import { sampleHost, sampleDockerService, REAL_SERVICE_BLUEPRINTS } from '@/lib/server/hostMetrics';
 import { scanVault } from '@/lib/server/vaultMetrics';
-import { readTasks } from '@/lib/server/taskMetrics';
+import { invalidateTasksCache, readTasks, setTaskDone } from '@/lib/server/taskMetrics';
+import {
+  completedTodayIds,
+  deleteCustomTask,
+  getCustomTasks,
+  recordCompletion,
+  streakDays,
+  upsertCustomTask,
+} from '@/lib/server/taskState';
 
 const SERIES_LENGTH = 60;
 const SERIES_STEP_MS = 4_000;
@@ -206,9 +214,6 @@ class EstateSimulator {
   automationRuns24h = 1_284;
   automationFailures24h = 7;
 
-  completedToday = 3;
-  streakDays = 11;
-
   /** Thresholds already reported, so SAM does not repeat himself every poll. */
   private firedInsights = new Set<string>();
 
@@ -281,7 +286,7 @@ class EstateSimulator {
       lastDeploy: new Date(now - Math.floor(this.rng() * 86_400_000 * 5)).toISOString(),
     }));
 
-    this.tasks = readTasks();
+    this.tasks = [...readTasks(), ...getCustomTasks()];
 
     this.accounts = [
       {
@@ -496,12 +501,9 @@ class EstateSimulator {
 
     /* --- Tasks (real: reads Active Priorities.md, see taskMetrics.ts) ---- */
     // File-sourced tasks are fully replaced each tick so edits/deletions in
-    // the file show up live; tasks added via the widget itself (ids outside
-    // the task_priorities_ namespace) are left alone.
-    this.tasks = [
-      ...readTasks(),
-      ...this.tasks.filter((t) => !t.id.startsWith('task_priorities_')),
-    ];
+    // the vault show up live; widget-added tasks come from the persisted store
+    // (taskState.ts) rather than this.tasks, so toggles and adds survive.
+    this.tasks = [...readTasks(), ...getCustomTasks()];
 
     /* --- Projects -------------------------------------------------------- */
     for (const project of this.projects) {
@@ -833,14 +835,15 @@ class EstateSimulator {
     const overdue = this.tasks.filter(
       (t) => !t.done && t.dueAt !== null && Date.parse(t.dueAt) < now,
     ).length;
+    const doneToday = completedTodayIds();
 
     return {
       tasks: [...this.tasks].sort((a, b) => {
         if (a.done !== b.done) return a.done ? 1 : -1;
         return a.priority.localeCompare(b.priority);
       }),
-      completedToday: this.completedToday,
-      streakDays: this.streakDays,
+      completedToday: this.tasks.filter((t) => t.done && doneToday.has(t.id)).length,
+      streakDays: streakDays(),
       overdue,
     };
   }
@@ -917,6 +920,7 @@ class EstateSimulator {
       origin: 'operator',
     };
     this.tasks.unshift(task);
+    upsertCustomTask(task);
     return this.getTasks();
   }
 
@@ -924,15 +928,32 @@ class EstateSimulator {
     const task = this.tasks.find((t) => t.id === id);
     if (task) {
       const wasDone = task.done;
+      const newDone = typeof patch.done === 'boolean' ? patch.done : wasDone;
       Object.assign(task, patch);
-      if (!wasDone && task.done) this.completedToday++;
-      if (wasDone && !task.done) this.completedToday = Math.max(0, this.completedToday - 1);
+      const doneChanged = newDone !== wasDone;
+
+      // Vault-sourced tasks write the mark back into Active Priorities.md;
+      // widget-added tasks persist through the task store.
+      if (doneChanged) {
+        if (task.id.startsWith('task_priorities_')) {
+          setTaskDone(task, newDone);
+          invalidateTasksCache();
+        } else {
+          upsertCustomTask(task);
+        }
+        if (newDone) recordCompletion(task);
+      }
     }
     return this.getTasks();
   }
 
-  deleteTask(id: string) {
+  /** Returns null when the task is vault-owned — the route maps that to a 409. */
+  deleteTask(id: string): DailyTasksPayload | null {
+    const task = this.tasks.find((t) => t.id === id);
+    if (!task) return this.getTasks();
+    if (task.id.startsWith('task_priorities_')) return null;
     this.tasks = this.tasks.filter((t) => t.id !== id);
+    deleteCustomTask(id);
     return this.getTasks();
   }
 
