@@ -8,17 +8,22 @@
  *
  * Voice deliberately speaks the final answer only — tool calls and thinking
  * are shown, never narrated.
+ *
+ * The main thread renders only the final answer; thinking, tool calls and the
+ * mid-turn commentary stream into a collapsible work panel (side panel on
+ * desktop, overlay drawer on mobile) so the chat stays clean.
  */
 
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Lock, Square } from 'lucide-react';
+import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Lock, Square, Wrench } from 'lucide-react';
 
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { HandsFreeMic } from '@/components/voice/HandsFreeMic';
 import { desktopWakeSeq } from '@/lib/desktopBridge';
-import { MessageBlocks } from '@/components/chat/MessageBlocks';
+import { splitBlocks, AnswerBlocks } from '@/components/chat/MessageBlocks';
+import { WorkPanel } from '@/components/chat/WorkPanel';
 import { readMessage as readCrossTab } from '@/lib/crossTab';
 import { jobsService } from '@/lib/jobsService';
 import { authService } from '@/lib/authService';
@@ -81,6 +86,10 @@ const SERVER_PHASE_LABEL: Record<string, string> = {
   done: '',
 };
 
+/** The work panel is in-flow on desktop and an overlay on phones; only a
+    fresh turn auto-opens it, and only on a screen that has room for both. */
+const isNarrowScreen = () => window.matchMedia('(max-width: 767px)').matches;
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
   const [input, setInput] = useState('');
@@ -108,6 +117,10 @@ export default function ChatPage() {
   const [tier, setTier] = useState<TierId>('fast');
   const [sessionCost, setSessionCost] = useState(0);
   const [audioBlocked, setAudioBlocked] = useState(false);
+  /** Work panel — which assistant message's thinking/tool calls are shown, and
+      whether the panel is open. The main thread renders answers only. */
+  const [workOpen, setWorkOpen] = useState(false);
+  const [workMessageId, setWorkMessageId] = useState<string | null>(null);
 
   const speechRef = useRef<SpeechHandle | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -131,6 +144,12 @@ export default function ChatPage() {
    * didn't means the service restarted under the run and the turn is dead.
    */
   const stopInitiatedRef = useRef(false);
+  /** True once the user hides the work panel mid-turn; a fresh turn may
+      auto-open it again on desktop, a reconnect to the same run must not. */
+  const workDismissedRef = useRef(false);
+  /** Id of the assistant message the panel is targeting — tells a reconnect
+      to the same run apart from a brand-new turn. */
+  const activeWorkIdRef = useRef<string | null>(null);
 
   /* ── Persistence ─────────────────────────────────────────────────────── */
 
@@ -226,6 +245,14 @@ export default function ChatPage() {
     setPhase('starting');
     setServerPhase(null);
     setError(null);
+
+    // Point the work panel at this turn. A reconnect to the SAME run must not
+    // re-trigger the auto-open the user may have dismissed mid-turn.
+    const freshTurn = activeWorkIdRef.current !== run.assistantId;
+    activeWorkIdRef.current = run.assistantId;
+    setWorkMessageId(run.assistantId);
+    if (freshTurn) workDismissedRef.current = false;
+    if (freshTurn && !isNarrowScreen() && !workDismissedRef.current) setWorkOpen(true);
 
     const patch = (fn: (m: ChatMessage) => ChatMessage) =>
       setMessages((prev) => prev.map((m) => (m.id === run.assistantId ? fn(m) : m)));
@@ -644,7 +671,45 @@ export default function ChatPage() {
     setSessionCost(0);
     setError(null);
     setRunning(false);
+    setWorkOpen(false);
+    setWorkMessageId(null);
+    workDismissedRef.current = false;
+    activeWorkIdRef.current = null;
   };
+
+  /* ── Work panel helpers ──────────────────────────────────────────────── */
+
+  const openWork = (id: string) => {
+    workDismissedRef.current = false;
+    setWorkMessageId(id);
+    setWorkOpen(true);
+  };
+
+  const closeWork = () => {
+    workDismissedRef.current = true;
+    setWorkOpen(false);
+  };
+
+  /* Escape closes the panel — keyboard users shouldn't need the X. */
+  useEffect(() => {
+    if (!workOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeWork();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [workOpen]);
+
+  /* The panel always shows one message's work — defaulting to the running
+     turn — and derives its blocks from that message each render, so a live
+     turn streams into it without any extra state. */
+  const workMessage = workMessageId
+    ? messages.find((m) => m.id === workMessageId && m.role === 'assistant')
+    : undefined;
+  const workBlocks = workMessage ? splitBlocks(workMessage.blocks).work : [];
+  /** The status line is only truthful while the panel targets the live turn. */
+  const panelRunning = running && workMessage?.id === activeWorkIdRef.current;
+  const panelTitle = panelRunning ? 'SAM · working' : 'SAM · work';
 
   /* ── Render ──────────────────────────────────────────────────────────── */
 
@@ -664,7 +729,9 @@ export default function ChatPage() {
         : '';
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:min-h-screen">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-3.5rem)] md:h-screen">
+      {/* Chat column — answers only. Work streams into the panel below. */}
+      <div className="flex-1 flex flex-col min-w-0">
       {/* Status bar — tier is a capability and a cost, so it stays visible */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-void-800 shrink-0">
         <button
@@ -739,7 +806,11 @@ export default function ChatPage() {
           </div>
         )}
 
-        {messages.map((msg) => (
+        {messages.map((msg) => {
+          const { answer, work } = splitBlocks(msg.blocks);
+          const showWork = msg.role === 'assistant' && work.length > 0;
+          const selected = workOpen && workMessageId === msg.id;
+          return (
           <div
             key={msg.id}
             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -751,7 +822,21 @@ export default function ChatPage() {
                   : 'max-w-[92%] md:max-w-[80%] bg-void-800/70 border border-void-700 w-full'
               }`}
             >
-              <MessageBlocks blocks={msg.blocks} />
+              <AnswerBlocks blocks={answer} />
+
+              {showWork && (
+                <button
+                  type="button"
+                  onClick={() => openWork(msg.id)}
+                  className={`mt-1.5 flex items-center gap-1.5 text-[10px] transition-colors ${
+                    selected ? 'text-accent' : 'text-dim-400 hover:text-dim-200'
+                  }`}
+                >
+                  <Wrench size={11} />
+                  View work
+                  <span className="text-dim-500">· {work.length}</span>
+                </button>
+              )}
 
               {msg.role === 'assistant' && msg.done && (
                 <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-void-700/60">
@@ -788,7 +873,8 @@ export default function ChatPage() {
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
 
         {/* Live progress — the cold start is real, so show what it is doing.
             The status line prefers the server's phase ping (Booting SAM /
@@ -921,6 +1007,43 @@ export default function ChatPage() {
           </button>
         </form>
       </div>
+      </div>
+
+      {/* Work panel — desktop: in-flow side panel. The main thread stays
+          answers-only; everything SAM did to get there lives here. */}
+      {workOpen && workMessage && (
+        <aside className="hidden md:flex w-[320px] lg:w-[380px] shrink-0 border-l border-void-700 h-full">
+          <WorkPanel
+            title={panelTitle}
+            running={panelRunning}
+            phaseLabel={statusLabel}
+            statusSeconds={statusSeconds}
+            stuck={stuck}
+            blocks={workBlocks}
+            onClose={closeWork}
+            onStop={stop}
+          />
+        </aside>
+      )}
+
+      {/* Work panel — mobile: overlay drawer. */}
+      {workOpen && workMessage && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/60" onClick={closeWork} aria-hidden="true" />
+          <div className="absolute right-0 top-0 bottom-0 w-[85%] max-w-sm border-l border-void-700">
+            <WorkPanel
+              title={panelTitle}
+              running={panelRunning}
+              phaseLabel={statusLabel}
+              statusSeconds={statusSeconds}
+              stuck={stuck}
+              blocks={workBlocks}
+              onClose={closeWork}
+              onStop={stop}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

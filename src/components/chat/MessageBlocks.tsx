@@ -243,3 +243,89 @@ export function MessageBlocks({ blocks }: { blocks: ChatBlock[] }) {
     </div>
   );
 }
+
+/* ========================================================================== */
+/* Answer / work split — the chat thread shows only the final answer; the     */
+/* thinking and tool calls live in a separate collapsible work panel.         */
+/* ========================================================================== */
+
+/**
+ * Split a turn's blocks into what belongs on the main chat (the answer) and
+ * what belongs in the work panel. The answer is the LAST text block — the
+ * parser merges consecutive text, so any earlier text blocks are the model
+ * narrating its working mid-turn. Thinking and tool calls are always work.
+ * Errors stay on the main chat: they are outcomes, not process.
+ */
+export function splitBlocks(blocks: ChatBlock[]): { answer: ChatBlock[]; work: ChatBlock[] } {
+  let lastText = -1;
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i].kind === 'text') lastText = i;
+  }
+
+  const answer: ChatBlock[] = [];
+  const work: ChatBlock[] = [];
+  blocks.forEach((b, i) => {
+    if (b.kind === 'error') {
+      answer.push(b);
+    } else if (b.kind === 'text') {
+      (i === lastText ? answer : work).push(b);
+    } else {
+      work.push(b); // thinking, tool
+    }
+  });
+  return { answer, work };
+}
+
+/** The final-answer renderer for the main chat thread. */
+export function AnswerBlocks({ blocks }: { blocks: ChatBlock[] }) {
+  return (
+    <div className="space-y-2">
+      {blocks.map((block, i) => {
+        if (block.kind === 'text') {
+          return (
+            <p key={i} className="text-sm leading-relaxed whitespace-pre-wrap text-dim-100">
+              {block.text}
+            </p>
+          );
+        }
+        if (block.kind === 'error') {
+          return (
+            <p
+              key={i}
+              className="text-xs text-red-400 bg-red-900/15 border border-red-700/25
+                         rounded px-2 py-1.5"
+            >
+              {block.text}
+            </p>
+          );
+        }
+        return null;
+      })}
+    </div>
+  );
+}
+
+/** The process renderer for the work panel — thinking, tool calls, and the
+    mid-turn commentary the model types out between them. */
+export function WorkBlocks({ blocks }: { blocks: ChatBlock[] }) {
+  return (
+    <div className="space-y-2">
+      {blocks.map((block, i) => {
+        switch (block.kind) {
+          case 'thinking':
+            return <ThinkingCard key={i} text={block.text} />;
+          case 'tool':
+            return <ToolCard key={block.id || i} block={block} />;
+          case 'text':
+            return (
+              <p key={i} className="text-sm leading-relaxed whitespace-pre-wrap text-dim-300">
+                {block.text}
+              </p>
+            );
+          default:
+            return null;
+        }
+      })}
+    </div>
+  );
+}
