@@ -128,6 +128,11 @@ export default function ChatPage() {
   const speechRef = useRef<SpeechHandle | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  /** Root of the chat column — carries --kb (keyboard overlay height). */
+  const rootRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  /** The composer floats above the tab bar on mobile; --composer-h tracks its height. */
+  const composerRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<{ close(): void } | null>(null);
   /** Serialises sends — see the guard at the top of send(). */
   const sendLockRef = useRef(false);
@@ -622,6 +627,58 @@ export default function ChatPage() {
     if (window.matchMedia('(pointer: fine)').matches) inputRef.current?.focus();
   }, []);
 
+  /* ── Soft keyboard — lift the composer above it ──────────────────────── */
+
+  // Android browsers default to interactive-widget=resizes-visual: the keyboard
+  // shrinks the VISUAL viewport and overlays the layout viewport. Stock Chrome
+  // honours interactive-widget=resizes-content (meta in layout.tsx) and resizes
+  // the layout viewport instead — but Brave ignores it. So the overlay height is
+  // measured here as innerHeight − visualViewport bottom edge, which is the
+  // keyboard height when the layout viewport does NOT resize, and 0 when it
+  // DOES (innerHeight shrinks with the keyboard). Either way the lift is exact.
+  // The composer is fixed, so this changes no layout the IME is trying to scroll.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const root = rootRef.current;
+    if (!vv || !root) return;
+    let raf = 0;
+    const update = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const overlay = Math.max(0, window.innerHeight - (vv.offsetTop || 0) - vv.height);
+        root.style.setProperty('--kb', `${overlay}px`);
+        // The added padding pushes the newest message up behind the composer;
+        // if the thread was pinned to the bottom, re-pin it so the latest
+        // message stays visible while typing.
+        const msgs = messagesRef.current;
+        if (msgs && msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 48) {
+          msgs.scrollTop = msgs.scrollHeight;
+        }
+      });
+    };
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    update();
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  /* The composer floats (mobile), so the message list needs its height as
+     bottom padding for the last message to clear it. */
+  useEffect(() => {
+    const root = rootRef.current;
+    const composer = composerRef.current;
+    if (!root || !composer) return;
+    const setHeight = () => root.style.setProperty('--composer-h', `${composer.offsetHeight}px`);
+    setHeight();
+    const ro = new ResizeObserver(setHeight);
+    ro.observe(composer);
+    return () => ro.disconnect();
+  }, []);
+
   /* ── Wake-word launch ────────────────────────────────────────────────── */
 
   // The Android service opens this page as /chat?wake=1&os_port=8765 when it
@@ -759,7 +816,7 @@ export default function ChatPage() {
         : '';
 
   return (
-    <div className="sam-chat-root flex flex-col md:flex-row">
+    <div ref={rootRef} className="sam-chat-root flex flex-col md:flex-row">
       {/* Chat column — answers only. Work streams into the panel below. */}
       <div className="flex-1 flex flex-col min-w-0">
       {/* Status bar — tier is a capability and a cost, so it stays visible */}
@@ -827,7 +884,7 @@ export default function ChatPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-4">
+      <div ref={messagesRef} className="chat-messages flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-3 py-20">
             <Cpu size={32} className="text-accent/40" />
@@ -967,11 +1024,12 @@ export default function ChatPage() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Composer */}
+      {/* Composer — floats above the tab bar on mobile (see .chat-composer),
+          in-flow on desktop. */}
       <div
-        className="shrink-0 border-t border-void-700 bg-void-900/80 backdrop-blur-md
-                   px-3 py-2.5 md:px-6 md:py-3 space-y-2
-                   pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]"
+        ref={composerRef}
+        className="chat-composer shrink-0 border-t border-void-700 bg-void-900/80 backdrop-blur-md
+                   px-3 py-2.5 md:px-6 md:py-3 space-y-2"
       >
         {handsFree && !handsFreeFailed && (
           <p className="text-center text-[11px] tracking-wide text-accent">

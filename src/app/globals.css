@@ -392,16 +392,38 @@
   }
 }
 
-/* Chat column height. 100dvh shrinks with the Android soft keyboard because
-   the root viewport sets interactive-widget=resizes-content — the browser
-   resizes the layout viewport itself, so no JS tracking is needed (and the
-   JS race with the IME's scroll-into-view is what broke the composer before). */
+/* Chat column height. The 3.5rem + safe-area offset matches main's tab-bar
+   bottom padding so the page never scrolls on its own. Desktop is a straight
+   100dvh. */
 .sam-chat-root {
-  height: calc(100dvh - 3.5rem);
+  height: calc(100dvh - 3.5rem - env(safe-area-inset-bottom, 0px));
 }
 @media (min-width: 768px) {
   .sam-chat-root {
     height: 100dvh;
+  }
+}
+
+/* Mobile composer floats above the tab bar. --kb is the soft-keyboard overlay
+   height driven by the visualViewport hook; it lifts the composer above the
+   keyboard on browsers that ignore interactive-widget=resizes-content (Brave).
+   The composer is position:fixed — fixed elements are never scroll targets, so
+   the IME's scroll-into-view on focus cannot fight the lift (that race broke
+   the earlier in-flow attempts). */
+.chat-composer {
+  position: static;
+}
+@media (max-width: 767px) {
+  .chat-composer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px) + var(--kb, 0px));
+    z-index: 40;
+  }
+  /* Room for the last message to clear the floating composer (+ keyboard). */
+  .chat-messages {
+    padding-bottom: calc(var(--composer-h, 0px) + var(--kb, 0px));
   }
 }
 
