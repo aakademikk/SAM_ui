@@ -40,7 +40,7 @@ export const WIDGET_SIZE_LABELS: Record<WidgetSize, string> = {
   lg: 'Large · 2×2',
 };
 
-export type AmbientTheme = 'void' | 'plasma' | 'toxic' | 'ember' | 'ghost';
+export type AmbientTheme = 'void' | 'plasma' | 'toxic' | 'ember' | 'ghost' | 'emerald';
 
 export const AMBIENT_THEMES: { id: AmbientTheme; label: string; swatch: [string, string] }[] = [
   { id: 'void', label: 'Void', swatch: ['#a855f7', '#22d3ee'] },
@@ -48,6 +48,7 @@ export const AMBIENT_THEMES: { id: AmbientTheme; label: string; swatch: [string,
   { id: 'toxic', label: 'Toxic', swatch: ['#22d3ee', '#4ade80'] },
   { id: 'ember', label: 'Ember', swatch: ['#fb923c', '#f43f5e'] },
   { id: 'ghost', label: 'Ghost', swatch: ['#94a3b8', '#67e8f9'] },
+  { id: 'emerald', label: 'Emerald', swatch: ['#3dff5a', '#9dff70'] },
 ];
 
 /* ========================================================================== */

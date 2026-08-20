@@ -34,6 +34,7 @@ const THEME_COLORS: Record<AmbientTheme, { a: string; b: string; edge: string; c
   toxic: { a: '#22d3ee', b: '#4ade80', edge: '#06b6d4', city: '#0e7490' },
   ember: { a: '#fb923c', b: '#f43f5e', edge: '#ea580c', city: '#9a3412' },
   ghost: { a: '#94a3b8', b: '#67e8f9', edge: '#64748b', city: '#334155' },
+  emerald: { a: '#3dff5a', b: '#9dff70', edge: '#10b981', city: '#065f46' },
 };
 
 /* ========================================================================== */

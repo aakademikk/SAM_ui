@@ -150,6 +150,15 @@
   --sam-accent-3-rgb: 203 213 225;
 }
 
+:root[data-ambient='emerald'] {
+  --sam-accent: #3dff5a;
+  --sam-accent-2: #9dff70;
+  --sam-accent-3: #2dd4bf;
+  --sam-accent-rgb: 61 255 90;
+  --sam-accent-2-rgb: 157 255 112;
+  --sam-accent-3-rgb: 45 212 191;
+}
+
 @layer base {
   * {
     border-color: color-mix(in oklab, var(--color-void-400) 60%, transparent);

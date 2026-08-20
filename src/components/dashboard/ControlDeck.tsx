@@ -124,7 +124,7 @@ export function ControlDeck() {
             {/* Ambient theme */}
             <div className="mb-3">
               <span className="label mb-1.5 block">ambient theme</span>
-              <div className="grid grid-cols-5 gap-1.5">
+              <div className="grid grid-cols-6 gap-1.5">
                 {AMBIENT_THEMES.map((theme) => (
                   <button
                     key={theme.id}
