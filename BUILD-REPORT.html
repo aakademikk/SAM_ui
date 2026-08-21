@@ -1,0 +1,450 @@
+<title>SAM — Multi-Device Build Report</title>
+<meta name="description" content="30 commits, 8+ phases: HTTPS, systemd, job system, responsive PWA, WebAuthn, voice, chat, TTS, vault search." />
+
+<style>
+  :root {
+    --bg: #020207;
+    --surface: #070713;
+    --surface-raised: #0a0a18;
+    --border: #16162c;
+    --text: #d4d4e2;
+    --text-muted: #6b6b82;
+    --accent: #22d3ee;
+    --green: #4ade80;
+    --green-dim: #166534;
+    --amber: #fbbf24;
+    --red: #f87171;
+    --code-bg: #0f0f20;
+    --font: system-ui, -apple-system, sans-serif;
+    --mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    line-height: 1.6;
+    padding: 2rem 1rem 4rem;
+  }
+
+  .container {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  .report-header {
+    margin-bottom: 2.5rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .report-header h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #fff;
+    margin-bottom: 0.5rem;
+  }
+
+  .report-header p {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    max-width: 560px;
+  }
+
+  /* Stat row */
+  .stat-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin: 1.5rem 0 2rem;
+  }
+
+  .stat {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    min-width: 100px;
+    flex: 1;
+  }
+
+  .stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: var(--mono);
+    letter-spacing: -0.02em;
+  }
+
+  .stat-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 0.25rem;
+  }
+
+  /* Phase sections */
+  .phase {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+
+  .phase-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    cursor: default;
+  }
+
+  .phase-num {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--accent);
+    background: rgba(34, 211, 238, 0.08);
+    border: 1px solid rgba(34, 211, 238, 0.15);
+    border-radius: 6px;
+    padding: 0.2rem 0.5rem;
+    white-space: nowrap;
+  }
+
+  .phase-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #fff;
+    flex: 1;
+  }
+
+  .phase-badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 99px;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+
+  .badge-done {
+    background: rgba(74, 222, 128, 0.1);
+    color: var(--green);
+    border: 1px solid rgba(74, 222, 128, 0.2);
+  }
+
+  .phase-body {
+    padding: 0 1.25rem 1.25rem;
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+  }
+
+  .phase-body p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+    line-height: 1.5;
+  }
+
+  .file-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .file-tag {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    background: var(--code-bg);
+    color: var(--text-muted);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  .file-tag.new {
+    color: var(--green);
+    background: rgba(74, 222, 128, 0.06);
+  }
+
+  /* Commit log */
+  .commit-section {
+    margin-top: 2.5rem;
+  }
+
+  .commit-section h2 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 1rem;
+  }
+
+  .commit {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(22, 22, 44, 0.5);
+    display: flex;
+    gap: 0.75rem;
+    align-items: baseline;
+  }
+
+  .commit-hash {
+    color: var(--accent);
+    min-width: 52px;
+    font-weight: 500;
+  }
+
+  .commit-msg {
+    color: var(--text-muted);
+    flex: 1;
+  }
+
+  /* Footer */
+  .report-footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+</style>
+
+<div class="container">
+  <!-- Header -->
+  <div class="report-header">
+    <h1>SAM — Multi-Device Build</h1>
+    <p>Full-stack mobile PWA for SAM, Col's executive AI manager. 30 commits across 8 build phases plus chat, voice, TTS, and live vault search.</p>
+
+    <div class="stat-row">
+      <div class="stat">
+        <div class="stat-value">30</div>
+        <div class="stat-label">Commits</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">8+</div>
+        <div class="stat-label">Phases</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">~60</div>
+        <div class="stat-label">Files Created</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">~6K</div>
+        <div class="stat-label">Lines of Code</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 1 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-num">P1</span>
+      <span class="phase-title">HTTPS over Tailscale</span>
+      <span class="phase-badge badge-done">done</span>
+    </div>
+    <div class="phase-body">
+      <p>MagicDNS enabled, tailscale serve with auto-provisioned Let's Encrypt certificate. Hostname typo fixed (Macine → Machine). Origin: <code>super-awesome-machine.tail2eadff.ts.net</code> — documented with WebAuthn rpID warning.</p>
+      <div class="file-list">
+        <span class="file-tag">README.md</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 2 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-num">P2</span>
+      <span class="phase-title">Systemd service + health endpoint</span>
+      <span class="phase-badge badge-done">done</span>
+    </div>
+    <div class="phase-body">
+      <p>User systemd service starts SAM on boot, survives logout. loginctl linger enabled. GET /api/health returns uptime, git SHA, node version. Sleep targets left unmasked (Col's preference).</p>
+      <div class="file-list">
+        <span class="file-tag new">scripts/sam-ui.service</span>
+        <span class="file-tag new">scripts/install-service.sh</span>
+        <span class="file-tag new">src/app/api/health/route.ts</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 3 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-num">P3</span>
+      <span class="phase-title">Server-owned sessions (job system)</span>
+      <span class="phase-badge badge-done">done</span>
+    </div>
+    <div class="phase-body">
+      <p>Commands become server-side jobs with stable IDs, status, exit codes. Output persisted to ~/.sam/jobs/ with binary framing and monotonic sequence numbers. SSE streaming with Last-Event-ID resume — reconnect without gaps or duplicates. 1MB output cap, 128-job cache, 7-day retention. stdin via POST.</p>
+      <div class="file-list">
+        <span class="file-tag new">src/lib/server/jobs/manager.ts</span>
+        <span class="file-tag new">src/types/jobs.ts</span>
+        <span class="file-tag new">src/app/api/jobs/route.ts</span>
+        <span class="file-tag new">src/app/api/jobs/[id]/route.ts</span>
+        <span class="file-tag new">src/app/api/jobs/[id]/stream/route.ts</span>
+        <span class="file-tag new">src/app/api/jobs/[id]/input/route.ts</span>
+        <span class="file-tag new">src/lib/jobsService.ts</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 4 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-num">P4</span>
+      <span class="phase-title">Responsive layout, single component tree</span>
+      <span class="phase-badge badge-done">done</span>
+    </div>
+    <div class="phase-body">
+      <p>CSS Grid shell: Sidebar on desktop (≥768px), TabBar on mobile. One component tree — no duplicate mounts. Terminal uses 100dvh + VisualViewport API for Android keyboard. KeyBar with Ctrl/Esc/Tab/arrows. Route group (app)/ keeps /intro standalone. Dev-mode duplicate mount detection.</p>
+      <div class="file-list">
+        <span class="file-tag new">src/components/shell/AppShell.tsx</span>
+        <span class="file-tag new">src/components/shell/Sidebar.tsx</span>
+        <span class="file-tag new">src/components/shell/TabBar.tsx</span>
+        <span class="file-tag new">src/components/shell/useVisualViewport.ts</span>
+        <span class="file-tag new">src/components/shell/useDevDuplicateCheck.ts</span>
+        <span class="file-tag new">src/components/terminal/Terminal.tsx</span>
+        <span class="file-tag new">src/components/terminal/KeyBar.tsx</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 5 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-num">P5</span>
+      <span class="phase-title">PWA with Serwist</span>
+      <span class="phase-badge badge-done">done</span>
+    </div>
+    <div class="phase-body">
+      <p>@serwist/next service worker. Network-first for API/navigation, CacheFirst for static assets. manifest.json with maskable icons, standalone display, dark theme. Offline fallback page. Install prompt capture + custom install button. SW disabled in dev.</p>
+      <div class="file-list">
+        <span class="file-tag new">src/app/sw.ts</span>
+        <span class="file-tag new">public/manifest.json</span>
+        <span class="file-tag new">public/sw.js</span>
+        <span class="file-tag new">public/icons/icon-*.png</span>
+        <span class="file-tag new">src/app/offline/page.tsx</span>
+        <span class="file-tag new">src/components/shell/ServiceWorkerRegistration.tsx</span>
+        <span class="file-tag new">src/components/shell/InstallButton.tsx</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 6 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-num">P6</span>
+      <span class="phase-title">WebAuthn passkey auth</span>
+      <span class="phase-badge badge-done">done</span>
+    </div>
+    <div class="phase-body">
+      <p>@simplewebauthn passkey registration + authentication. Two-tier session model: sam-session (30d, httpOnly, read) + sam-stepup (5min, httpOnly, write). Biometric step-up via platform authenticator. JWT key persisted to disk — survives restarts. Rate limiting, audit log, device management. Auth enforced on all job write endpoints.</p>
+      <div class="file-list">
+        <span class="file-tag new">src/lib/server/auth/store.ts</span>
+        <span class="file-tag new">src/lib/server/auth/session.ts</span>
+        <span class="file-tag new">src/lib/server/auth/guard.ts</span>
+        <span class="file-tag new">src/lib/server/auth/rateLimit.ts</span>
+        <span class="file-tag new">src/lib/server/auth/auditLog.ts</span>
+        <span class="file-tag new">src/lib/server/auth/webauthn.ts</span>
+        <span class="file-tag new">src/app/api/auth/register/options/route.ts</span>
+        <span class="file-tag new">src/app/api/auth/register/verify/route.ts</span>
+        <span class="file-tag new">src/app/api/auth/authenticate/options/route.ts</span>
+        <span class="file-tag new">src/app/api/auth/authenticate/verify/route.ts</span>
+        <span class="file-tag new">src/app/api/auth/stepup/route.ts</span>
+        <span class="file-tag new">src/app/api/auth/session/route.ts</span>
+        <span class="file-tag new">src/app/api/auth/devices/route.ts</span>
+        <span class="file-tag new">src/lib/authService.ts</span>
+        <span class="file-tag new">src/components/auth/LoginButton.tsx</span>
+        <span class="file-tag new">src/app/(app)/register/page.tsx</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 7 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-num">P7</span>
+      <span class="phase-title">Voice input (Parakeet STT)</span>
+      <span class="phase-badge badge-done">done</span>
+    </div>
+    <div class="phase-body">
+      <p>NVIDIA Parakeet TDT 0.6B v3 via sherpa-onnx-node (INT8 ONNX, 465MB). Transducer decoder emits blanks during silence — no phantom text hallucination. ffmpeg pipeline for audio conversion. Mic acquired on first user gesture (Chrome requirement). Hold-to-record, slide-to-cancel, audio level meter. Confirm step before execution.</p>
+      <div class="file-list">
+        <span class="file-tag new">src/lib/server/voice/recognizer.ts</span>
+        <span class="file-tag new">src/app/api/voice/transcribe/route.ts</span>
+        <span class="file-tag new">src/components/voice/VoiceRecordButton.tsx</span>
+        <span class="file-tag new">src/lib/voiceService.ts</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat + TTS + Vault -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-num">+</span>
+      <span class="phase-title">Chat, TTS, Cross-tab &amp; Vault Search</span>
+      <span class="phase-badge badge-done">done</span>
+    </div>
+    <div class="phase-body">
+      <p>Live AI chat with streaming SSE, SAM personality from CLAUDE.md. Local Kokoro TTS (multi-lang v1.0, 53 voices, 330MB) — default bf_emma (British Female). Voice selector in Settings with live preview. Auto-speak with mute toggle. Chat history persisted to localStorage. Cross-tab command passing (Chat ↔ Terminal). Real-time vault grep on every message — SAM searches your Obsidian vault live.</p>
+      <div class="file-list">
+        <span class="file-tag new">src/app/api/chat/route.ts</span>
+        <span class="file-tag new">src/app/api/chat/tts/route.ts</span>
+        <span class="file-tag new">src/lib/server/chat/context.ts</span>
+        <span class="file-tag new">src/lib/server/voice/tts.ts</span>
+        <span class="file-tag new">src/lib/voiceData.ts</span>
+        <span class="file-tag new">src/lib/crossTab.ts</span>
+        <span class="file-tag new">src/app/(app)/chat/page.tsx</span>
+        <span class="file-tag new">src/app/(app)/settings/page.tsx</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Commit log -->
+  <div class="commit-section">
+    <h2>All 30 commits</h2>
+    <div class="commit"><span class="commit-hash">a3cabac</span><span class="commit-msg">feat: real-time vault search for chat — SAM reads the vault live</span></div>
+    <div class="commit"><span class="commit-hash">9f360bc</span><span class="commit-msg">fix: don't auto-speak old messages on tab switch, remove TTS delay</span></div>
+    <div class="commit"><span class="commit-hash">bc65576</span><span class="commit-msg">fix: UI visibility tweaks — brighter tabs, larger voice box, no autocaps</span></div>
+    <div class="commit"><span class="commit-hash">6bfb840</span><span class="commit-msg">fix: resolve sendMessage name collision in chat page</span></div>
+    <div class="commit"><span class="commit-hash">74e0cbc</span><span class="commit-msg">feat: cross-tab Chat ↔ Terminal interop via localStorage</span></div>
+    <div class="commit"><span class="commit-hash">b80268b</span><span class="commit-msg">fix: TTS voice ID validation range — 0-52, not 0-10</span></div>
+    <div class="commit"><span class="commit-hash">098a503</span><span class="commit-msg">fix: chat passes selected voice ID to TTS endpoint</span></div>
+    <div class="commit"><span class="commit-hash">6e14d72</span><span class="commit-msg">feat: British voice, green theme, and real Settings page</span></div>
+    <div class="commit"><span class="commit-hash">1aafb6d</span><span class="commit-msg">fix: surface auth errors on terminal Run — no more silent failures</span></div>
+    <div class="commit"><span class="commit-hash">72eda3c</span><span class="commit-msg">fix: persist chat history + SAM no longer pretends to look things up</span></div>
+    <div class="commit"><span class="commit-hash">36188e0</span><span class="commit-msg">fix: persistent sessions + auto-speak with mute toggle</span></div>
+    <div class="commit"><span class="commit-hash">82e46c2</span><span class="commit-msg">fix: speaker icon visibility — show while content exists, brighter color</span></div>
+    <div class="commit"><span class="commit-hash">30754d3</span><span class="commit-msg">feat: live context injection for SAM chat</span></div>
+    <div class="commit"><span class="commit-hash">b6d32f0</span><span class="commit-msg">feat: local TTS with Kokoro multi-lang v1.0 (53 voices)</span></div>
+    <div class="commit"><span class="commit-hash">a09b689</span><span class="commit-msg">feat: text-to-speech for chat replies via ElevenLabs</span></div>
+    <div class="commit"><span class="commit-hash">8e87c82</span><span class="commit-msg">feat: add voice record button to Chat page</span></div>
+    <div class="commit"><span class="commit-hash">b5a68fa</span><span class="commit-msg">feat: live AI chat with SAM via Anthropic-compatible API</span></div>
+    <div class="commit"><span class="commit-hash">c8827b3</span><span class="commit-msg">fix: add mobile login prompt to Terminal page</span></div>
+    <div class="commit"><span class="commit-hash">96d2cf3</span><span class="commit-msg">fix: acquire microphone on first user gesture, not on mount</span></div>
+    <div class="commit"><span class="commit-hash">ad1d3ac</span><span class="commit-msg">feat: Phase 7 — voice input via NVIDIA Parakeet TDT + sherpa-onnx</span></div>
+    <div class="commit"><span class="commit-hash">dc9f2d7</span><span class="commit-msg">fix: allow cross-platform WebAuthn authenticators + origin warning</span></div>
+    <div class="commit"><span class="commit-hash">80ba7d3</span><span class="commit-msg">feat: Phase 6 — WebAuthn passkey auth with biometric step-up</span></div>
+    <div class="commit"><span class="commit-hash">fd9b532</span><span class="commit-msg">fix: add beforeinstallprompt handler + install button</span></div>
+    <div class="commit"><span class="commit-hash">1c3066c</span><span class="commit-msg">feat: Phase 5 — PWA with Serwist service worker</span></div>
+    <div class="commit"><span class="commit-hash">ca6436c</span><span class="commit-msg">feat: Phase 4 — responsive layout, single component tree</span></div>
+    <div class="commit"><span class="commit-hash">3c09c81</span><span class="commit-msg">feat: Phase 3 — server-owned sessions, job system, SSE streaming</span></div>
+    <div class="commit"><span class="commit-hash">d1fc205</span><span class="commit-msg">feat: Phase 1+2 — HTTPS over Tailscale, systemd service, health endpoint</span></div>
+  </div>
+
+  <div class="report-footer">
+    <span>Built on branch <code>claude/sam-core-dashboard-sf3639</code></span>
+    <span>Aug 10, 2026 · SAM_ui v0.1.0</span>
+  </div>
+</div>

@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.atwoodsystems.sam",
+      "sha256_cert_fingerprints": [
+        "7C:41:31:5D:05:48:A2:08:71:83:B8:58:49:32:C4:42:D8:D1:24:E1:43:70:CF:21:BE:C4:17:5E:11:82:F4:35"
+      ]
+    }
+  }
+]

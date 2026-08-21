@@ -1,0 +1,1862 @@
+{
+  "generatedAt": 1786665245643,
+  "vault": "/home/col/ai-memory-vault",
+  "hub": 44,
+  "counts": {
+    "notes": 72,
+    "edges": 280,
+    "unresolvedLinks": 6
+  },
+  "folders": {
+    "02 - Atwood Systems": 38,
+    "05 - Resources": 15,
+    "01 - Daily Notes": 11,
+    "03 - Personal": 4,
+    "(root)": 3,
+    "06 - Handoffs": 1
+  },
+  "nodes": [
+    {
+      "id": "01 - Daily Notes/08 - August 2026/2026-08-05.md",
+      "label": "2026-08-05",
+      "folder": "01 - Daily Notes",
+      "degree": 0,
+      "ring": 3,
+      "x": -0.3962,
+      "y": -0.7387,
+      "lastModified": 1786026659353
+    },
+    {
+      "id": "01 - Daily Notes/08 - August 2026/2026-08-06.md",
+      "label": "2026-08-06",
+      "folder": "01 - Daily Notes",
+      "degree": 4,
+      "ring": 2,
+      "x": -0.464,
+      "y": 0.2218,
+      "lastModified": 1786053758954
+    },
+    {
+      "id": "01 - Daily Notes/08 - August 2026/2026-08-07.md",
+      "label": "2026-08-07",
+      "folder": "01 - Daily Notes",
+      "degree": 25,
+      "ring": 0,
+      "x": -0.053,
+      "y": 0.0522,
+      "lastModified": 1786144915354
+    },
+    {
+      "id": "01 - Daily Notes/08 - August 2026/2026-08-08.md",
+      "label": "2026-08-08",
+      "folder": "01 - Daily Notes",
+      "degree": 2,
+      "ring": 2,
+      "x": -0.7631,
+      "y": -0.1388,
+      "lastModified": 1786199849137
+    },
+    {
+      "id": "01 - Daily Notes/08 - August 2026/2026-08-09.md",
+      "label": "2026-08-09",
+      "folder": "01 - Daily Notes",
+      "degree": 6,
+      "ring": 1,
+      "x": -0.2994,
+      "y": -0.2532,
+      "lastModified": 1786308921621
+    },
+    {
+      "id": "01 - Daily Notes/08 - August 2026/2026-08-10.md",
+      "label": "2026-08-10",
+      "folder": "01 - Daily Notes",
+      "degree": 11,
+      "ring": 0,
+      "x": 0.1471,
+      "y": -0.144,
+      "lastModified": 1786401655738
+    },
+    {
+      "id": "01 - Daily Notes/08 - August 2026/2026-08-11.md",
+      "label": "2026-08-11",
+      "folder": "01 - Daily Notes",
+      "degree": 18,
+      "ring": 0,
+      "x": 0.0839,
+      "y": -0.0465,
+      "lastModified": 1786520317037
+    },
+    {
+      "id": "01 - Daily Notes/08 - August 2026/2026-08-12.md",
+      "label": "2026-08-12",
+      "folder": "01 - Daily Notes",
+      "degree": 20,
+      "ring": 0,
+      "x": -0.0882,
+      "y": -0.0214,
+      "lastModified": 1786573297741
+    },
+    {
+      "id": "01 - Daily Notes/08 - August 2026/2026-08-13.md",
+      "label": "2026-08-13",
+      "folder": "01 - Daily Notes",
+      "degree": 13,
+      "ring": 0,
+      "x": -0.1256,
+      "y": -0.0629,
+      "lastModified": 1786660942151
+    },
+    {
+      "id": "01 - Daily Notes/08 - August 2026/2026-08-14.md",
+      "label": "2026-08-14",
+      "folder": "01 - Daily Notes",
+      "degree": 4,
+      "ring": 2,
+      "x": 0.2047,
+      "y": -0.4795,
+      "lastModified": 1786664990541
+    },
+    {
+      "id": "01 - Daily Notes/Daily Note Template.md",
+      "label": "Daily Note Template",
+      "folder": "01 - Daily Notes",
+      "degree": 0,
+      "ring": 3,
+      "x": 0.8058,
+      "y": 0.3111,
+      "lastModified": 1785976281649
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/00_SAM_Control.md",
+      "label": "00_SAM_Control",
+      "folder": "02 - Atwood Systems",
+      "degree": 13,
+      "ring": 0,
+      "x": 0.1461,
+      "y": -0.0366,
+      "lastModified": 1786624221937
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/Active_Queue.md",
+      "label": "Active_Queue",
+      "folder": "02 - Atwood Systems",
+      "degree": 12,
+      "ring": 0,
+      "x": 0.137,
+      "y": 0.1137,
+      "lastModified": 1786144405493
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/Error_Ledger.md",
+      "label": "Error_Ledger",
+      "folder": "02 - Atwood Systems",
+      "degree": 9,
+      "ring": 1,
+      "x": -0.1969,
+      "y": 0.1397,
+      "lastModified": 1786143058509
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/Fleet_Job_Protocol.md",
+      "label": "Fleet_Job_Protocol",
+      "folder": "02 - Atwood Systems",
+      "degree": 12,
+      "ring": 0,
+      "x": -0.1924,
+      "y": 0.0087,
+      "lastModified": 1786660210310
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/Fleet_Model_Routing.md",
+      "label": "Fleet_Model_Routing",
+      "folder": "02 - Atwood Systems",
+      "degree": 11,
+      "ring": 0,
+      "x": -0.0052,
+      "y": 0.2044,
+      "lastModified": 1786664930169
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/Optimisation_Log.md",
+      "label": "Optimisation_Log",
+      "folder": "02 - Atwood Systems",
+      "degree": 7,
+      "ring": 1,
+      "x": -0.3391,
+      "y": 0.0763,
+      "lastModified": 1786143061525
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/SAM_Mobile_Parity_Plan.md",
+      "label": "SAM_Mobile_Parity_Plan",
+      "folder": "02 - Atwood Systems",
+      "degree": 5,
+      "ring": 1,
+      "x": -0.2899,
+      "y": 0.2873,
+      "lastModified": 1786411119800
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/SAM_Phone_Assistant_Plan.md",
+      "label": "SAM_Phone_Assistant_Plan",
+      "folder": "02 - Atwood Systems",
+      "degree": 3,
+      "ring": 2,
+      "x": -0.6309,
+      "y": 0.0659,
+      "lastModified": 1786483815482
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/SAM_ui_Dashboard.md",
+      "label": "SAM_ui_Dashboard",
+      "folder": "02 - Atwood Systems",
+      "degree": 9,
+      "ring": 1,
+      "x": 0.0575,
+      "y": -0.2425,
+      "lastModified": 1786663935466
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/jobs/job-2026-08-13-leads.md",
+      "label": "job-2026-08-13-leads",
+      "folder": "02 - Atwood Systems",
+      "degree": 0,
+      "ring": 3,
+      "x": -0.8495,
+      "y": 0.271,
+      "lastModified": 1786660075345
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/jobs/job-2026-08-13-leads/outreach-01.md",
+      "label": "outreach-01",
+      "folder": "02 - Atwood Systems",
+      "degree": 0,
+      "ring": 3,
+      "x": 0.4298,
+      "y": -0.7976,
+      "lastModified": 1786659981757
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/jobs/job-2026-08-13-leads/outreach-02.md",
+      "label": "outreach-02",
+      "folder": "02 - Atwood Systems",
+      "degree": 0,
+      "ring": 3,
+      "x": 0.1929,
+      "y": 0.8687,
+      "lastModified": 1786660034223
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/jobs/job-2026-08-13-leads/outreach-03.md",
+      "label": "outreach-03",
+      "folder": "02 - Atwood Systems",
+      "degree": 0,
+      "ring": 3,
+      "x": -0.7743,
+      "y": -0.449,
+      "lastModified": 1786660070472
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/jobs/job-2026-08-13-leads/qualify-01.md",
+      "label": "qualify-01",
+      "folder": "02 - Atwood Systems",
+      "degree": 0,
+      "ring": 3,
+      "x": 0.9095,
+      "y": -0.2019,
+      "lastModified": 1786659967964
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/jobs/job-2026-08-13-leads/qualify-02.md",
+      "label": "qualify-02",
+      "folder": "02 - Atwood Systems",
+      "degree": 0,
+      "ring": 3,
+      "x": -0.5765,
+      "y": 0.751,
+      "lastModified": 1786660018664
+    },
+    {
+      "id": "02 - Atwood Systems/00_SAM_Control/jobs/job-2026-08-13-leads/qualify-03.md",
+      "label": "qualify-03",
+      "folder": "02 - Atwood Systems",
+      "degree": 0,
+      "ring": 3,
+      "x": -0.124,
+      "y": -0.9533,
+      "lastModified": 1786660055953
+    },
+    {
+      "id": "02 - Atwood Systems/10_Clients/10_Clients.md",
+      "label": "10_Clients",
+      "folder": "02 - Atwood Systems",
+      "degree": 5,
+      "ring": 1,
+      "x": 0.0258,
+      "y": -0.4294,
+      "lastModified": 1786627389109
+    },
+    {
+      "id": "02 - Atwood Systems/10_Clients/Horizon Blinds - Brad.md",
+      "label": "Horizon Blinds - Brad",
+      "folder": "02 - Atwood Systems",
+      "degree": 3,
+      "ring": 2,
+      "x": 0.4225,
+      "y": -0.4979,
+      "lastModified": 1786635201643
+    },
+    {
+      "id": "02 - Atwood Systems/20_Agents/20_Agents.md",
+      "label": "20_Agents",
+      "folder": "02 - Atwood Systems",
+      "degree": 8,
+      "ring": 1,
+      "x": -0.0977,
+      "y": -0.3075,
+      "lastModified": 1786580097258
+    },
+    {
+      "id": "02 - Atwood Systems/20_Agents/Generals/Delivery_General.md",
+      "label": "Delivery_General",
+      "folder": "02 - Atwood Systems",
+      "degree": 17,
+      "ring": 0,
+      "x": 0.1088,
+      "y": 0.0321,
+      "lastModified": 1786579025050
+    },
+    {
+      "id": "02 - Atwood Systems/20_Agents/Generals/Generals.md",
+      "label": "Generals",
+      "folder": "02 - Atwood Systems",
+      "degree": 16,
+      "ring": 0,
+      "x": 0.0574,
+      "y": -0.1126,
+      "lastModified": 1786659228237
+    },
+    {
+      "id": "02 - Atwood Systems/20_Agents/Generals/Growth_General.md",
+      "label": "Growth_General",
+      "folder": "02 - Atwood Systems",
+      "degree": 18,
+      "ring": 0,
+      "x": -0.0205,
+      "y": 0.1014,
+      "lastModified": 1786660226871
+    },
+    {
+      "id": "02 - Atwood Systems/20_Agents/Generals/Marketing_General.md",
+      "label": "Marketing_General",
+      "folder": "02 - Atwood Systems",
+      "degree": 13,
+      "ring": 0,
+      "x": -0.0934,
+      "y": 0.1355,
+      "lastModified": 1786579024287
+    },
+    {
+      "id": "02 - Atwood Systems/20_Agents/Generals/R&D_General.md",
+      "label": "R&D_General",
+      "folder": "02 - Atwood Systems",
+      "degree": 13,
+      "ring": 0,
+      "x": -0.0142,
+      "y": -0.172,
+      "lastModified": 1786579025592
+    },
+    {
+      "id": "02 - Atwood Systems/20_Agents/Generals/Security_General.md",
+      "label": "Security_General",
+      "folder": "02 - Atwood Systems",
+      "degree": 10,
+      "ring": 1,
+      "x": -0.1412,
+      "y": -0.1779,
+      "lastModified": 1786520332737
+    },
+    {
+      "id": "02 - Atwood Systems/20_Agents/Generals/Security_Knowledge_Base.md",
+      "label": "Security_Knowledge_Base",
+      "folder": "02 - Atwood Systems",
+      "degree": 8,
+      "ring": 1,
+      "x": 0.2861,
+      "y": 0.1642,
+      "lastModified": 1786493507164
+    },
+    {
+      "id": "02 - Atwood Systems/20_Agents/Generals/Token Efficiency Implementation Plan.md",
+      "label": "Token Efficiency Implementation Plan",
+      "folder": "02 - Atwood Systems",
+      "degree": 5,
+      "ring": 1,
+      "x": 0.2792,
+      "y": 0.3376,
+      "lastModified": 1786571252674
+    },
+    {
+      "id": "02 - Atwood Systems/20_Agents/SAM_Core_Prompt.md",
+      "label": "SAM_Core_Prompt",
+      "folder": "02 - Atwood Systems",
+      "degree": 16,
+      "ring": 0,
+      "x": 0.0549,
+      "y": 0.1255,
+      "lastModified": 1786494617556
+    },
+    {
+      "id": "02 - Atwood Systems/20_Agents/Workers/Formatter_Worker.md",
+      "label": "Formatter_Worker",
+      "folder": "02 - Atwood Systems",
+      "degree": 3,
+      "ring": 2,
+      "x": -0.0036,
+      "y": 0.7012,
+      "lastModified": 1786143087295
+    },
+    {
+      "id": "02 - Atwood Systems/20_Agents/Workers/Scraper_Worker.md",
+      "label": "Scraper_Worker",
+      "folder": "02 - Atwood Systems",
+      "degree": 3,
+      "ring": 2,
+      "x": -0.5033,
+      "y": -0.4925,
+      "lastModified": 1786143084304
+    },
+    {
+      "id": "02 - Atwood Systems/20_Agents/Workers/Workers.md",
+      "label": "Workers",
+      "folder": "02 - Atwood Systems",
+      "degree": 5,
+      "ring": 1,
+      "x": -0.4559,
+      "y": -0.0614,
+      "lastModified": 1786143081049
+    },
+    {
+      "id": "02 - Atwood Systems/30_Playbooks/30_Playbooks.md",
+      "label": "30_Playbooks",
+      "folder": "02 - Atwood Systems",
+      "degree": 5,
+      "ring": 1,
+      "x": 0.3862,
+      "y": -0.2599,
+      "lastModified": 1786143090824
+    },
+    {
+      "id": "02 - Atwood Systems/30_Playbooks/Ad_Generation_SOP.md",
+      "label": "Ad_Generation_SOP",
+      "folder": "02 - Atwood Systems",
+      "degree": 17,
+      "ring": 0,
+      "x": -0.1093,
+      "y": 0.0424,
+      "lastModified": 1786434263351
+    },
+    {
+      "id": "02 - Atwood Systems/30_Playbooks/Outreach_SOP.md",
+      "label": "Outreach_SOP",
+      "folder": "02 - Atwood Systems",
+      "degree": 27,
+      "ring": 0,
+      "x": 0.0,
+      "y": 0.0,
+      "lastModified": 1786660186149
+    },
+    {
+      "id": "02 - Atwood Systems/30_Playbooks/Outreach_n8n_Build_Guide.md",
+      "label": "Outreach_n8n_Build_Guide",
+      "folder": "02 - Atwood Systems",
+      "degree": 5,
+      "ring": 1,
+      "x": -0.1079,
+      "y": 0.4722,
+      "lastModified": 1786349351686
+    },
+    {
+      "id": "02 - Atwood Systems/Atwood Systems.md",
+      "label": "Atwood Systems",
+      "folder": "02 - Atwood Systems",
+      "degree": 10,
+      "ring": 1,
+      "x": 0.2343,
+      "y": 0.0315,
+      "lastModified": 1786143114628
+    },
+    {
+      "id": "02 - Atwood Systems/Master Implementation Plan.md",
+      "label": "Master Implementation Plan",
+      "folder": "02 - Atwood Systems",
+      "degree": 22,
+      "ring": 0,
+      "x": 0.0556,
+      "y": 0.0613,
+      "lastModified": 1785979790935
+    },
+    {
+      "id": "02 - Atwood Systems/Parkfords Timesheet & Invoice Automation.md",
+      "label": "Parkfords Timesheet & Invoice Automation",
+      "folder": "02 - Atwood Systems",
+      "degree": 7,
+      "ring": 1,
+      "x": 0.2057,
+      "y": -0.294,
+      "lastModified": 1786655965496
+    },
+    {
+      "id": "03 - Personal/03 - Personal.md",
+      "label": "03 - Personal",
+      "folder": "03 - Personal",
+      "degree": 3,
+      "ring": 2,
+      "x": 0.7162,
+      "y": 0.066,
+      "lastModified": 1786064497552
+    },
+    {
+      "id": "03 - Personal/Alexander.md",
+      "label": "Alexander",
+      "folder": "03 - Personal",
+      "degree": 4,
+      "ring": 2,
+      "x": 0.1867,
+      "y": 0.509,
+      "lastModified": 1786465679073
+    },
+    {
+      "id": "03 - Personal/Pokemon Sniper Bot.md",
+      "label": "Pokemon Sniper Bot",
+      "folder": "03 - Personal",
+      "degree": 3,
+      "ring": 2,
+      "x": -0.5609,
+      "y": 0.4415,
+      "lastModified": 1786064486772
+    },
+    {
+      "id": "03 - Personal/Wallet Consolidation - August 2026.md",
+      "label": "Wallet Consolidation - August 2026",
+      "folder": "03 - Personal",
+      "degree": 0,
+      "ring": 3,
+      "x": 0.764,
+      "y": 0.6923,
+      "lastModified": 1786401536903
+    },
+    {
+      "id": "05 - Resources/05 - Resources.md",
+      "label": "05 - Resources",
+      "folder": "05 - Resources",
+      "degree": 9,
+      "ring": 1,
+      "x": 0.1325,
+      "y": 0.2415,
+      "lastModified": 1786567333166
+    },
+    {
+      "id": "05 - Resources/AI Memory Vault - README.md",
+      "label": "AI Memory Vault - README",
+      "folder": "05 - Resources",
+      "degree": 1,
+      "ring": 3,
+      "x": -0.2259,
+      "y": 0.7937,
+      "lastModified": 1785976292896
+    },
+    {
+      "id": "05 - Resources/Prompt Library/Ad Generation.md",
+      "label": "Ad Generation",
+      "folder": "05 - Resources",
+      "degree": 4,
+      "ring": 2,
+      "x": -0.4932,
+      "y": -0.248,
+      "lastModified": 1786567324278
+    },
+    {
+      "id": "05 - Resources/Prompt Library/Outreach - Email Sequence.md",
+      "label": "Outreach - Email Sequence",
+      "folder": "05 - Resources",
+      "degree": 3,
+      "ring": 2,
+      "x": 0.1086,
+      "y": -0.7519,
+      "lastModified": 1786567328937
+    },
+    {
+      "id": "05 - Resources/Prompt Library/Prompt Library.md",
+      "label": "Prompt Library",
+      "folder": "05 - Resources",
+      "degree": 9,
+      "ring": 1,
+      "x": -0.26,
+      "y": -0.0908,
+      "lastModified": 1786567818872
+    },
+    {
+      "id": "05 - Resources/Prompt Library/Website Build - Atwood Systems Full Spec.md",
+      "label": "Website Build - Atwood Systems Full Spec",
+      "folder": "05 - Resources",
+      "degree": 3,
+      "ring": 2,
+      "x": 0.4091,
+      "y": 0.6249,
+      "lastModified": 1786567811121
+    },
+    {
+      "id": "05 - Resources/Prompt Library/Website Build - Expert Kickstart.md",
+      "label": "Website Build - Expert Kickstart",
+      "folder": "05 - Resources",
+      "degree": 6,
+      "ring": 1,
+      "x": 0.3895,
+      "y": -0.0129,
+      "lastModified": 1786567319444
+    },
+    {
+      "id": "05 - Resources/course-transcription/TRW_ai_currentawarenesscycle.md",
+      "label": "TRW_ai_currentawarenesscycle",
+      "folder": "05 - Resources",
+      "degree": 5,
+      "ring": 1,
+      "x": -0.2339,
+      "y": -0.4152,
+      "lastModified": 1786434295738
+    },
+    {
+      "id": "05 - Resources/course-transcription/TRW_ai_currentawarenesscycle_build.md",
+      "label": "TRW_ai_currentawarenesscycle_build",
+      "folder": "05 - Resources",
+      "degree": 7,
+      "ring": 1,
+      "x": 0.0475,
+      "y": 0.3641,
+      "lastModified": 1786434297620
+    },
+    {
+      "id": "05 - Resources/course-transcription/TRW_ai_decisioncall.md",
+      "label": "TRW_ai_decisioncall",
+      "folder": "05 - Resources",
+      "degree": 9,
+      "ring": 1,
+      "x": 0.2585,
+      "y": -0.1132,
+      "lastModified": 1786276445528
+    },
+    {
+      "id": "05 - Resources/course-transcription/TRW_ai_offerblueprint.md",
+      "label": "TRW_ai_offerblueprint",
+      "folder": "05 - Resources",
+      "degree": 9,
+      "ring": 1,
+      "x": -0.1211,
+      "y": 0.268,
+      "lastModified": 1786346836794
+    },
+    {
+      "id": "05 - Resources/course-transcription/TRW_ai_outreachengine.md",
+      "label": "TRW_ai_outreachengine",
+      "folder": "05 - Resources",
+      "degree": 4,
+      "ring": 2,
+      "x": 0.5551,
+      "y": -0.148,
+      "lastModified": 1786348538603
+    },
+    {
+      "id": "05 - Resources/course-transcription/TRW_ai_outreachengine_part2.md",
+      "label": "TRW_ai_outreachengine_part2",
+      "folder": "05 - Resources",
+      "degree": 5,
+      "ring": 1,
+      "x": 0.4736,
+      "y": 0.1521,
+      "lastModified": 1786347979205
+    },
+    {
+      "id": "05 - Resources/course-transcription/TRW_ai_theuniversalgame.md",
+      "label": "TRW_ai_theuniversalgame",
+      "folder": "05 - Resources",
+      "degree": 4,
+      "ring": 2,
+      "x": -0.3288,
+      "y": 0.5079,
+      "lastModified": 1786269036978
+    },
+    {
+      "id": "05 - Resources/course-transcription/course-transcription.md",
+      "label": "course-transcription",
+      "folder": "05 - Resources",
+      "degree": 18,
+      "ring": 0,
+      "x": -0.0535,
+      "y": -0.0893,
+      "lastModified": 1786659472704
+    },
+    {
+      "id": "06 - Handoffs/2026-08-14 SAM_ui vault-graph intro visualiser.md",
+      "label": "2026-08-14 SAM_ui vault-graph intro visualiser",
+      "folder": "06 - Handoffs",
+      "degree": 4,
+      "ring": 2,
+      "x": -0.1022,
+      "y": -0.6008,
+      "lastModified": 1786663398286
+    },
+    {
+      "id": "2026-08-13.md",
+      "label": "2026-08-13",
+      "folder": "(root)",
+      "degree": 2,
+      "ring": 3,
+      "x": 0.6897,
+      "y": -0.4564,
+      "lastModified": 1786588639109
+    },
+    {
+      "id": "Active Priorities.md",
+      "label": "Active Priorities",
+      "folder": "(root)",
+      "degree": 24,
+      "ring": 0,
+      "x": 0.0082,
+      "y": -0.0785,
+      "lastModified": 1786663936835
+    },
+    {
+      "id": "VAULT-INDEX.md",
+      "label": "VAULT-INDEX",
+      "folder": "(root)",
+      "degree": 4,
+      "ring": 2,
+      "x": 0.5001,
+      "y": 0.3759,
+      "lastModified": 1786663419733
+    }
+  ],
+  "edges": [
+    [
+      1,
+      46
+    ],
+    [
+      1,
+      47
+    ],
+    [
+      1,
+      50
+    ],
+    [
+      1,
+      70
+    ],
+    [
+      2,
+      11
+    ],
+    [
+      2,
+      12
+    ],
+    [
+      2,
+      13
+    ],
+    [
+      2,
+      16
+    ],
+    [
+      2,
+      27
+    ],
+    [
+      2,
+      29
+    ],
+    [
+      2,
+      30
+    ],
+    [
+      2,
+      31
+    ],
+    [
+      2,
+      32
+    ],
+    [
+      2,
+      33
+    ],
+    [
+      2,
+      38
+    ],
+    [
+      2,
+      39
+    ],
+    [
+      2,
+      40
+    ],
+    [
+      2,
+      41
+    ],
+    [
+      2,
+      42
+    ],
+    [
+      2,
+      43
+    ],
+    [
+      2,
+      44
+    ],
+    [
+      2,
+      46
+    ],
+    [
+      2,
+      47
+    ],
+    [
+      2,
+      48
+    ],
+    [
+      2,
+      49
+    ],
+    [
+      2,
+      51
+    ],
+    [
+      2,
+      53
+    ],
+    [
+      2,
+      67
+    ],
+    [
+      2,
+      70
+    ],
+    [
+      3,
+      53
+    ],
+    [
+      3,
+      70
+    ],
+    [
+      4,
+      44
+    ],
+    [
+      4,
+      62
+    ],
+    [
+      4,
+      63
+    ],
+    [
+      4,
+      66
+    ],
+    [
+      4,
+      67
+    ],
+    [
+      4,
+      70
+    ],
+    [
+      5,
+      11
+    ],
+    [
+      5,
+      17
+    ],
+    [
+      5,
+      19
+    ],
+    [
+      5,
+      44
+    ],
+    [
+      5,
+      45
+    ],
+    [
+      5,
+      62
+    ],
+    [
+      5,
+      63
+    ],
+    [
+      5,
+      64
+    ],
+    [
+      5,
+      65
+    ],
+    [
+      5,
+      67
+    ],
+    [
+      5,
+      70
+    ],
+    [
+      6,
+      11
+    ],
+    [
+      6,
+      17
+    ],
+    [
+      6,
+      18
+    ],
+    [
+      6,
+      19
+    ],
+    [
+      6,
+      29
+    ],
+    [
+      6,
+      30
+    ],
+    [
+      6,
+      31
+    ],
+    [
+      6,
+      35
+    ],
+    [
+      6,
+      36
+    ],
+    [
+      6,
+      38
+    ],
+    [
+      6,
+      43
+    ],
+    [
+      6,
+      44
+    ],
+    [
+      6,
+      48
+    ],
+    [
+      6,
+      50
+    ],
+    [
+      6,
+      60
+    ],
+    [
+      6,
+      61
+    ],
+    [
+      6,
+      67
+    ],
+    [
+      6,
+      70
+    ],
+    [
+      7,
+      13
+    ],
+    [
+      7,
+      16
+    ],
+    [
+      7,
+      29
+    ],
+    [
+      7,
+      31
+    ],
+    [
+      7,
+      32
+    ],
+    [
+      7,
+      33
+    ],
+    [
+      7,
+      34
+    ],
+    [
+      7,
+      35
+    ],
+    [
+      7,
+      36
+    ],
+    [
+      7,
+      37
+    ],
+    [
+      7,
+      38
+    ],
+    [
+      7,
+      43
+    ],
+    [
+      7,
+      44
+    ],
+    [
+      7,
+      48
+    ],
+    [
+      7,
+      55
+    ],
+    [
+      7,
+      56
+    ],
+    [
+      7,
+      57
+    ],
+    [
+      7,
+      59
+    ],
+    [
+      7,
+      61
+    ],
+    [
+      7,
+      70
+    ],
+    [
+      8,
+      14
+    ],
+    [
+      8,
+      15
+    ],
+    [
+      8,
+      19
+    ],
+    [
+      8,
+      27
+    ],
+    [
+      8,
+      28
+    ],
+    [
+      8,
+      30
+    ],
+    [
+      8,
+      31
+    ],
+    [
+      8,
+      32
+    ],
+    [
+      8,
+      33
+    ],
+    [
+      8,
+      34
+    ],
+    [
+      8,
+      44
+    ],
+    [
+      8,
+      48
+    ],
+    [
+      8,
+      70
+    ],
+    [
+      9,
+      15
+    ],
+    [
+      9,
+      19
+    ],
+    [
+      9,
+      69
+    ],
+    [
+      9,
+      70
+    ],
+    [
+      11,
+      12
+    ],
+    [
+      11,
+      13
+    ],
+    [
+      11,
+      14
+    ],
+    [
+      11,
+      15
+    ],
+    [
+      11,
+      16
+    ],
+    [
+      11,
+      17
+    ],
+    [
+      11,
+      18
+    ],
+    [
+      11,
+      19
+    ],
+    [
+      11,
+      46
+    ],
+    [
+      11,
+      47
+    ],
+    [
+      12,
+      14
+    ],
+    [
+      12,
+      30
+    ],
+    [
+      12,
+      32
+    ],
+    [
+      12,
+      33
+    ],
+    [
+      12,
+      34
+    ],
+    [
+      12,
+      38
+    ],
+    [
+      12,
+      43
+    ],
+    [
+      12,
+      44
+    ],
+    [
+      12,
+      47
+    ],
+    [
+      12,
+      70
+    ],
+    [
+      13,
+      14
+    ],
+    [
+      13,
+      16
+    ],
+    [
+      13,
+      32
+    ],
+    [
+      13,
+      34
+    ],
+    [
+      13,
+      38
+    ],
+    [
+      13,
+      47
+    ],
+    [
+      14,
+      15
+    ],
+    [
+      14,
+      19
+    ],
+    [
+      14,
+      31
+    ],
+    [
+      14,
+      32
+    ],
+    [
+      14,
+      36
+    ],
+    [
+      14,
+      38
+    ],
+    [
+      14,
+      44
+    ],
+    [
+      14,
+      47
+    ],
+    [
+      15,
+      19
+    ],
+    [
+      15,
+      31
+    ],
+    [
+      15,
+      32
+    ],
+    [
+      15,
+      34
+    ],
+    [
+      15,
+      37
+    ],
+    [
+      15,
+      38
+    ],
+    [
+      15,
+      47
+    ],
+    [
+      16,
+      34
+    ],
+    [
+      16,
+      38
+    ],
+    [
+      16,
+      47
+    ],
+    [
+      17,
+      19
+    ],
+    [
+      17,
+      70
+    ],
+    [
+      18,
+      70
+    ],
+    [
+      19,
+      68
+    ],
+    [
+      27,
+      28
+    ],
+    [
+      27,
+      46
+    ],
+    [
+      27,
+      47
+    ],
+    [
+      28,
+      70
+    ],
+    [
+      29,
+      31
+    ],
+    [
+      29,
+      38
+    ],
+    [
+      29,
+      41
+    ],
+    [
+      29,
+      46
+    ],
+    [
+      29,
+      47
+    ],
+    [
+      30,
+      31
+    ],
+    [
+      30,
+      32
+    ],
+    [
+      30,
+      35
+    ],
+    [
+      30,
+      36
+    ],
+    [
+      30,
+      38
+    ],
+    [
+      30,
+      43
+    ],
+    [
+      30,
+      44
+    ],
+    [
+      30,
+      47
+    ],
+    [
+      30,
+      60
+    ],
+    [
+      30,
+      61
+    ],
+    [
+      30,
+      62
+    ],
+    [
+      30,
+      63
+    ],
+    [
+      30,
+      67
+    ],
+    [
+      31,
+      32
+    ],
+    [
+      31,
+      33
+    ],
+    [
+      31,
+      34
+    ],
+    [
+      31,
+      35
+    ],
+    [
+      31,
+      36
+    ],
+    [
+      31,
+      37
+    ],
+    [
+      31,
+      44
+    ],
+    [
+      31,
+      47
+    ],
+    [
+      32,
+      33
+    ],
+    [
+      32,
+      35
+    ],
+    [
+      32,
+      38
+    ],
+    [
+      32,
+      44
+    ],
+    [
+      32,
+      45
+    ],
+    [
+      32,
+      47
+    ],
+    [
+      32,
+      62
+    ],
+    [
+      32,
+      63
+    ],
+    [
+      32,
+      67
+    ],
+    [
+      33,
+      35
+    ],
+    [
+      33,
+      38
+    ],
+    [
+      33,
+      43
+    ],
+    [
+      33,
+      47
+    ],
+    [
+      33,
+      62
+    ],
+    [
+      33,
+      63
+    ],
+    [
+      33,
+      67
+    ],
+    [
+      34,
+      35
+    ],
+    [
+      34,
+      36
+    ],
+    [
+      34,
+      37
+    ],
+    [
+      34,
+      38
+    ],
+    [
+      34,
+      47
+    ],
+    [
+      34,
+      70
+    ],
+    [
+      35,
+      36
+    ],
+    [
+      35,
+      38
+    ],
+    [
+      35,
+      70
+    ],
+    [
+      36,
+      70
+    ],
+    [
+      37,
+      70
+    ],
+    [
+      38,
+      47
+    ],
+    [
+      38,
+      57
+    ],
+    [
+      39,
+      41
+    ],
+    [
+      39,
+      47
+    ],
+    [
+      40,
+      41
+    ],
+    [
+      40,
+      47
+    ],
+    [
+      41,
+      47
+    ],
+    [
+      42,
+      43
+    ],
+    [
+      42,
+      44
+    ],
+    [
+      42,
+      46
+    ],
+    [
+      42,
+      47
+    ],
+    [
+      43,
+      44
+    ],
+    [
+      43,
+      55
+    ],
+    [
+      43,
+      57
+    ],
+    [
+      43,
+      59
+    ],
+    [
+      43,
+      60
+    ],
+    [
+      43,
+      61
+    ],
+    [
+      43,
+      62
+    ],
+    [
+      43,
+      63
+    ],
+    [
+      43,
+      67
+    ],
+    [
+      43,
+      70
+    ],
+    [
+      44,
+      45
+    ],
+    [
+      44,
+      47
+    ],
+    [
+      44,
+      53
+    ],
+    [
+      44,
+      56
+    ],
+    [
+      44,
+      57
+    ],
+    [
+      44,
+      60
+    ],
+    [
+      44,
+      61
+    ],
+    [
+      44,
+      62
+    ],
+    [
+      44,
+      63
+    ],
+    [
+      44,
+      64
+    ],
+    [
+      44,
+      65
+    ],
+    [
+      44,
+      66
+    ],
+    [
+      44,
+      67
+    ],
+    [
+      44,
+      70
+    ],
+    [
+      45,
+      65
+    ],
+    [
+      45,
+      67
+    ],
+    [
+      46,
+      47
+    ],
+    [
+      46,
+      48
+    ],
+    [
+      46,
+      58
+    ],
+    [
+      46,
+      71
+    ],
+    [
+      48,
+      68
+    ],
+    [
+      48,
+      70
+    ],
+    [
+      49,
+      50
+    ],
+    [
+      49,
+      51
+    ],
+    [
+      50,
+      71
+    ],
+    [
+      51,
+      70
+    ],
+    [
+      53,
+      54
+    ],
+    [
+      53,
+      57
+    ],
+    [
+      53,
+      62
+    ],
+    [
+      53,
+      63
+    ],
+    [
+      53,
+      66
+    ],
+    [
+      53,
+      67
+    ],
+    [
+      55,
+      57
+    ],
+    [
+      55,
+      59
+    ],
+    [
+      56,
+      57
+    ],
+    [
+      57,
+      58
+    ],
+    [
+      57,
+      59
+    ],
+    [
+      58,
+      59
+    ],
+    [
+      59,
+      61
+    ],
+    [
+      60,
+      67
+    ],
+    [
+      61,
+      67
+    ],
+    [
+      62,
+      67
+    ],
+    [
+      63,
+      67
+    ],
+    [
+      64,
+      65
+    ],
+    [
+      64,
+      67
+    ],
+    [
+      65,
+      67
+    ],
+    [
+      66,
+      67
+    ],
+    [
+      68,
+      70
+    ],
+    [
+      68,
+      71
+    ],
+    [
+      69,
+      70
+    ],
+    [
+      70,
+      71
+    ]
+  ]
+}

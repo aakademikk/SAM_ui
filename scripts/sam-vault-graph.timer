@@ -1,0 +1,13 @@
+[Unit]
+Description=SAM — daily vault graph rebuild
+
+[Timer]
+# Off-minute so it does not pile onto anything else scheduled on the hour.
+OnCalendar=*-*-* 05:07:00
+# Catch up after the machine has been off — otherwise a desktop that sleeps
+# overnight would never run this at all.
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
