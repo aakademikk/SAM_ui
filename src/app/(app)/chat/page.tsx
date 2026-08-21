@@ -51,6 +51,26 @@ const STUCK_WARN_MS = 90_000;
 const STUCK_KILL_MS = 150_000;
 
 /**
+ * Immediate ack spoken the moment a turn starts, covering the agent boot +
+ * context load + thinking gap so the chat never sits silent after a message.
+ * Rotates so it never becomes a catchphrase. Mirrors the voice-line kiosk
+ * list in `voice-line/server.py` — keep the two in step.
+ */
+const ACK_PHRASES = [
+  'On it G',
+  'Looking into that now',
+  'On it',
+  'Give me a sec G',
+  'Already on it',
+];
+let ackIdx = 0;
+function nextAck(): string {
+  const phrase = ACK_PHRASES[ackIdx % ACK_PHRASES.length];
+  ackIdx += 1;
+  return phrase;
+}
+
+/**
  * A turn in flight. Persisted so that leaving the tab — which unmounts this
  * page and tears down the SSE connection — does not lose the run. The job
  * itself keeps going server-side; on return we reattach and replay it.
@@ -240,6 +260,20 @@ export default function ChatPage() {
       if (speechRef.current === handle) speechRef.current = null;
     });
   }, [speaking]);
+
+  /**
+   * Immediate spoken ack, played before the agent boots so the gap between
+   * send and the first word of the answer isn't silence. Not tied to a
+   * message bubble (the ack is filler, not a reply) and deliberately left out
+   * of speechRef — the answer's speak() supersedes it via the shared audio
+   * element, which is the desired interrupt when the turn resolves fast.
+   */
+  const speakAck = useCallback(() => {
+    if (muted) return;
+    speakChunked(nextAck(), {
+      voice: parseInt(localStorage.getItem('sam-tts-voice') ?? '21', 10),
+    });
+  }, [muted]);
 
   /* ── Attach to a running turn ────────────────────────────────────────── */
 
@@ -529,6 +563,10 @@ export default function ChatPage() {
           prev.map((m) => (m.id === assistantId ? { ...m, jobId: started.jobId } : m)),
         );
 
+        // The turn is definitely running — speak the ack before the agent
+        // boots, so the boot/context/thinking gap isn't dead air.
+        speakAck();
+
         attachToRun(run);
       } catch (err) {
         if (err instanceof StepUpRequiredError) {
@@ -547,7 +585,7 @@ export default function ChatPage() {
     } finally {
       sendLockRef.current = false;
     }
-  }, [running, tier, attachToRun, muted, speak]);
+  }, [running, tier, attachToRun, muted, speak, speakAck]);
 
   /* ── Hands-free loop wiring ──────────────────────────────────────────── */
 
