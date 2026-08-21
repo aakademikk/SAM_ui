@@ -13,7 +13,7 @@
 
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import {
   Radio,
@@ -46,16 +46,64 @@ const PHASE_LABEL: Record<AgentStreamState['phase'], string> = {
 function OperationCard({
   operation,
   onLaunch,
+  onSaved,
   launching,
   disabled,
 }: {
   operation: Operation;
   onLaunch: (op: Operation) => void;
+  onSaved: () => Promise<void>;
   launching: boolean;
   disabled: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [addingVar, setAddingVar] = useState(false);
+  const [varKey, setVarKey] = useState('');
+  const [varValue, setVarValue] = useState('');
+  const [savingVars, setSavingVars] = useState(false);
+  const [varError, setVarError] = useState<string | null>(null);
   const gates = operation.steps.filter((s) => s.gate).length;
+
+  // Add and delete are the same call: the full array is sent, the note is
+  // rewritten, and the registry is re-read so the card shows what was saved.
+  const saveVariables = useCallback(
+    async (next: Operation['variables']) => {
+      setSavingVars(true);
+      setVarError(null);
+      try {
+        await operationsService.setVariables(operation.id, next);
+        setVarKey('');
+        setVarValue('');
+        setAddingVar(false);
+        await onSaved();
+      } catch (err) {
+        setVarError(err instanceof Error ? err.message : 'Could not save variables.');
+      } finally {
+        setSavingVars(false);
+      }
+    },
+    [operation.id, onSaved],
+  );
+
+  const addVariable = useCallback(
+    (e: FormEvent) => {
+      e.preventDefault();
+      const key = varKey.trim();
+      if (!key) return;
+      void saveVariables([
+        ...operation.variables.filter((v) => v.key !== key),
+        { key, value: varValue.trim() },
+      ]);
+    },
+    [varKey, varValue, operation.variables, saveVariables],
+  );
+
+  const removeVariable = useCallback(
+    (key: string) => {
+      void saveVariables(operation.variables.filter((v) => v.key !== key));
+    },
+    [operation.variables, saveVariables],
+  );
 
   return (
     <div className="rounded-lg border border-void-700 bg-void-900/60 overflow-hidden">
@@ -161,6 +209,85 @@ function OperationCard({
               Defaults to confirm: {operation.defaults}
             </p>
           )}
+
+          <div>
+            <div className="flex items-center justify-between">
+              <p className="font-mono text-[9px] tracking-wider text-dim-400 uppercase">
+                Variables
+              </p>
+              <button
+                type="button"
+                onClick={() => setAddingVar((v) => !v)}
+                className="text-[10px] text-accent hover:underline"
+              >
+                {addingVar ? 'Cancel' : '+ Add variable'}
+              </button>
+            </div>
+
+            {operation.variables.length === 0 && !addingVar ? (
+              <p className="mt-1 text-[11px] text-dim-400 italic">
+                None — a launch passes only the steps above.
+              </p>
+            ) : (
+              <ul className="mt-1 space-y-1">
+                {operation.variables.map((v) => (
+                  <li key={v.key} className="flex items-center gap-2">
+                    <span className="shrink-0 font-mono text-[10.5px] text-void-100">
+                      {v.key}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[10.5px] text-dim-300">
+                      {v.value}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeVariable(v.key)}
+                      disabled={savingVars}
+                      aria-label={`Delete variable ${v.key}`}
+                      className="shrink-0 text-dim-400 transition-colors hover:text-red-300 disabled:opacity-40"
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {addingVar && (
+              <form onSubmit={addVariable} className="mt-2 flex items-center gap-2">
+                <input
+                  value={varKey}
+                  onChange={(e) => setVarKey(e.target.value)}
+                  placeholder="name"
+                  className="min-w-0 flex-1 rounded-[3px] border border-void-700 bg-void-900/60 px-2 py-1
+                             font-mono text-[10.5px] text-void-100 placeholder:text-dim-400
+                             focus:border-accent/50 focus:outline-none"
+                />
+                <input
+                  value={varValue}
+                  onChange={(e) => setVarValue(e.target.value)}
+                  placeholder="value"
+                  className="min-w-0 flex-1 rounded-[3px] border border-void-700 bg-void-900/60 px-2 py-1
+                             font-mono text-[10.5px] text-void-100 placeholder:text-dim-400
+                             focus:border-accent/50 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={savingVars || !varKey.trim()}
+                  className="shrink-0 rounded-[3px] border border-accent/30 bg-accent/12 px-2.5 py-1
+                             text-[10.5px] text-accent transition-colors hover:bg-accent/20
+                             disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {savingVars ? 'Saving…' : 'Add'}
+                </button>
+              </form>
+            )}
+
+            {varError && <p className="mt-1 text-[10.5px] text-red-300">{varError}</p>}
+            <p className="mt-1.5 text-[10px] leading-relaxed text-dim-400">
+              Handed to the agent verbatim in its brief. Stored plaintext in the vault note — keep
+              credentials out.
+            </p>
+          </div>
 
           <div>
             <p className="flex items-center gap-1.5 font-mono text-[9px] tracking-wider text-dim-400 uppercase">
@@ -372,6 +499,7 @@ export default function OperationsPage() {
               key={operation.id}
               operation={operation}
               onLaunch={handleLaunch}
+              onSaved={load}
               launching={launchingId === operation.id}
               disabled={Boolean(activeRun) || Boolean(authError)}
             />

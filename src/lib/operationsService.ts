@@ -48,6 +48,17 @@ export const operationsService = {
     return request<OperationsPayload>('', { signal });
   },
 
+  /** Replace an operation's variables — the full array is sent, keys are unique. */
+  async setVariables(
+    id: Operation['id'],
+    variables: { key: string; value: string }[],
+  ): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>(`/${id}/variables`, {
+      method: 'POST',
+      body: { variables },
+    });
+  },
+
   /** Launch an operation. Returns the job to stream. */
   async dispatch(
     params: { operationId: Operation['id']; model?: string },

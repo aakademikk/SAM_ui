@@ -12,7 +12,12 @@
 
 import fs from 'node:fs';
 
-import type { Operation, OperationRun, OperationStep } from '@/types/operations';
+import type {
+  Operation,
+  OperationRun,
+  OperationStep,
+  OperationVariable,
+} from '@/types/operations';
 
 const OPERATIONS_PATH =
   process.env.SAM_OPERATIONS_PATH ??
@@ -98,6 +103,9 @@ export function parseOperations(text: string): Operation[] {
 
   const operations: Operation[] = [];
   let current: Operation | null = null;
+  // Set while walking the bullets under a `**Variables:**` field. A `- key =
+  // value` line is collected; anything else (a field, a step) ends the block.
+  let collectingVars = false;
 
   const push = () => {
     if (current) operations.push(current);
@@ -109,6 +117,7 @@ export function parseOperations(text: string): Operation[] {
     const heading = line.match(OP_HEADING_RE);
     if (heading) {
       push();
+      collectingVars = false;
       const { name, summary } = splitHeading(heading[1]);
       current = {
         id: slug(name),
@@ -119,12 +128,22 @@ export function parseOperations(text: string): Operation[] {
         persona: null,
         steps: [],
         defaults: null,
+        variables: [],
         runs: [],
       };
       continue;
     }
 
     if (!current) continue;
+
+    if (collectingVars) {
+      const bullet = line.match(/^-\s*([^=]+?)\s*=\s*(.*)$/);
+      if (bullet) {
+        current.variables.push({ key: clean(bullet[1]), value: clean(bullet[2]) });
+        continue;
+      }
+      collectingVars = false;
+    }
 
     const field = line.match(FIELD_RE);
     if (field) {
@@ -134,6 +153,7 @@ export function parseOperations(text: string): Operation[] {
       else if (key === 'purpose') current.purpose = value;
       else if (key === 'persona') current.persona = value.split(/\s+—\s+/)[0].trim() || null;
       else if (key === 'defaults to confirm') current.defaults = value;
+      else if (key === 'variables') collectingVars = true;
       continue;
     }
 
@@ -213,6 +233,13 @@ export function buildBrief(op: Operation): string {
     lines.push('', `Defaults to confirm: ${op.defaults}`);
   }
 
+  if (op.variables.length > 0) {
+    lines.push('', 'Variables — use these exact values:', '');
+    for (const v of op.variables) {
+      lines.push(`- ${v.key}: ${v.value}`);
+    }
+  }
+
   lines.push(
     '',
     'Rules: evidence only — verify each step from actual output, never assume. A step that fails stops the operation: report it, never silently skip. Stop at any human gate and hand over.',
@@ -221,6 +248,69 @@ export function buildBrief(op: Operation): string {
   );
 
   return lines.join('\n');
+}
+
+/**
+ * Replace an operation's `**Variables:**` block in the vault note. If the
+ * operation has none yet, the block is inserted right after its heading;
+ * otherwise the existing block's bullets are replaced. Returns false when the
+ * operation can't be found or the note can't be written.
+ */
+export function setOperationVariables(
+  opId: string,
+  variables: OperationVariable[],
+): boolean {
+  try {
+    const text = fs.readFileSync(OPERATIONS_PATH, 'utf-8');
+    const lines = text.split('\n');
+
+    const runLogStart = lines.findIndex((l) => /^##\s+Run log\s*$/i.test(l));
+    const defEnd = runLogStart === -1 ? lines.length : runLogStart;
+
+    // Locate this operation's heading in the definition section (the run log
+    // repeats the same headings, so stop before it).
+    let headingAt = -1;
+    for (let i = 0; i < defEnd; i++) {
+      const heading = lines[i].match(OP_HEADING_RE);
+      if (heading && slug(splitHeading(heading[1]).name) === opId) {
+        headingAt = i;
+        break;
+      }
+    }
+    if (headingAt === -1) return false;
+
+    const block = ['**Variables:**', ...variables.map((v) => `- ${v.key} = ${v.value}`)];
+
+    // Find an existing block inside this operation's section.
+    let varsStart = -1;
+    let varsEnd = -1;
+    for (let i = headingAt + 1; i < defEnd; i++) {
+      if (/^###/.test(lines[i])) break; // next operation
+      if (/^\*\*Variables:\*\*\s*$/.test(lines[i])) {
+        varsStart = i;
+        let j = i + 1;
+        while (j < defEnd && /^-\s+/.test(lines[j])) j++;
+        varsEnd = j;
+        break;
+      }
+    }
+
+    if (varsStart === -1) {
+      // Insert after the heading's blank line, before the first field, so the
+      // block reads as part of the definition.
+      let insertAt = headingAt + 1;
+      while (insertAt < defEnd && lines[insertAt].trim() === '') insertAt++;
+      lines.splice(insertAt, 0, ...block);
+    } else {
+      lines.splice(varsStart, varsEnd - varsStart, ...block);
+    }
+
+    fs.writeFileSync(OPERATIONS_PATH, lines.join('\n'), 'utf-8');
+    invalidateOperationsCache();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

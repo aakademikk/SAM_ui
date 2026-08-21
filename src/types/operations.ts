@@ -24,6 +24,13 @@ export interface OperationRun {
   at: string | null;
 }
 
+export interface OperationVariable {
+  /** The parameter name, e.g. `lead_email`. */
+  key: string;
+  /** The value a launch hands the agent verbatim. */
+  value: string;
+}
+
 export interface Operation {
   /** Slug derived from the trigger phrase, e.g. `bait-the-hook`. */
   id: string;
@@ -39,6 +46,8 @@ export interface Operation {
   steps: OperationStep[];
   /** The `**Defaults to confirm:**` line, if present. */
   defaults: string | null;
+  /** The `**Variables:**` block: `key = value` pairs a launch passes the agent. */
+  variables: OperationVariable[];
   /** Parsed from the note's `## Run log` section. Newest first. */
   runs: OperationRun[];
 }
