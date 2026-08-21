@@ -197,6 +197,11 @@ export class AgentStreamParser {
             kind: 'error',
             text: event.result?.slice(0, 500) ?? 'The agent reported an error.',
           });
+        } else if (event.result && !this.hasText()) {
+          // A single-shot run streams nothing — the whole reply arrives only in
+          // the final result event. Without this the answer is dropped and the
+          // chat reads "exited without producing a reply" despite a complete one.
+          this.appendText('text', event.result);
         }
         return;
 
@@ -241,6 +246,11 @@ export class AgentStreamParser {
     target.status = block.is_error ? 'error' : 'ok';
     target.result = flattenResult(block.content);
     this.state.phase = 'thinking';
+  }
+
+  /** True once a non-empty answer block has been captured. */
+  private hasText(): boolean {
+    return this.state.blocks.some((b) => b.kind === 'text' && b.text.trim());
   }
 
   /** Merge into the previous block when it is the same kind, else start one. */
