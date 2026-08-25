@@ -15,8 +15,16 @@
  * Shader structure mirrors ParallaxBackground's NeuralMesh (Points + a
  * LineSegments packet-travel shader, additive, depth-write off) — including its
  * disposal, WebGLBoundary and AdaptiveDpr discipline. The differences: real
- * positions instead of a proximity graph, packets that always travel
- * centre-outward, and a boot parameter that assembles the graph from nothing.
+ * positions instead of a proximity graph, a flow direction that answers to
+ * SAM's state, and a boot parameter that assembles the graph from nothing.
+ *
+ * ## Flow
+ *
+ * Energy does not simply radiate. Three packet streams run at once — outward,
+ * inward, and circulating round the rim — and the state crossfades between
+ * them, so the direction of travel *is* the status readout: SAM draws energy
+ * in while listening, circulates it while thinking, and pushes it out while
+ * replying. See EDGE_FRAG for why they are blended rather than switched.
  */
 
 import { Component, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
@@ -42,12 +50,35 @@ import type { VaultGraph } from '@/types/vaultGraph';
  * Note there is no `warning` state — the store calls it `alert`. `listening`
  * exists in the type but nothing currently sets it.
  */
-const STATE_STYLE: Record<VisualiserState, { core: string; accent: string; tempo: number; mix: number }> = {
-  idle: { core: '#3dff5a', accent: '#9dff70', tempo: 1.0, mix: 1.0 },
-  listening: { core: '#4dff5a', accent: '#8eff6e', tempo: 1.4, mix: 1.0 },
-  thinking: { core: '#6bff5a', accent: '#b8ff70', tempo: 2.1, mix: 1.0 },
-  speaking: { core: '#d3dfe8', accent: '#ffffff', tempo: 1.75, mix: 1.0 },
-  alert: { core: '#f43f5e', accent: '#fb7185', tempo: 2.7, mix: 1.0 },
+interface StateStyle {
+  core: string;
+  accent: string;
+  tempo: number;
+  mix: number;
+  /** -1 packets run inward, 0 they circulate the rim, +1 they run outward. */
+  flow: number;
+  /** How much of the idle wander this state gets: 1 free-roaming, 0 pinned. */
+  drift: number;
+  /**
+   * How far the field opens out and gathers back — the nucleus reaching for
+   * the edge of the screen and returning. Rides on uTempo, so a busier state
+   * breathes faster as well as differently.
+   */
+  bloom: number;
+}
+
+const STATE_STYLE: Record<VisualiserState, StateStyle> = {
+  idle:      { core: '#3dff5a', accent: '#9dff70', tempo: 1.00, mix: 1.0, flow:  0.00, drift: 1.00, bloom: 0.30 },
+  // Listening was all but the same green as idle, which is half of why the
+  // field never looked like it was reacting. Cyan, and the flow reverses:
+  // energy runs *in* along the edges while SAM is taking something in.
+  listening: { core: '#4dd9ff', accent: '#a8ecff', tempo: 1.30, mix: 1.0, flow: -1.00, drift: 0.40, bloom: 0.16 },
+  thinking:  { core: '#6bff5a', accent: '#b8ff70', tempo: 2.10, mix: 1.0, flow:  0.00, drift: 0.14, bloom: 0.10 },
+  // Tool use — SAM reaching out of the vault. Amber matches the warm family
+  // the status line and the other widgets already use for a busy SAM.
+  working:   { core: '#ffb43d', accent: '#ffe3a8', tempo: 2.40, mix: 1.0, flow:  0.30, drift: 0.18, bloom: 0.12 },
+  speaking:  { core: '#d3dfe8', accent: '#ffffff', tempo: 1.75, mix: 1.0, flow:  1.00, drift: 0.22, bloom: 0.36 },
+  alert:     { core: '#f43f5e', accent: '#fb7185', tempo: 2.70, mix: 1.0, flow:  0.00, drift: 0.00, bloom: 0.06 },
 };
 
 /**
@@ -112,12 +143,46 @@ function useVaultGraph(): VaultGraph {
 /* Shaders                                                                    */
 /* ========================================================================== */
 
+/**
+ * Radial bloom, shared verbatim by the node and edge shaders.
+ *
+ * Both geometries must apply the *same* displacement to the *same* input, and
+ * that is the whole reason this is one string included twice rather than two
+ * copies. The edges are a separate static geometry from the notes, so any
+ * displacement the two disagree on by even a little tears every link off the
+ * note it connects — which is exactly why the deep breath is done on the group
+ * scale instead.
+ */
+const BLOOM_GLSL = /* glsl */ `
+  uniform float uBloom;       // how far the field opens out
+  uniform float uBloomPhase;  // integrated on the CPU so tempo can change
+
+  vec3 bloomed(vec3 p) {
+    float r = length(p.xy);
+    if (r < 0.0001) return p;
+
+    // Held to 0..uBloom rather than swinging either side of zero: a negative
+    // amount drives small radii through zero and flips those notes out the
+    // far side of the graph.
+    float a = uBloom * (0.5 + 0.5 * sin(uBloomPhase));
+
+    // An exponent below 1 moves the inner notes much further than the rim, so
+    // the nucleus opens like an iris and reaches for the edge of the frame.
+    // Scaling every radius equally is what the group breath already does, and
+    // it reads as a zoom rather than as the field expanding.
+    float r2 = mix(r, pow(r, 0.6), a);
+    return vec3(p.xy * (r2 / r), p.z);
+  }
+`;
+
 const NODE_VERT = /* glsl */ `
+  ${BLOOM_GLSL}
   uniform float uTime;
   uniform float uBoot;
   uniform float uSize;
   uniform float uPixelRatio;
   uniform float uTempo;
+  uniform float uSweep;      // 0..1 angle of the rotating highlight
 
   attribute float aSeed;
   attribute float aWeight;   // 0..1 by degree — drives size and brightness
@@ -129,6 +194,8 @@ const NODE_VERT = /* glsl */ `
   varying float vWeight;
   varying float vReveal;
   varying float vHub;
+  varying float vSweep;
+  varying float vTwinkle;
   varying vec3  vColor;
 
   void main() {
@@ -147,7 +214,7 @@ const NODE_VERT = /* glsl */ `
     float phase = aSeed * 6.28318;
 
     // Nodes rush out from the centre into place as they resolve.
-    vec3 pos = position * mix(0.18, 1.0, reveal);
+    vec3 pos = bloomed(position) * mix(0.18, 1.0, reveal);
 
     // Breathing: the whole field swells slowly, each node on its own phase so
     // it never marches in step. Faster and shallower as the tempo climbs.
@@ -162,12 +229,24 @@ const NODE_VERT = /* glsl */ `
     vHub = aHub;
     vColor = aColor;
 
+    // Rotating highlight — a radar hand crossing the graph. The angular
+    // distance is wrapped, so it runs continuously round instead of snapping
+    // at the seam where the angle rolls over.
+    float theta = atan(position.y, position.x) / 6.28318 + 0.5;
+    float dTheta = abs(fract(theta - uSweep + 0.5) - 0.5);
+    vSweep = smoothstep(0.15, 0.0, dTheta);
+
+    // Rim twinkle, scaled by radius: the nucleus holds steady and only the
+    // outlying notes flicker, which is what sells the rim as depth rather
+    // than as dust that failed to resolve.
+    vTwinkle = (0.5 + 0.5 * sin(uTime * (1.6 + aSeed * 2.4) + aSeed * 37.0)) * aRadius;
+
     gl_Position = projectionMatrix * mvPosition;
 
     // The hub renders as a clear iris above the surrounding ring — bigger than
     // even the next-best-connected notes, so the graph reads as an eye.
     float size = uSize * mix(0.60, 2.30, pow(aWeight, 0.75)) * mix(1.0, ${HUB_SIZE.toFixed(2)}, aHub);
-    gl_PointSize = size * uPixelRatio * (0.80 + 0.30 * vPulse) * reveal;
+    gl_PointSize = size * uPixelRatio * (0.80 + 0.30 * vPulse) * reveal * (1.0 + vSweep * 0.30);
   }
 `;
 
@@ -181,6 +260,8 @@ const NODE_FRAG = /* glsl */ `
   varying float vWeight;
   varying float vReveal;
   varying float vHub;
+  varying float vSweep;
+  varying float vTwinkle;
   varying vec3  vColor;
 
   void main() {
@@ -205,27 +286,42 @@ const NODE_FRAG = /* glsl */ `
     // The hub is the eye: an accent-coloured iris ring just inside the rim,
     // riding a brighter body so it owns the centre of the graph.
     float iris = smoothstep(0.44, 0.30, d) * (1.0 - smoothstep(0.12, 0.24, d));
-    color += uAccent * vHub * (0.30 + 0.55 * iris);
+    color += uAccent * vHub * (0.34 + 0.62 * iris);
+
+    // The sweep lifts each note as it passes, so the graph reads as being lit
+    // across rather than as a set of independently blinking dots.
+    color += uAccent * vSweep * 0.50;
 
     float alpha = (halo * 0.30 + core * 0.98 + spec * 1.15)
-                * uOpacity * vReveal * (0.43 + 0.62 * vWeight) * (1.0 + vHub * 0.5);
+                * uOpacity * vReveal * (0.43 + 0.62 * vWeight) * (1.0 + vHub * 0.5)
+                * (1.0 + vSweep * 0.75)
+                // Twinkle dims rather than brightens — the additive blend is
+                // already close to clipping at the core and brightening here
+                // just flattens it to white.
+                * (1.0 - 0.26 * vTwinkle);
 
     gl_FragColor = vec4(color, alpha);
   }
 `;
 
 const EDGE_VERT = /* glsl */ `
+  ${BLOOM_GLSL}
+
   uniform float uBoot;
 
   attribute float aT;        // 0 at the inner endpoint, 1 at the outer one
   attribute float aSeed;
   attribute float aOuter;    // radius of the outer endpoint, for reveal timing
   attribute float aWeight;
+  attribute float aTheta;    // 0..1 angle of the edge midpoint about the hub
+  attribute float aSwirl;    // +1 if inner->outer runs anticlockwise, else -1
 
   varying float vT;
   varying float vSeed;
   varying float vReveal;
   varying float vWeight;
+  varying float vTheta;
+  varying float vSwirl;
 
   void main() {
     // Edges resolve just behind the node they lead to.
@@ -234,51 +330,93 @@ const EDGE_VERT = /* glsl */ `
     vT = aT;
     vSeed = aSeed;
     vWeight = aWeight;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vTheta = aTheta;
+    vSwirl = aSwirl;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(bloomed(position), 1.0);
   }
 `;
 
 const EDGE_FRAG = /* glsl */ `
   uniform float uTime;
-  uniform float uTempo;
+  uniform float uPhase;      // monotonic travel clock, integrated on the CPU
   uniform vec3  uCore;
   uniform vec3  uAccent;
   uniform float uOpacity;
   uniform float uStaccato;
+  uniform float uOut;        // weight of the outward stream
+  uniform float uIn;         // weight of the inward stream
+  uniform float uSwirl;      // weight of the circulating stream
+  uniform float uSweep;
 
   varying float vT;
   varying float vSeed;
   varying float vReveal;
   varying float vWeight;
+  varying float vTheta;
+  varying float vSwirl;
 
-  void main() {
-    // Packets always run 0 -> 1, and aT is authored inner-to-outer, so energy
-    // is always leaving the nucleus. Per-edge seed and speed keep it from
-    // reading as a single synchronised wave.
-    float speed = 0.16 * uTempo * (0.7 + vSeed * 0.7);
-    float travel = fract(uTime * speed + vSeed);
-
+  /* Head and wake of a packet sitting at 'travel', as seen by this fragment. */
+  vec2 packetAt(float travel) {
     float d = abs(vT - travel);
     d = min(d, 1.0 - d);
-
     // Tight head with a longer trailing wake — a data pulse, not a glow worm.
-    float packet = smoothstep(0.085, 0.0, d);
-    float wake = smoothstep(0.26, 0.0, d) * 0.32;
+    return vec2(smoothstep(0.085, 0.0, d), smoothstep(0.26, 0.0, d) * 0.32);
+  }
+
+  void main() {
+    float k = 0.7 + vSeed * 0.7;   // per-edge speed spread
+
+    // Three streams run at once and the state crossfades between them.
+    //
+    // They are blended rather than switched because a packet's position is a
+    // function of the accumulated clock: flip the sign of that term and the
+    // packet teleports by however far it had already travelled, so every state
+    // change would snap. Crossfading three continuous streams instead makes a
+    // state change read as the flow re-orienting.
+    //
+    // The circulating stream is the one that runs *around* the graph rather
+    // than out of it: its phase comes from the edge's own angle, so a pulse
+    // arrives as a wave sweeping round the rim, and aSwirl orients every edge
+    // the same way about the hub, so an irregular wikilink graph still
+    // circulates coherently instead of cancelling itself out.
+    //
+    // Note the circulating stream deliberately does NOT take the per-edge
+    // speed spread k. Measured: with k applied, uPhase * k differs so much
+    // between edges that fract() scatters them uniformly and the wave stops
+    // existing — angular lock went to 0.98 (1.0 being "no wave at all"), which
+    // is a slightly slower version of the radial scatter this was meant to
+    // replace. Every edge has to share one angular clock for a current to
+    // form; vSeed only jitters it enough to stop it looking machined.
+    vec2 pOut   = packetAt(fract( uPhase * k + vSeed));
+    vec2 pIn    = packetAt(fract(-uPhase * k + vSeed));
+    vec2 pSwirl = packetAt(fract( uPhase * vSwirl + vTheta + vSeed * 0.12));
+
+    vec2 p = pOut * uOut + pIn * uIn + pSwirl * uSwirl;
+    float packet = p.x;
+    float wake = p.y;
 
     // Under alert the pulse chops rather than glides.
     packet *= mix(1.0, step(0.5, fract(uTime * 5.5 + vSeed)), uStaccato);
 
-    // Energy dissipates as it travels out, so the rim reads as the edge of
-    // SAM's reach rather than as a hard spoke drawn to it.
-    float falloff = mix(1.0, 0.38, vT);
+    // Energy dissipates on the way out and gathers on the way in, so the
+    // direction of travel is legible from the brightness gradient alone even
+    // between packets. The three weights sum to 1, so this stays a blend.
+    float falloff = mix(1.0, 0.38, vT) * (uOut + uSwirl) + mix(0.38, 1.0, vT) * uIn;
 
     vec3 trace = mix(uCore, uAccent, vT);
     // The packet brightens toward the core colour and only just clips to white
     // at its very centre — adding flat white was what made these read as wires.
     vec3 color = trace + uCore * packet * 0.55 + vec3(packet * packet * 0.30);
 
+    // Same rotating hand the nodes answer to, so the sweep crosses the whole
+    // object at once instead of lighting the nodes off their own schedule.
+    float dTheta = abs(fract(vTheta - uSweep + 0.5) - 0.5);
+    float sweep = smoothstep(0.15, 0.0, dTheta);
+    color += uAccent * sweep * 0.28;
+
     float base = 0.060 + 0.05 * vWeight;
-    float alpha = (base + packet * 0.62 + wake * 0.18) * uOpacity * vReveal * falloff;
+    float alpha = (base + packet * 0.62 + wake * 0.18)
+                * uOpacity * vReveal * falloff * (1.0 + sweep * 0.50);
 
     gl_FragColor = vec4(color, alpha);
   }
@@ -362,6 +500,8 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
     const eSeed = new Float32Array(segments * 2);
     const eOuter = new Float32Array(segments * 2);
     const eWeight = new Float32Array(segments * 2);
+    const eTheta = new Float32Array(segments * 2);
+    const eSwirl = new Float32Array(segments * 2);
 
     for (let e = 0; e < segments; e++) {
       const [rawA, rawB] = graph.edges[e];
@@ -384,6 +524,25 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
       const w = Math.max(weightOf[a], weightOf[b]);
       eWeight[e * 2] = w;
       eWeight[e * 2 + 1] = w;
+
+      // Where this edge sits around the hub, and which way round it points.
+      const ax = positions[a * 3];
+      const ay = positions[a * 3 + 1];
+      const bx = positions[b * 3];
+      const by = positions[b * 3 + 1];
+      const theta = Math.atan2((ay + by) * 0.5, (ax + bx) * 0.5) / (Math.PI * 2) + 0.5;
+
+      // The z of the 2D cross product is positive when travelling a -> b turns
+      // anticlockwise about the centre. Orienting every edge by that sign is
+      // what lets an irregular wikilink graph circulate as one body: without
+      // it, half the edges would run the other way and the circulation would
+      // read as noise rather than as a current.
+      const swirl = ax * by - ay * bx >= 0 ? 1 : -1;
+
+      eTheta[e * 2] = theta;
+      eTheta[e * 2 + 1] = theta;
+      eSwirl[e * 2] = swirl;
+      eSwirl[e * 2 + 1] = swirl;
     }
 
     const edgeGeo = new THREE.BufferGeometry();
@@ -392,6 +551,8 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
     edgeGeo.setAttribute('aSeed', new THREE.BufferAttribute(eSeed, 1));
     edgeGeo.setAttribute('aOuter', new THREE.BufferAttribute(eOuter, 1));
     edgeGeo.setAttribute('aWeight', new THREE.BufferAttribute(eWeight, 1));
+    edgeGeo.setAttribute('aTheta', new THREE.BufferAttribute(eTheta, 1));
+    edgeGeo.setAttribute('aSwirl', new THREE.BufferAttribute(eSwirl, 1));
 
     return { nodeGeometry: nodeGeo, edgeGeometry: edgeGeo };
   }, [graph]);
@@ -407,6 +568,9 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
     uSize: { value: ambient ? 26 : 30 },
     uPixelRatio: { value: 1 },
     uTempo: { value: 1 },
+    uSweep: { value: 0 },
+    uBloom: { value: style.bloom },
+    uBloomPhase: { value: 0 },
     uCore: { value: new THREE.Color(style.core) },
     uAccent: { value: new THREE.Color(style.accent) },
     uMix: { value: style.mix },
@@ -416,22 +580,63 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
   const edgeUniforms = useRef({
     uTime: { value: 0 },
     uBoot: { value: 1 },
-    uTempo: { value: 1 },
+    uPhase: { value: 0 },
+    uSweep: { value: 0 },
+    uBloom: { value: style.bloom },
+    uBloomPhase: { value: 0 },
     uCore: { value: new THREE.Color(style.core) },
     uAccent: { value: new THREE.Color(style.accent) },
     uOpacity: { value: ambient ? 0.85 : 1 },
     uStaccato: { value: 0 },
+    uOut: { value: Math.max(0, style.flow) },
+    uIn: { value: Math.max(0, -style.flow) },
+    uSwirl: { value: 1 - Math.abs(style.flow) },
   });
 
-  // Colour and tempo are damped toward their target rather than snapped, so a
-  // state change reads as the field shifting mood, not as a cut.
-  const target = useRef({ core: new THREE.Color(style.core), accent: new THREE.Color(style.accent), tempo: style.tempo, mix: style.mix, staccato: 0 });
+  /**
+   * Clocks the shaders cannot keep themselves.
+   *
+   * Both are integrated per frame instead of being read off elapsedTime,
+   * because both have a rate that changes with the state. Multiplying a raw
+   * elapsed time by a new rate jumps the phase by the whole accumulated
+   * difference — packets would snap to new positions and the sweep hand would
+   * skip. Integrating a delta means the rate can change mid-flight and the
+   * motion just speeds up or slows down.
+   */
+  const phaseRef = useRef(0);
+  const sweepRef = useRef(0);
+  /** Accumulated spin angle. Its *rate* reverses; the angle itself never jumps. */
+  const spinRef = useRef(0);
+  /** Drives the slow reversal of the spin direction. */
+  const spinOscRef = useRef(0);
+  /** Integrated bloom clock, for the same reason as phaseRef. */
+  const bloomPhaseRef = useRef(0);
+  const bloomRef = useRef(style.bloom);
+  /** Damped -1..1 flow, and 0..1 how much of the idle wander is in play. */
+  const flowRef = useRef(style.flow);
+  const driftRef = useRef(style.drift);
+
+  // Colour, tempo and flow are damped toward their target rather than snapped,
+  // so a state change reads as the field shifting mood, not as a cut.
+  const target = useRef({
+    core: new THREE.Color(style.core),
+    accent: new THREE.Color(style.accent),
+    tempo: style.tempo,
+    mix: style.mix,
+    staccato: 0,
+    flow: style.flow,
+    drift: style.drift,
+    bloom: style.bloom,
+  });
   useEffect(() => {
     target.current.core.set(style.core);
     target.current.accent.set(style.accent);
     target.current.tempo = ambient ? style.tempo * 0.9 : style.tempo;
     target.current.mix = style.mix;
     target.current.staccato = state === 'alert' ? 1 : 0;
+    target.current.flow = style.flow;
+    target.current.drift = style.drift;
+    target.current.bloom = style.bloom;
   }, [style, state, ambient]);
 
   useEffect(() => {
@@ -467,20 +672,91 @@ function GraphMesh({ graph, state, boot, animate, ambient }: MeshProps) {
     (eu.uAccent.value as THREE.Color).lerp(target.current.accent, k);
     nu.uMix.value += (target.current.mix - nu.uMix.value) * k;
     nu.uTempo.value += (target.current.tempo - nu.uTempo.value) * k;
-    eu.uTempo.value = nu.uTempo.value;
     eu.uStaccato.value += (target.current.staccato - eu.uStaccato.value) * k;
 
+    // Packet travel. Integrated, so the tempo can change without teleporting
+    // anything — see phaseRef.
+    phaseRef.current += delta * 0.16 * nu.uTempo.value;
+    eu.uPhase.value = phaseRef.current;
+
+    // The sweep hand runs slowly at rest and quickens with the tempo, so a
+    // busy SAM is scanned more often. Wrapped to 0..1 to keep float precision
+    // usable over a session left open all night.
+    sweepRef.current = (sweepRef.current + delta * 0.055 * (0.6 + 0.5 * nu.uTempo.value)) % 1;
+    nu.uSweep.value = sweepRef.current;
+    eu.uSweep.value = sweepRef.current;
+
+    // Flow: -1 fully inward, 0 circulating, +1 fully outward. The three stream
+    // weights always sum to 1, which is what keeps the crossfade in EDGE_FRAG
+    // a blend rather than a brightness swing.
+    flowRef.current += (target.current.flow - flowRef.current) * k;
+    const flow = flowRef.current;
+    eu.uOut.value = Math.max(0, flow);
+    eu.uIn.value = Math.max(0, -flow);
+    eu.uSwirl.value = 1 - Math.abs(flow);
+
+    // The field opening and gathering. Integrated for the same reason as the
+    // packet clock — reading sin(elapsed * tempo) would jump the whole cycle
+    // the moment a state changed the tempo, so the graph would snap mid-breath.
+    bloomPhaseRef.current =
+      (bloomPhaseRef.current + delta * 0.80 * nu.uTempo.value) % (Math.PI * 2);
+    nu.uBloomPhase.value = bloomPhaseRef.current;
+    eu.uBloomPhase.value = bloomPhaseRef.current;
+
+    bloomRef.current += (target.current.bloom - bloomRef.current) * k;
+    nu.uBloom.value = bloomRef.current;
+    eu.uBloom.value = bloomRef.current;
+
+    // Damped so the graph settles into its wander rather than lurching into it.
+    driftRef.current += (target.current.drift - driftRef.current) * k;
+    // Ambient sits under body copy on every screen, so it wanders less than
+    // the intro does — enough to be alive, not enough to pull the eye off text.
+    const drift = driftRef.current * (ambient ? 0.72 : 1);
+
     if (groupRef.current) {
-      // Barely-there drift. Enough that the graph never reads as a still image.
-      groupRef.current.rotation.z = Math.sin(t * 0.045) * 0.035;
-      groupRef.current.rotation.y = Math.sin(t * 0.06) * 0.10;
-      groupRef.current.rotation.x = Math.cos(t * 0.05) * 0.06;
+      const group = groupRef.current;
+
+      // Idle: the graph turns on its own axis and roams the frame. Busy: it
+      // damps back to the barely-there drift it always had, so "working" reads
+      // as focused rather than as more of the same wandering.
+      // Most of the amplitude is on the drift term rather than in the constant.
+      // Measured first with the old 0.10/0.06 constants still carrying it, and
+      // a busy graph wandered nearly as far as an idle one — the state made no
+      // visible difference. Idle has to own the movement for it to read.
+      //
+      // The spin *rate* is what reverses, not the angle: integrating a rate
+      // through zero eases the graph to a stop and away the other way on its
+      // own, where flipping a sign on the angle would snap it. The second term
+      // is deliberately incommensurate with the first so the reversals never
+      // land on a beat the eye can start counting.
+      spinOscRef.current += delta * 0.50;
+      const spinRate =
+        0.25 *
+        drift *
+        (Math.sin(spinOscRef.current) * 0.8 +
+          Math.sin(spinOscRef.current * 0.37 + 1.3) * 0.2);
+      spinRef.current += delta * spinRate;
+      group.rotation.z = spinRef.current + Math.sin(t * 0.045) * 0.030;
+      group.rotation.y = Math.sin(t * 0.06) * (0.05 + 0.34 * drift);
+      group.rotation.x = Math.cos(t * 0.05) * (0.03 + 0.20 * drift);
 
       // Breathing: the whole field swells and eases on a ~10s cycle with a
-      // slower sub-wave, so SAM reads as alive rather than as a still image.
+      // slower sub-wave, and idle adds a much deeper swell on top. Done on the
+      // group rather than per-node in the shader so the edges expand with the
+      // notes — moving the nodes alone would tear them off their links.
       // The JSX `scale` prop covers the static (reduced-motion) case.
-      const breath = 1.0 + Math.sin(t * 0.65) * 0.024 + Math.sin(t * 0.17) * 0.010;
-      groupRef.current.scale.setScalar(scale * breath);
+      const breath =
+        1.0 +
+        Math.sin(t * 0.65) * 0.014 +
+        Math.sin(t * 0.17) * 0.010 +
+        Math.sin(t * 0.33) * 0.090 * drift;
+      group.scale.setScalar(scale * breath);
+
+      // Lissajous wander. Two incommensurate periods, so the path never
+      // repeats on a beat the eye can lock onto and start predicting.
+      const reach = Math.min(viewport.width, viewport.height) * 0.110 * drift;
+      group.position.x = Math.sin(t * 0.037) * reach;
+      group.position.y = Math.cos(t * 0.029) * reach * 0.72;
     }
   });
 

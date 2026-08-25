@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Lock, Square, Wrench } from 'lucide-react';
+import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Gem, Lock, Square, Wrench } from 'lucide-react';
 
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { HandsFreeMic } from '@/components/voice/HandsFreeMic';
@@ -33,7 +33,7 @@ import { AgentStreamParser, type AgentPhase } from '@/lib/agentStream';
 import { computeCost, formatCost, formatTokens } from '@/lib/costing';
 import { spokenText, type ChatMessage, type TierId, type TierInfo } from '@/types/chat';
 import { speakChunked, primeSpeech, isSpeechBlocked, type SpeechHandle } from '@/lib/speech';
-import { setSamActivity } from '@/lib/samActivity';
+import { setSamActivity, clearSamActivity } from '@/lib/samActivity';
 import { configureOsBridge } from '@/lib/osBridge';
 import { tryOsIntent } from '@/lib/osIntentRunner';
 
@@ -45,10 +45,13 @@ const PENDING_KEY = 'sam-agent-pending';
 const MAX_STORED = 40;
 /** Dropped connections are retried before a turn is declared lost. */
 const MAX_RECONNECTS = 5;
-/** A fast-tier turn stuck in pure thinking (no text/tool output) for this long is a runaway. */
-const STUCK_WARN_MS = 90_000;
-/** Auto-kill a turn that has produced nothing for this long. */
-const STUCK_KILL_MS = 150_000;
+/** A turn stuck in pure thinking (no text/tool output) for this long is a runaway. */
+const STUCK_WARN_MS = 180_000;
+/** Auto-kill a turn that has produced nothing for this long. Was 150s — too
+ * aggressive for an agent mid-tool: a long build, scrape or tool call emits no
+ * stream events for minutes. Raised to give real work room while still catching
+ * a genuinely wedged turn. */
+const STUCK_KILL_MS = 480_000;
 
 /**
  * Immediate ack spoken the moment a turn starts, covering the agent boot +
@@ -146,6 +149,8 @@ export default function ChatPage() {
   const [workMessageId, setWorkMessageId] = useState<string | null>(null);
 
   const speechRef = useRef<SpeechHandle | null>(null);
+  /** How many speech handles are currently audible — see reportSpeech(). */
+  const speakingCountRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   /** Root of the chat column — carries --kb (keyboard overlay height). */
@@ -159,7 +164,17 @@ export default function ChatPage() {
   const activeJobRef = useRef<string | null>(null);
   const retriesRef = useRef(0);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const attachRef = useRef<((run: ActiveRun) => void) | null>(null);
+  /** The parser is reused across reconnects so a resume continues the same
+      block stream instead of rebuilding it from sequence 0. */
+  const parserRef = useRef<AgentStreamParser | null>(null);
+  /** Highest output sequence already applied to the parser — a reconnect
+      resumes from here, so a dropped mobile connection re-reads only the
+      delta instead of re-streaming the whole turn. */
+  const lastSeqRef = useRef(0);
+  /** Times we've tried to drain a finished job after losing the stream —
+      caps the retry loop on an unrecoverably flaky link. */
+  const drainTriesRef = useRef(0);
+  const attachRef = useRef<((run: ActiveRun, opts?: { reconnect?: boolean }) => void) | null>(null);
   /** Last time the parser saw real progress (anything but thinking telemetry). */
   const lastProgressRef = useRef(Date.now());
   /** Meaningful-event count already credited to lastProgressRef. */
@@ -186,7 +201,9 @@ export default function ChatPage() {
 
   useEffect(() => {
     const stored = localStorage.getItem(TIER_KEY);
-    if (stored === 'fast' || stored === 'pro' || stored === 'max') setTier(stored);
+    if (stored === 'fast' || stored === 'pro' || stored === 'max' || stored === 'gemini') {
+      setTier(stored);
+    }
   }, []);
 
   useEffect(() => {
@@ -212,16 +229,41 @@ export default function ChatPage() {
     streamRef.current?.close();
     speechRef.current?.stop();
     if (reconnectRef.current) clearTimeout(reconnectRef.current);
-    setSamActivity('idle');
+    // Leaving the screen must not leave a channel pinned — the visualiser
+    // lives in the AppShell and outlives this page.
+    clearSamActivity();
   }, []);
 
   /* ── Elapsed timer — honest progress across the cold start ───────────── */
 
-  // The ambient visualiser mirrors what SAM is doing on this screen.
+  /**
+   * The ambient visualiser mirrors what SAM is doing on this screen.
+   *
+   * This owns the `agent` channel only. Audio playback owns `speech` and the
+   * mic owns `mic`, both at higher priority — which is why this no longer has
+   * to reason about `speaking` at all. It reports the turn, nothing else.
+   *
+   * `streaming` maps to speaking because that is SAM producing output; when
+   * TTS is actually playing, the higher-priority speech channel says so
+   * regardless. `working` is tool use, and now reads differently from the
+   * pure-reasoning `thinking` — the status line already drew that line, the
+   * graph just never did.
+   */
   useEffect(() => {
-    if (running) setSamActivity(phase === 'streaming' ? 'speaking' : 'thinking');
-    else if (!speaking) setSamActivity('idle');
-  }, [running, phase, speaking]);
+    if (!running) {
+      setSamActivity('agent', null);
+      return;
+    }
+    setSamActivity(
+      'agent',
+      phase === 'streaming' ? 'speaking' : phase === 'working' ? 'working' : 'thinking',
+    );
+  }, [running, phase]);
+
+  /** A failed turn is the one thing that outranks everything else on screen. */
+  useEffect(() => {
+    setSamActivity('alert', error ? 'alert' : null);
+  }, [error]);
 
   useEffect(() => {
     if (!running) { setElapsed(0); return; }
@@ -231,6 +273,19 @@ export default function ChatPage() {
   }, [running]);
 
   /* ── Text-to-speech — final answers only ─────────────────────────────── */
+
+  /**
+   * Reports audible speech to the visualiser's `speech` channel.
+   *
+   * Ref-counted because two handles legitimately overlap: the spoken ack is
+   * still finishing when the answer's speech starts and supersedes it through
+   * the shared audio element. A plain boolean would let the ack's trailing
+   * `onState(false)` clear the channel while the answer is mid-sentence.
+   */
+  const reportSpeech = useCallback((audible: boolean) => {
+    speakingCountRef.current = Math.max(0, speakingCountRef.current + (audible ? 1 : -1));
+    setSamActivity('speech', speakingCountRef.current > 0 ? 'speaking' : null);
+  }, []);
 
   /**
    * Speech is synthesised and played a sentence-group at a time, so audio
@@ -250,7 +305,7 @@ export default function ChatPage() {
     setSpeaking(id);
     const handle = speakChunked(text, {
       voice: parseInt(localStorage.getItem('sam-tts-voice') ?? '21', 10),
-      onState: (isSpeaking) => setSamActivity(isSpeaking ? 'speaking' : 'idle'),
+      onState: reportSpeech,
     });
     speechRef.current = handle;
 
@@ -259,7 +314,7 @@ export default function ChatPage() {
       setSpeaking((current) => (current === id ? null : current));
       if (speechRef.current === handle) speechRef.current = null;
     });
-  }, [speaking]);
+  }, [speaking, reportSpeech]);
 
   /**
    * Immediate spoken ack, played before the agent boots so the gap between
@@ -272,23 +327,34 @@ export default function ChatPage() {
     if (muted) return;
     speakChunked(nextAck(), {
       voice: parseInt(localStorage.getItem('sam-tts-voice') ?? '21', 10),
+      onState: reportSpeech,
     });
-  }, [muted]);
+  }, [muted, reportSpeech]);
 
   /* ── Attach to a running turn ────────────────────────────────────────── */
 
   /**
    * Open the job stream and rebuild the assistant message from it.
    *
-   * Always replays from sequence 0 with a fresh parser, so this doubles as the
-   * reconnect path: whether the turn started a moment ago or while the tab was
-   * backgrounded, the resulting blocks are identical.
+   * A fresh attach starts a new parser and replays from sequence 0. A reconnect
+   * (opts.reconnect) reuses the existing parser and resumes from the last frame
+   * it applied, so a dropped mobile connection only re-reads the delta instead
+   * of re-streaming the whole turn.
    */
-  const attachToRun = useCallback((run: ActiveRun) => {
+  const attachToRun = useCallback((run: ActiveRun, opts: { reconnect?: boolean } = {}) => {
     streamRef.current?.close();
     activeJobRef.current = run.jobId;
 
-    const parser = new AgentStreamParser();
+    // A reconnect reuses the parser and resumes from the last received frame —
+    // re-streaming the whole turn on every drop is what turns a cheap mobile
+    // retry into a fresh backpressure close. The first attach starts clean.
+    const parser =
+      opts.reconnect && parserRef.current ? parserRef.current : new AgentStreamParser();
+    parserRef.current = parser;
+    if (!opts.reconnect) {
+      lastSeqRef.current = 0;
+      drainTriesRef.current = 0;
+    }
     lastProgressRef.current = Date.now();
     lastMeaningfulRef.current = 0;
     autoKilledRef.current = false;
@@ -319,14 +385,17 @@ export default function ChatPage() {
       exitCode: number | null,
       status: 'exited' | 'killed' | 'lost',
     ) => {
-      const state = parser.finish(exitCode);
+      const lost = status === 'lost';
+      // A stop we asked for (stop button or the stuck watchdog) has a
+      // meaningless exit code — blaming it produces the confusing "exited with
+      // code unknown" on a turn we killed ourselves.
+      const selfStopped = status === 'killed' && stopInitiatedRef.current;
+      const state = parser.finish(exitCode, { suppressExitError: lost || selfStopped });
       const cost = computeCost(run.tier, state.usage, state.reportedCostUsd);
 
       if (state.sessionId) localStorage.setItem(SESSION_KEY, state.sessionId);
       localStorage.removeItem(ACTIVE_KEY);
       if (cost) setSessionCost((c) => c + cost.usd);
-
-      const lost = status === 'lost';
       // A 'killed' close we didn't initiate means the service restarted under
       // this run. The job is gone; don't reconnect and don't auto-speak a
       // truncated answer — say what happened so it reads as an interruption,
@@ -346,7 +415,11 @@ export default function ChatPage() {
           ? [...state.blocks, { kind: 'error' as const, text: 'Lost connection to this run.' }]
           : interrupted
             ? [...state.blocks, { kind: 'error' as const, text: 'This run was interrupted — the service restarted. Send your message again.' }]
-            : [...state.blocks],
+            : selfStopped
+              ? (state.blocks.some((b) => b.kind === 'text' || b.kind === 'tool')
+                  ? state.blocks
+                  : [{ kind: 'text' as const, text: 'Stopped.' }])
+              : [...state.blocks],
         sessionId: state.sessionId,
         usage: state.usage,
         cost,
@@ -372,6 +445,7 @@ export default function ChatPage() {
         setServerPhase({ phase: event.phase, ms: event.ms });
       } else if (event.type === 'output') {
         retriesRef.current = 0;
+        lastSeqRef.current = Math.max(lastSeqRef.current, event.seq);
         const state = parser.push(event.text);
         // Only real progress (text, tool calls, results) resets the stuck
         // clock — a flood of thinking telemetry must not.
@@ -388,15 +462,52 @@ export default function ChatPage() {
         // 'lost' means the connection dropped, not that the job ended — which
         // is exactly what a phone does when the app is backgrounded. The job
         // is still running server-side, so reconnect rather than give up.
-        if (event.status === 'lost' && retriesRef.current < MAX_RECONNECTS) {
-          retriesRef.current += 1;
-          const delay = 600 * retriesRef.current;
-          reconnectRef.current = setTimeout(() => attachRef.current?.(run), delay);
+        if (event.status === 'lost') {
+          if (retriesRef.current < MAX_RECONNECTS) {
+            retriesRef.current += 1;
+            const delay = 600 * retriesRef.current;
+            reconnectRef.current = setTimeout(
+              () => attachRef.current?.(run, { reconnect: true }),
+              delay,
+            );
+            return;
+          }
+          // Fast budget spent. The server closes 'lost' for backpressure and
+          // network drops as well as for dead jobs, so finalising here would
+          // kill a turn that is still working — the "exited with code unknown"
+          // ghost error. Check the job's real state: keep reconnecting on a
+          // slow cadence while it runs, and only end the turn once it's gone.
+          void jobsService
+            .get(run.jobId)
+            .then((job) => {
+              if (job?.status === 'running') {
+                retriesRef.current = 0;
+                reconnectRef.current = setTimeout(
+                  () => attachRef.current?.(run, { reconnect: true }),
+                  4_000,
+                );
+                return;
+              }
+              if (!job || drainTriesRef.current >= 3) {
+                // Pruned or drained too many times — nothing left to fetch.
+                finalise(event.exitCode, event.status);
+                return;
+              }
+              // Finished while we were disconnected — reconnect once to drain
+              // the tail and get the real exit code instead of finalising a
+              // truncated view of the turn.
+              drainTriesRef.current += 1;
+              reconnectRef.current = setTimeout(
+                () => attachRef.current?.(run, { reconnect: true }),
+                0,
+              );
+            })
+            .catch(() => finalise(event.exitCode, event.status));
           return;
         }
         finalise(event.exitCode, event.status);
       }
-    });
+    }, { fromSeq: opts.reconnect ? lastSeqRef.current : 0 });
   }, [muted, speak]);
 
   // Lets the stream callback re-enter attachToRun without a circular dep.
@@ -422,7 +533,9 @@ export default function ChatPage() {
         const pending = loadMessages().find((m) => m.id === run.assistantId);
         if (!pending || pending.done) return;
         retriesRef.current = 0;
-        attachRef.current?.(run);
+        // Resume rather than replay: if the parser already holds this turn's
+        // blocks (tab backgrounded mid-stream), pick up from the last frame.
+        attachRef.current?.(run, { reconnect: parserRef.current !== null });
       } catch {
         localStorage.removeItem(ACTIVE_KEY);
       }
@@ -453,7 +566,9 @@ export default function ChatPage() {
       return;
     }
 
-    attachToRun(run);
+    // parserRef is null on a hard load (fresh JS context) — full replay from 0
+    // is correct there. On a soft return it's set, so resume the same stream.
+    attachToRun(run, { reconnect: parserRef.current !== null });
     // Mount only — attachToRun is stable enough for this and re-running it
     // here would reopen the stream on every speak() state change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -774,9 +889,9 @@ export default function ChatPage() {
     };
   }, []);
 
-  /** Three-tier cycle — Fast → Pro → Max → Fast. The button shows the current
-      tier; tapping steps to the next one. */
-  const NEXT_TIER: Record<TierId, TierId> = { fast: 'pro', pro: 'max', max: 'fast' };
+  /** Four-tier cycle — Fast → Pro → Max → Gemini → Fast. The button shows the
+      current tier; tapping steps to the next one. */
+  const NEXT_TIER: Record<TierId, TierId> = { fast: 'pro', pro: 'max', max: 'gemini', gemini: 'fast' };
   const toggleTier = () => {
     const next = NEXT_TIER[tier];
     setTier(next);
@@ -785,6 +900,9 @@ export default function ChatPage() {
 
   const newConversation = () => {
     streamRef.current?.close();
+    parserRef.current = null;
+    lastSeqRef.current = 0;
+    drainTriesRef.current = 0;
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(MESSAGES_KEY);
     localStorage.removeItem(ACTIVE_KEY);
@@ -869,24 +987,30 @@ export default function ChatPage() {
               ? 'text-accent bg-accent/10 border-accent/30'
               : tier === 'pro'
                 ? 'text-sky-300 bg-sky-900/20 border-sky-700/40'
-                : 'text-amber-300 bg-amber-900/20 border-amber-700/40'
+                : tier === 'gemini'
+                  ? 'text-violet-300 bg-violet-900/20 border-violet-700/40'
+                  : 'text-amber-300 bg-amber-900/20 border-amber-700/40'
           }`}
           title={
             tier === 'fast'
               ? 'Fast tier — DeepSeek flash, cheap, separate quota. Tap for Pro.'
               : tier === 'pro'
                 ? 'Pro tier — DeepSeek pro, stronger, ~3x the cost of Fast. Tap for Max.'
-                : 'Max tier — Claude, uses your subscription quota. Tap for Fast.'
+                : tier === 'gemini'
+                  ? 'Gemini tier — Google Flash via local proxy, fastest first token. Tap for Fast.'
+                  : 'Max tier — Claude, uses your subscription quota. Tap for Fast.'
           }
         >
           {tier === 'fast' ? (
             <Zap size={12} />
           ) : tier === 'pro' ? (
             <Cpu size={12} />
+          ) : tier === 'gemini' ? (
+            <Gem size={12} />
           ) : (
             <Sparkles size={12} />
           )}
-          {tier === 'fast' ? 'Fast' : tier === 'pro' ? 'Pro' : 'Max'}
+          {tier === 'fast' ? 'Fast' : tier === 'pro' ? 'Pro' : tier === 'gemini' ? 'Gemini' : 'Max'}
         </button>
 
         {sessionCost > 0 && (

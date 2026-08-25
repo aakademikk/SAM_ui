@@ -10,7 +10,7 @@
  * the classic widget, so the icon tracks the visualiser Colin actually sees.
  *
  * Query params:
- *   ?state=idle|listening|thinking|speaking|alert   (default: idle)
+ *   ?state=idle|listening|thinking|working|speaking|alert  (default: idle)
  *   ?zoom=1.4                                        scales the mesh up so it
  *                                                    fills a small icon better
  */
@@ -18,7 +18,14 @@
 import { VaultGraphVisualiser } from '@/components/visualiser/VaultGraphVisualiser';
 import type { VisualiserState } from '@/hooks/useVisualiserState';
 
-const STATES: VisualiserState[] = ['idle', 'listening', 'thinking', 'speaking', 'alert'];
+const STATES: VisualiserState[] = [
+  'idle',
+  'listening',
+  'thinking',
+  'working',
+  'speaking',
+  'alert',
+];
 
 export default async function IconRenderPage({
   searchParams,

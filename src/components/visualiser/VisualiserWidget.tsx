@@ -16,6 +16,7 @@ const COLS: Record<VisualiserState, Rgb> = {
   idle: [0, 210, 255],
   listening: [50, 220, 255],
   thinking: [255, 180, 20],
+  working: [255, 140, 40],
   speaking: [255, 255, 255],
   alert: [255, 28, 15],
 };
@@ -24,6 +25,7 @@ const STATE_DOT_COLORS: Record<VisualiserState, string> = {
   idle: '#55ccdd',
   listening: '#66ddff',
   thinking: '#ffbb33',
+  working: '#ff9d3d',
   speaking: '#ffffff',
   alert: '#ff3311',
 };
@@ -54,6 +56,8 @@ function getTargets(s: VisualiserState): [number, number, number] {
     case 'idle':      return [0.5, 0.5, 0.08];
     case 'listening': return [0.75, 0.8, 0.4];
     case 'thinking':  return [0.9, 0.85, 0.95];
+    // Working sits just past thinking: busier, but not the full output flare.
+    case 'working':   return [0.95, 0.9, 0.7];
     case 'speaking':  return [1.0, 1.0, 0.9];
     case 'alert':     return [1.0, 1.0, 0.0];
     default:          return [0.5, 0.5, 0.08];

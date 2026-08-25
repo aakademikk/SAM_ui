@@ -20,7 +20,12 @@ import { envelope, failure, readJson } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
 import { requireStepUp } from '@/lib/server/auth/guard';
 import { logCommand } from '@/lib/server/auth/auditLog';
-import { tierEnv, tierInfo, deepseekTierAvailable } from '@/lib/server/chat/tiers';
+import {
+  tierEnv,
+  tierInfo,
+  deepseekTierAvailable,
+  geminiTierAvailable,
+} from '@/lib/server/chat/tiers';
 import {
   acquireSessionLock,
   holdSessionLock,
@@ -65,13 +70,21 @@ export async function POST(request: Request) {
   }
 
   // Unknown tier ids fall back to the cheap default rather than erroring.
-  const tier: TierId = body.tier === 'max' || body.tier === 'pro' ? body.tier : 'fast';
-  if (tier !== 'max' && !deepseekTierAvailable()) {
-    return failure(
-      `${tier === 'fast' ? 'Fast' : 'Pro'} tier is not configured. ` +
-        'Set ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN, or use the Max tier.',
-      503,
-    );
+  const tier: TierId =
+    body.tier === 'max' || body.tier === 'pro' || body.tier === 'gemini' ? body.tier : 'fast';
+  if (tier !== 'max') {
+    const label = tier === 'gemini' ? 'Gemini' : tier === 'pro' ? 'Pro' : 'Fast';
+    const configured =
+      tier === 'gemini' ? geminiTierAvailable() : deepseekTierAvailable();
+    if (!configured) {
+      return failure(
+        `${label} tier is not configured. ` +
+          (tier === 'gemini'
+            ? 'Set GEMINI_API_KEY (with the gemini-proxy service running), or use the Max tier.'
+            : 'Set ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN, or use the Max tier.'),
+        503,
+      );
+    }
   }
 
   const args = [

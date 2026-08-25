@@ -114,8 +114,18 @@ export class AgentStreamParser {
     return this.state;
   }
 
-  /** Called when the job closes, to catch a run that died without a result. */
-  finish(exitCode: number | null): AgentStreamState {
+  /**
+   * Called when the job closes, to catch a run that died without a result.
+   *
+   * `suppressExitError` is for the lost-connection case: the job is often still
+   * running (or finished cleanly) and only the stream dropped, so blaming the
+   * exit code — which may be null and produce the misleading "exited with code
+   * unknown" — doubles the error. The caller reports the lost connection itself.
+   */
+  finish(
+    exitCode: number | null,
+    opts: { suppressExitError?: boolean } = {},
+  ): AgentStreamState {
     if (this.state.done) return this.state;
 
     this.state.done = true;
@@ -124,7 +134,7 @@ export class AgentStreamParser {
     const hasOutput = this.state.blocks.some(
       (b) => (b.kind === 'text' && b.text.trim()) || b.kind === 'tool',
     );
-    if (!hasOutput) {
+    if (!hasOutput && !opts.suppressExitError) {
       this.state.blocks.push({
         kind: 'error',
         text:

@@ -25,3 +25,17 @@ export const DEEPSEEK_RATES: Record<string, TierRates> = {
     peak: { inputMiss: 1.32, cacheHit: 0.044, output: 3.96 },
   },
 };
+
+/**
+ * Gemini published rates, USD per 1M tokens. Flat — no peak/off-peak windows,
+ * so the DeepSeek-shaped `old`/`offPeak`/`peak` fields all carry the same
+ * figure. The proxy reports no cache tokens today, so `cacheHit` rarely
+ * surfaces; it is held at the input rate so spend is never understated.
+ */
+export const GEMINI_RATES: Record<string, TierRates> = {
+  'gemini-2.5-flash': {
+    old: { inputMiss: 0.3, cacheHit: 0.3, output: 2.5 },
+    offPeak: { inputMiss: 0.3, cacheHit: 0.3, output: 2.5 },
+    peak: { inputMiss: 0.3, cacheHit: 0.3, output: 2.5 },
+  },
+};

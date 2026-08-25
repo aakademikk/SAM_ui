@@ -30,6 +30,7 @@ import {
   type MicStream,
 } from '@/lib/micStream';
 import { transcribeAudio } from '@/lib/voiceService';
+import { setSamActivity } from '@/lib/samActivity';
 
 /* ========================================================================== */
 /* Constants                                                                   */
@@ -136,6 +137,22 @@ export function HandsFreeMic({
       cancelledRef.current = true;
     };
   }, [enabled, onFallback]);
+
+  /* ── Visualiser ───────────────────────────────────────────────────────── */
+
+  /**
+   * Only a live utterance counts as listening. `ready` means the loop is armed
+   * and watching the level meter, which in a hands-free session is nearly all
+   * the time — and because the mic channel outranks both speech and the agent,
+   * reporting that would pin the graph to listening for the whole session and
+   * bury every other state.
+   */
+  useEffect(() => {
+    const hearing = enabled && (status === 'recording' || status === 'processing');
+    setSamActivity('mic', hearing ? 'listening' : null);
+  }, [enabled, status]);
+
+  useEffect(() => () => setSamActivity('mic', null), []);
 
   /* ── Re-arm: pause ~5 s after a spoken reply before listening again ───── */
 

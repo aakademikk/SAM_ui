@@ -9,7 +9,7 @@
  */
 
 /** Which backend a message was run against. */
-export type TierId = 'fast' | 'pro' | 'max';
+export type TierId = 'fast' | 'pro' | 'max' | 'gemini';
 
 /** One pricing window, USD per 1M tokens. */
 export interface RateWindow {

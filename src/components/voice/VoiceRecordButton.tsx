@@ -15,6 +15,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { Mic, Send, X, ArrowLeft } from 'lucide-react';
 import { transcribeAudio } from '@/lib/voiceService';
 import { acquireMicStream, micErrorMessage, type MicStream } from '@/lib/micStream';
+import { setSamActivity } from '@/lib/samActivity';
 
 /* ========================================================================== */
 /* Types                                                                       */
@@ -78,6 +79,19 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
     }
   }, []);
 
+  /* ── Visualiser ───────────────────────────────────────────────────────── */
+
+  /**
+   * Mirror the record state onto the ambient graph. Driven off the single
+   * `state` value rather than from each pointer handler, so cancel, timeout
+   * and slide-away all release the channel without needing their own call.
+   * Transcribing still counts as listening — SAM is still on your voice.
+   */
+  useEffect(() => {
+    const live = state === 'recording' || state === 'processing';
+    setSamActivity('mic', live ? 'listening' : null);
+  }, [state]);
+
   /* ── Cleanup on unmount ───────────────────────────────────────────────── */
 
   useEffect(() => {
@@ -85,6 +99,7 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
       micRef.current?.close();
       if (levelRafRef.current) cancelAnimationFrame(levelRafRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
+      setSamActivity('mic', null);
     };
   }, []);
 

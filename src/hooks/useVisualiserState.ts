@@ -6,7 +6,14 @@ import { useEffect, useRef, useState } from 'react';
 /* Types                                                                      */
 /* ========================================================================== */
 
-export type VisualiserState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'alert';
+export type VisualiserState =
+  | 'idle'
+  | 'listening'
+  | 'thinking'
+  /** Running tools — reading files, dispatching agents. Distinct from pure reasoning. */
+  | 'working'
+  | 'speaking'
+  | 'alert';
 
 export interface VisualiserSnapshot {
   state: VisualiserState;
@@ -33,16 +40,25 @@ const MOCK_SEQUENCE: [VisualiserState, number][] = [
   ['idle', 6],
   ['listening', 5],
   ['thinking', 5],
+  ['working', 4],
   ['speaking', 6],
   ['alert', 3],
   ['idle', 2],
   ['thinking', 4],
+  ['working', 3],
   ['speaking', 5],
   ['listening', 4],
   ['idle', 8],
 ];
 
-const VALID_STATES = new Set<string>(['idle', 'listening', 'thinking', 'speaking', 'alert']);
+const VALID_STATES = new Set<string>([
+  'idle',
+  'listening',
+  'thinking',
+  'working',
+  'speaking',
+  'alert',
+]);
 
 /** Generate a fake 64-sample waveform matching the Python server's formula. */
 function mockWaveform(now: number): number[] {
@@ -179,7 +195,7 @@ export function useVisualiserState(stateUrl: string | null = '/state'): Visualis
         waveform,
         timestamp: now,
         mode: 'mock',
-        loading: currentState === 'thinking',
+        loading: currentState === 'thinking' || currentState === 'working',
       });
     }, POLL_INTERVAL);
 
