@@ -13,7 +13,7 @@
 /** Grid footprint of a widget. The grid is 4 columns wide on desktop. */
 export type WidgetSize = 'sm' | 'md-wide' | 'md-tall' | 'lg';
 
-export type WidgetKind = 'active-projects' | 'system-health' | 'daily-tasks';
+export type WidgetKind = 'active-projects' | 'system-health' | 'daily-tasks' | 'money-in';
 
 export interface WidgetLayoutItem {
   id: WidgetKind;
@@ -191,6 +191,45 @@ export interface FinancePayload {
   balanceSeries: SeriesPoint[];
   inflowSeries: SeriesPoint[];
   outflowSeries: SeriesPoint[];
+}
+
+/* ========================================================================== */
+/* Money In                                                                    */
+/* ========================================================================== */
+
+/**
+ * A single manually-logged income entry. The Money In widget is backed by
+ * this real store (`lib/server/moneyState.ts` → `~/.sam/money-state.json`),
+ * never fabricated — amounts are what actually landed.
+ */
+export interface MoneyEntry {
+  id: string;
+  label: string;
+  /** Whole pounds; the widget's quick-add form has no pence input (v1). */
+  amount: number;
+  /** Local calendar day the money arrived, as YYYY-MM-DD. */
+  date: string;
+  /** Optional attribution, e.g. "Atwood — 4edge deposit", "day job". */
+  source: string;
+  /**
+   * True for monthly recurring income (retainer, salary standing order).
+   * Counts toward every month's total from `date`'s month onward — `date`
+   * is the first payment month, not a one-off landing day.
+   */
+  recurring: boolean;
+  createdAt: string;
+}
+
+export interface MoneyInPayload {
+  currency: string;
+  /** All-time money in, newest first. */
+  entries: MoneyEntry[];
+  totalThisMonth: number;
+  countThisMonth: number;
+  /** Previous calendar month, for the month-over-month read. */
+  totalLastMonth: number;
+  /** -1 if there is no previous month to compare against. */
+  monthDeltaPct: number;
 }
 
 /* ========================================================================== */

@@ -973,10 +973,14 @@ export default function ChatPage() {
 
   return (
     <div ref={rootRef} className="sam-chat-root flex flex-col md:flex-row">
-      {/* Chat column — answers only. Work streams into the panel below. */}
-      <div className="flex-1 flex flex-col min-w-0">
-      {/* Status bar — tier is a capability and a cost, so it stays visible */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-void-800 shrink-0">
+      {/* Chat column — answers only. Work streams into the panel below.
+          min-h-0 lets the message list scroll inside the fixed-height root
+          instead of the whole page — without it a long thread carries the
+          status bar away and buries the last message under the composer. */}
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
+      {/* Status bar — tier is a capability and a cost, so it stays visible.
+          Sticky pins it to the top of the screen if the page itself scrolls. */}
+      <div className="sticky top-0 z-20 flex items-center gap-2 px-3 py-1.5 border-b border-void-800 bg-void-900/85 backdrop-blur-md shrink-0">
         <button
           type="button"
           onClick={toggleTier}
@@ -1092,7 +1096,7 @@ export default function ChatPage() {
                   <button
                     type="button"
                     onClick={() => { primeSpeech(); speak(msg.id, spokenText(msg)); }}
-                    className="text-dim-300 hover:text-accent transition-colors"
+                    className="flex items-center rounded-full p-1.5 -m-1.5 text-dim-200 transition-colors hover:text-accent hover:bg-void-700/70"
                     title={speaking === msg.id ? 'Stop' : 'Replay'}
                   >
                     {speaking === msg.id ? <VolumeX size={13} /> : <Volume2 size={13} />}

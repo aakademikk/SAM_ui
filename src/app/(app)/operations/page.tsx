@@ -18,6 +18,7 @@ import Link from 'next/link';
 import {
   Radio,
   Play,
+  Plus,
   Lock,
   Loader2,
   Square,
@@ -105,6 +106,13 @@ function OperationCard({
     [operation.variables, saveVariables],
   );
 
+  // Header button lives below Launch; open the card alongside so the add form
+  // (inside the pipeline section) is reachable in one click.
+  const toggleAddVar = useCallback(() => {
+    setOpen(true);
+    setAddingVar((v) => !v);
+  }, []);
+
   return (
     <div className="rounded-lg border border-void-700 bg-void-900/60 overflow-hidden">
       <div className="px-4 pt-3.5 pb-3">
@@ -115,18 +123,30 @@ function OperationCard({
               <p className="mt-0.5 text-[11.5px] text-dim-300">{operation.summary}</p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => onLaunch(operation)}
-            disabled={disabled || launching}
-            className="shrink-0 flex items-center gap-1.5 rounded-md border border-accent/30
-                       bg-accent/12 px-3 py-1.5 text-[11px] font-medium text-accent
-                       transition-colors hover:bg-accent/20
-                       disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {launching ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-            {launching ? 'Launching' : 'Launch'}
-          </button>
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => onLaunch(operation)}
+              disabled={disabled || launching}
+              className="flex items-center gap-1.5 rounded-md border border-accent/30
+                         bg-accent/12 px-3 py-1.5 text-[11px] font-medium text-accent
+                         transition-colors hover:bg-accent/20
+                         disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {launching ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+              {launching ? 'Launching' : 'Launch'}
+            </button>
+            <button
+              type="button"
+              onClick={toggleAddVar}
+              className="flex items-center gap-1 rounded-md border border-void-600
+                         px-2.5 py-1 text-[10.5px] text-dim-200 transition-colors
+                         hover:border-void-500 hover:text-void-100"
+            >
+              <Plus size={11} />
+              {addingVar ? 'Cancel' : 'Add a variable'}
+            </button>
+          </div>
         </div>
 
         {/* The code word, quoted exactly as the vault defines it. */}
@@ -211,18 +231,9 @@ function OperationCard({
           )}
 
           <div>
-            <div className="flex items-center justify-between">
-              <p className="font-mono text-[9px] tracking-wider text-dim-400 uppercase">
-                Variables
-              </p>
-              <button
-                type="button"
-                onClick={() => setAddingVar((v) => !v)}
-                className="text-[10px] text-accent hover:underline"
-              >
-                {addingVar ? 'Cancel' : '+ Add variable'}
-              </button>
-            </div>
+            <p className="font-mono text-[9px] tracking-wider text-dim-400 uppercase">
+              Variables
+            </p>
 
             {operation.variables.length === 0 && !addingVar ? (
               <p className="mt-1 text-[11px] text-dim-400 italic">

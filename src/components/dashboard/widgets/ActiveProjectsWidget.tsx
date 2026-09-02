@@ -99,7 +99,7 @@ function ProjectRow({ project, detailed, index }: { project: Project; detailed: 
           </>
         )}
 
-        {detailed && (
+        {detailed && project.budgetUsedPct > 0 && (
           <span className={cn('ml-auto shrink-0', overBudget ? 'text-ember-300' : 'text-slate-600')}>
             {project.budgetUsedPct.toFixed(0)}% budget
           </span>

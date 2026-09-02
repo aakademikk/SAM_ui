@@ -8,6 +8,7 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -37,6 +38,82 @@ function metaPath(id: string): string {
 
 function stdoutPath(id: string): string {
   return path.join(jobDir(id), 'stdout.log');
+}
+
+/**
+ * Where the scope writes its own exit code.
+ *
+ * The spawning server reaps the exit code through the child handle, but that
+ * handle belongs to the `systemd-run` *client*. Restart sam-ui mid-job and the
+ * client dies while the scope keeps running in its sibling cgroup — the close
+ * handler never fires, and the job used to be finalised with a null code even
+ * when it had completed perfectly. Measured over 7 days that mis-filed ~17 real
+ * outcomes as unknown, which is what surfaced on mobile as "The agent exited".
+ *
+ * So the scope records its own result: whoever reads it later gets the truth.
+ * A missing file means the scope was torn down before it could write, i.e. the
+ * job genuinely died — which is exactly the state we do want reported.
+ */
+function exitCodePath(id: string): string {
+  return path.join(jobDir(id), 'exitcode');
+}
+
+/**
+ * Read the exit code a finished scope left behind. Returns null when there is
+ * no sentinel (job genuinely died) or it is unreadable/malformed.
+ */
+async function readExitSentinel(id: string): Promise<number | null> {
+  try {
+    const raw = (await fsp.readFile(exitCodePath(id), 'utf-8')).trim();
+    if (!raw) return null;
+    const code = Number(raw);
+    return Number.isInteger(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Wrap a payload so the scope writes its own exit code on the way out.
+ *
+ * `bash -c '<fixed script>' _ <bin> <args...>` puts the payload in `"$@"`, so
+ * argument content is never interpolated into the script text — the shell:false
+ * injection guarantee of createArgs() is preserved. The destination comes
+ * through the environment for the same reason.
+ */
+function withExitSentinel(argv: string[]): string[] {
+  return ['bash', '-c', '"$@"; printf %s "$?" > "$SAM_EXIT_FILE"', '_', ...argv];
+}
+
+/** Process start time in /proc clock ticks, or null if the PID is gone. */
+function procStartTicks(pid: number): number | null {
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf-8');
+    // Field 22 (starttime), indexed from field 3 after the parenthesised comm.
+    const afterComm = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+    const ticks = Number(afterComm[19]);
+    return Number.isFinite(ticks) ? ticks : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True if `pid` still exists and is the same process we spawned. The start-time
+ * check rules out PID reuse — Linux can hand the same number to an unrelated
+ * process after the original dies, which a bare existence check would mistake
+ * for a still-running job.
+ */
+function processAlive(pid: number, startTicks: number | null): boolean {
+  try {
+    process.kill(pid, 0);
+  } catch (err) {
+    // EPERM: exists but owned by another user — still alive.
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+  if (startTicks === null) return true;
+  const now = procStartTicks(pid);
+  return now === null || now === startTicks;
 }
 
 let idCounter = 0;
@@ -217,8 +294,11 @@ class JobManager {
 
   /**
    * Scan the job store once at boot and finalise records claiming 'running'.
-   * Their processes died with the previous server instance; the in-memory
-   * map is empty, so 'running' is a lie by construction.
+   * Jobs run in their own transient systemd scope, so they *outlive* a sam-ui
+   * restart — only a process that is genuinely gone died with the server. A
+   * surviving process is watched to its real end instead of being falsely
+   * declared killed (Job 08 adjacent finding); one with no PID to check (pre-
+   * fix record) falls back to 'killed' as before.
    */
   private async reconcileOrphans() {
     await ensureRoot();
@@ -231,17 +311,66 @@ class JobManager {
     for (const entry of entries) {
       if (!entry.isDirectory() || !entry.name.startsWith('job_')) continue;
       const file = metaPath(entry.name);
+      let record: JobRecord;
       try {
-        const raw = await fsp.readFile(file, 'utf-8');
-        const record = JSON.parse(raw) as JobRecord;
-        if (record.status === 'running') {
-          record.status = 'killed';
-          record.endedAt = new Date().toISOString();
-          await fsp.writeFile(file, JSON.stringify(record, null, 2));
-        }
+        record = JSON.parse(await fsp.readFile(file, 'utf-8')) as JobRecord;
       } catch {
         // Unreadable or malformed meta — not ours to fix.
+        continue;
       }
+      if (record.status !== 'running') continue;
+
+      if (record.pid && processAlive(record.pid, record.procStart ?? null)) {
+        void this.watchOrphan(record, file);
+        continue;
+      }
+
+      // Process is gone. Before declaring it killed, ask the scope what
+      // actually happened — a job that completed while sam-ui was down leaves
+      // its exit code behind, and used to be libelled as killed regardless.
+      const sentinel = await readExitSentinel(record.id);
+      if (sentinel !== null) {
+        record.status = 'exited';
+        record.exitCode = sentinel;
+        record.exitSource = 'sentinel';
+      } else {
+        record.status = 'killed';
+        record.exitSource = 'unknown';
+      }
+      record.endedAt = new Date().toISOString();
+      await fsp.writeFile(file, JSON.stringify(record, null, 2));
+    }
+  }
+
+  /**
+   * A job that survived a restart has no live parent to reap it. Poll until
+   * its process is gone, then record an honest terminal state. The exit code
+   * is read back from the scope's own sentinel, so a job that finished while
+   * sam-ui was down keeps its real result instead of being filed as unknown;
+   * only a scope torn down before it could write leaves a null code — and
+   * under the dashboard's failure rules a null-code 'exited' is not a failure.
+   */
+  private async watchOrphan(record: JobRecord, file: string) {
+    const pid = record.pid!;
+    const start = record.procStart ?? null;
+    while (processAlive(pid, start)) {
+      await new Promise((r) => setTimeout(r, 5_000));
+    }
+    try {
+      const raw = await fsp.readFile(file, 'utf-8');
+      const current = JSON.parse(raw) as JobRecord;
+      if (current.status === 'running') {
+        // The original parent is gone, but the scope wrote its own result on
+        // the way out — so the code is recoverable after all.
+        const sentinel = await readExitSentinel(current.id);
+        current.status = 'exited';
+        current.exitCode = sentinel;
+        current.exitSource = sentinel !== null ? 'sentinel' : 'unknown';
+        current.endedAt = new Date().toISOString();
+        await fsp.writeFile(file, JSON.stringify(current, null, 2));
+      }
+    } catch {
+      // Pruned or unreadable — nothing to finalise.
     }
   }
 
@@ -254,24 +383,41 @@ class JobManager {
   async create(command: string): Promise<JobRecord> {
     const { record, output } = await this.prepare(command);
 
-    const child = spawn(command, [], {
-      shell: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: os.homedir(),
-      env: mergeEnv({
-        // `.env.local` puts ANTHROPIC_* on process.env, so a raw child would
-        // inherit them — typing `claude` in the Terminal would silently route
-        // to DeepSeek. Strip them so the CLI talks to Claude, matching the Max
-        // chat tier and fleet dispatch.
-        ANTHROPIC_BASE_URL: null,
-        ANTHROPIC_AUTH_TOKEN: null,
-        ANTHROPIC_API_KEY: null,
-        ANTHROPIC_MODEL: null,
-        // The SessionStart hook launches a visualiser and a voice-line terminal
-        // tab — noise for a job whose output already streams in the Terminal.
-        SAM_SKIP_SERVICE_LAUNCH: '1',
-      }),
-    });
+    // Spawn inside its own transient systemd scope (sibling of sam-ui.service)
+    // so a `systemctl restart sam-ui` can no longer kill this job — a bare
+    // spawn inherits the server's cgroup and dies with it. `--quiet` keeps the
+    // scope banner out of the stream; the scope is collected on exit.
+    const child = spawn(
+      'systemd-run',
+      [
+        '--user',
+        '--scope',
+        '--quiet',
+        '--collect',
+        // The inner `bash -c` keeps the Terminal's shell semantics; the wrapper
+        // around it records the exit code so a sam-ui restart can't lose it.
+        ...withExitSentinel(['bash', '-c', command]),
+      ],
+      {
+        shell: false,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        cwd: os.homedir(),
+        env: mergeEnv({
+          SAM_EXIT_FILE: exitCodePath(record.id),
+          // `.env.local` puts ANTHROPIC_* on process.env, so a raw child would
+          // inherit them — typing `claude` in the Terminal would silently route
+          // to DeepSeek. Strip them so the CLI talks to Claude, matching the Max
+          // chat tier and fleet dispatch.
+          ANTHROPIC_BASE_URL: null,
+          ANTHROPIC_AUTH_TOKEN: null,
+          ANTHROPIC_API_KEY: null,
+          ANTHROPIC_MODEL: null,
+          // The SessionStart hook launches a visualiser and a voice-line terminal
+          // tab — noise for a job whose output already streams in the Terminal.
+          SAM_SKIP_SERVICE_LAUNCH: '1',
+        }),
+      },
+    );
 
     return this.attach(record, child, output);
   }
@@ -294,12 +440,19 @@ class JobManager {
     const label = opts.label ?? [bin, ...args].join(' ');
     const { record, output } = await this.prepare(label);
 
-    const child = spawn(bin, args, {
-      shell: false,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: opts.cwd ?? os.homedir(),
-      env: mergeEnv(opts.env),
-    });
+    // Same cgroup-escape as create(): run in a transient sibling scope so the
+    // job outlives a sam-ui restart. shell:false semantics preserved — bin and
+    // args pass through systemd-run as literal argv.
+    const child = spawn(
+      'systemd-run',
+      ['--user', '--scope', '--quiet', '--collect', ...withExitSentinel([bin, ...args])],
+      {
+        shell: false,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        cwd: opts.cwd ?? os.homedir(),
+        env: mergeEnv({ ...(opts.env ?? {}), SAM_EXIT_FILE: exitCodePath(record.id) }),
+      },
+    );
 
     return this.attach(record, child, output, opts.onExit);
   }
@@ -336,6 +489,11 @@ class JobManager {
   ): Promise<JobRecord> {
     record.status = 'running';
     record.startedAt = new Date().toISOString();
+    // Identity for reconcileOrphans: the scope leader PID plus its start time,
+    // so a boot-time liveness check can tell a surviving job from a dead one.
+    // child.pid is undefined only when the spawn failed before assigning one.
+    record.pid = child.pid ?? undefined;
+    record.procStart = child.pid ? procStartTicks(child.pid) ?? undefined : undefined;
 
     // Register handlers BEFORE any await — fast-exiting commands (bare echo,
     // etc.) can finish during the first I/O and we must not miss the close
@@ -352,9 +510,17 @@ class JobManager {
     child.stdout?.on('data', onData);
     child.stderr?.on('data', onData);
 
-    child.on('close', async (code) => {
+    child.on('close', async (code, signal) => {
       record.status = code === null ? 'killed' : 'exited';
-      record.exitCode = code;
+      // Node reports `code: null` whenever a signal did the killing, so the
+      // signal is the only thing that separates a restart SIGTERM from an OOM
+      // SIGKILL from a user cancel. Dropping it made all three look identical.
+      record.signal = signal ?? null;
+      // The wrapper's own code is the payload's code, so the handle stays
+      // authoritative when the parent is alive to reap it. Fall back to the
+      // sentinel if a signal robbed us of a code but the scope still wrote one.
+      record.exitCode = code ?? (await readExitSentinel(record.id));
+      record.exitSource = code !== null ? 'parent' : record.exitCode !== null ? 'sentinel' : 'unknown';
       record.endedAt = new Date().toISOString();
       await output.close();
       await this.writeMeta(record);

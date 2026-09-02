@@ -14,7 +14,9 @@
 
 import os from 'node:os';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 
+import { claudeBin } from '@/lib/server/claudeBin';
 import { getJobManager } from '@/lib/server/jobs/manager';
 import { envelope, failure, readJson } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
@@ -31,6 +33,11 @@ import {
   holdSessionLock,
   releaseSessionLock,
 } from '@/lib/server/chat/sessionLock';
+import {
+  isSamuiSession,
+  registerSamuiSession,
+} from '@/lib/server/chat/samuiSessions';
+import { reportChatRun } from '@/lib/server/fleet/costLedger';
 import type { TierId } from '@/types/chat';
 
 export const dynamic = 'force-dynamic';
@@ -40,10 +47,6 @@ const MAX_MESSAGE_CHARS = 8000;
 /** Where the agent runs. Its CLAUDE.md is what makes SAM sound like SAM. */
 function agentCwd(): string {
   return process.env.SAM_AGENT_CWD ?? path.join(os.homedir(), 'claude');
-}
-
-function claudeBin(): string {
-  return process.env.SAM_CLAUDE_BIN ?? 'claude';
 }
 
 /** Session ids are CLI-generated UUIDs; refuse anything that isn't one. */
@@ -100,9 +103,23 @@ export async function POST(request: Request) {
   // processes would fight over, so the holding turn keeps it locked for its
   // lifetime. A second resume attempt is refused until the turn finishes or
   // the lock goes stale, naming the device that holds it.
+  //
+  // Only sessions SAM_ui itself created may be resumed. A foreign id — e.g. the
+  // live interactive terminal session the phone once inherited — would spawn a
+  // second `claude` process on a conversation another process already owns, and
+  // the two race the same session file (the mobile turn streams a duplicate of
+  // the terminal's working and never lands an answer). Unknown ids fall back to
+  // a fresh server-assigned session, registered so the next turn recognises it.
+  const requestedResume =
+    typeof body.resumeSessionId === 'string' &&
+    validSessionId(body.resumeSessionId) &&
+    isSamuiSession(body.resumeSessionId)
+      ? body.resumeSessionId
+      : null;
+
   let resumeSessionId: string | null = null;
-  if (validSessionId(body.resumeSessionId)) {
-    const acquired = acquireSessionLock(body.resumeSessionId, stepUp.device);
+  if (requestedResume) {
+    const acquired = acquireSessionLock(requestedResume, stepUp.device);
     if (!acquired.ok) {
       return failure(
         `This conversation is already in use on '${acquired.device}'. ` +
@@ -110,8 +127,15 @@ export async function POST(request: Request) {
         409,
       );
     }
-    resumeSessionId = body.resumeSessionId;
+    resumeSessionId = requestedResume;
     args.push('--resume', resumeSessionId);
+  } else {
+    // Fresh conversation. Assign the id server-side and remember it as ours, so
+    // the client's next turn (which resumes whatever the stream reports) is
+    // recognised rather than refused. Never let the client dictate a foreign id.
+    const sessionId = randomUUID();
+    registerSamuiSession(sessionId);
+    args.push('--session-id', sessionId);
   }
 
   const info = tierInfo(tier);
@@ -131,10 +155,14 @@ export async function POST(request: Request) {
         SAM_SKIP_SERVICE_LAUNCH: '1',
       },
       // The turn ends the moment the process closes; drop the lock so the next
-      // resume — from this device or another — can take it immediately.
-      onExit: resumeSessionId
-        ? () => releaseSessionLock(resumeSessionId)
-        : undefined,
+      // resume — from this device or another — can take it immediately. In the
+      // same breath, report the turn's third-party spend to the estate ledger
+      // (the same best-effort reporter the fleet dispatch route uses — a no-op
+      // for the max tier and for Anthropic models).
+      onExit: async (finished) => {
+        if (resumeSessionId) releaseSessionLock(resumeSessionId);
+        await reportChatRun(finished.id, tier, info.model);
+      },
     })
     .catch((err: unknown) => {
       // The lock was taken before the spawn; if the spawn itself fails, release

@@ -14,6 +14,8 @@ import type {
   DailyTask,
   DailyTasksPayload,
   DashboardBootstrap,
+  MoneyEntry,
+  MoneyInPayload,
   Project,
   ProjectHealth,
   ProjectPhase,
@@ -268,6 +270,31 @@ export function parseTasks(raw: unknown): DailyTasksPayload {
   };
 }
 
+function parseMoneyEntry(raw: unknown): MoneyEntry {
+  const r = asRecord(raw);
+  return {
+    id: asString(r.id, ''),
+    label: asString(r.label, ''),
+    amount: asNumber(r.amount),
+    date: asString(r.date, ''),
+    source: asString(r.source, ''),
+    recurring: asBool(r.recurring),
+    createdAt: asString(r.createdAt, new Date(0).toISOString()),
+  };
+}
+
+export function parseMoney(raw: unknown): MoneyInPayload {
+  const r = asRecord(raw);
+  return {
+    currency: asString(r.currency, 'GBP'),
+    entries: asArray(r.entries, parseMoneyEntry),
+    totalThisMonth: asNumber(r.totalThisMonth),
+    countThisMonth: asNumber(r.countThisMonth),
+    totalLastMonth: asNumber(r.totalLastMonth),
+    monthDeltaPct: asNumber(r.monthDeltaPct, -1),
+  };
+}
+
 /* ========================================================================== */
 /* Endpoints                                                                  */
 /* ========================================================================== */
@@ -327,6 +354,34 @@ export const dashboardService = {
       attempts: 1,
     });
     return parseTasks(res.data);
+  },
+
+  async getMoney(opts: FetchOpts = {}): Promise<MoneyInPayload> {
+    const res = await request<unknown>('/dashboard/money', { signal: opts.signal });
+    return parseMoney(res.data);
+  },
+
+  async createMoneyEntry(
+    input: { label: string; amount: number; date?: string; source?: string; recurring?: boolean },
+    opts: FetchOpts = {},
+  ): Promise<MoneyInPayload> {
+    const res = await request<unknown>('/dashboard/money', {
+      method: 'POST',
+      body: input,
+      signal: opts.signal,
+      attempts: 1,
+    });
+    return parseMoney(res.data);
+  },
+
+  async deleteMoneyEntry(id: string, opts: FetchOpts = {}): Promise<MoneyInPayload> {
+    const res = await request<unknown>('/dashboard/money', {
+      method: 'DELETE',
+      body: { id },
+      signal: opts.signal,
+      attempts: 1,
+    });
+    return parseMoney(res.data);
   },
 
   /**

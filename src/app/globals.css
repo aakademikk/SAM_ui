@@ -557,11 +557,15 @@ body {
   overscroll-behavior-y: none;
 }
 
-/* Keep interactive targets comfortable for thumbs on touch devices. */
-@media (pointer: coarse) {
-  button,
-  [role='button'],
-  input[type='range'] {
-    touch-action: manipulation;
+/* Keep interactive targets comfortable for thumbs on touch devices. This lives
+   in the base layer so Tailwind utilities (touch-none on drag handles, etc.)
+   can override it — un-layered, it would beat the utilities and break drags. */
+@layer base {
+  @media (pointer: coarse) {
+    button,
+    [role='button'],
+    input[type='range'] {
+      touch-action: manipulation;
+    }
   }
 }

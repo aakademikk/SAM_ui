@@ -15,6 +15,8 @@ import type {
   DailyTask,
   DailyTasksPayload,
   LoadState,
+  MoneyEntry,
+  MoneyInPayload,
   Project,
   SystemHealthPayload,
   TaskPriority,
@@ -43,13 +45,14 @@ const emptySlice = <T>(): Slice<T> => ({
   failures: 0,
 });
 
-export type SliceKey = 'projects' | 'system' | 'tasks';
+export type SliceKey = 'projects' | 'system' | 'tasks' | 'money';
 
 /** Polling cadence per slice, in milliseconds. */
 export const POLL_INTERVALS: Record<SliceKey, number> = {
   system: 4_000,
   tasks: 30_000,
   projects: 30_000,
+  money: 30_000,
 };
 
 const controllers = new Map<SliceKey, AbortController>();
@@ -70,6 +73,17 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown failure';
 }
 
+/** Local calendar day as YYYY-MM-DD, matching the server's money-store clock. */
+function localDayStr(d: Date): string {
+  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** `YYYY-MM` prefix — month arithmetic on stored dates. */
+function monthKey(date: string): string {
+  return date.slice(0, 7);
+}
+
 /* ========================================================================== */
 /* State                                                                      */
 /* ========================================================================== */
@@ -78,6 +92,7 @@ export interface DashboardState {
   projects: Slice<Project[]>;
   system: Slice<SystemHealthPayload>;
   tasks: Slice<DailyTasksPayload>;
+  money: Slice<MoneyInPayload>;
 
   /** True until the first bootstrap settles. Drives the skeleton cascade. */
   booting: boolean;
@@ -94,12 +109,21 @@ export interface DashboardState {
   addTask: (title: string, priority?: TaskPriority, tag?: string) => Promise<void>;
   toggleTask: (id: string) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
+  addMoneyEntry: (input: {
+    label: string;
+    amount: number;
+    date?: string;
+    source?: string;
+    recurring?: boolean;
+  }) => Promise<void>;
+  deleteMoneyEntry: (id: string) => Promise<void>;
 }
 
 export const useDashboardStore = create<DashboardState>()((set, get) => ({
   projects: emptySlice(),
   system: emptySlice(),
   tasks: emptySlice(),
+  money: emptySlice(),
 
   booting: true,
   polling: false,
@@ -126,6 +150,9 @@ export const useDashboardStore = create<DashboardState>()((set, get) => ({
           break;
         case 'tasks':
           data = await dashboardService.getTasks({ signal });
+          break;
+        case 'money':
+          data = await dashboardService.getMoney({ signal });
           break;
       }
 
@@ -156,7 +183,7 @@ export const useDashboardStore = create<DashboardState>()((set, get) => ({
 
   bootstrap: async () => {
     set({ booting: true });
-    const keys: SliceKey[] = ['system', 'tasks', 'projects'];
+    const keys: SliceKey[] = ['system', 'tasks', 'projects', 'money'];
     // Settle everything, then lift the boot curtain once — a partial estate is
     // still worth rendering.
     await Promise.allSettled(keys.map((key) => get().refresh(key)));
@@ -265,6 +292,84 @@ export const useDashboardStore = create<DashboardState>()((set, get) => ({
       set((s) => ({ tasks: { ...s.tasks, data: current, error: describeError(error) } }));
     }
   },
+
+  addMoneyEntry: async ({ label, amount, date, source, recurring = false }) => {
+    const trimmed = label.trim();
+    if (!trimmed || !Number.isFinite(amount) || amount <= 0) return;
+
+    const current = get().money.data;
+    const entryDate = date ?? localDayStr(new Date());
+    const optimisticEntry: MoneyEntry = {
+      id: uid('money'),
+      label: trimmed,
+      amount,
+      date: entryDate,
+      source: (source ?? '').trim(),
+      recurring,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (current) {
+      // Recurring entries count from their start month onward; keep the
+      // optimistic totals honest until the server round-trip corrects them.
+      const thisKey = monthKey(localDayStr(new Date()));
+      const start = entryDate.slice(0, 7);
+      const countsThisMonth = recurring ? start <= thisKey : start === thisKey;
+
+      const optimistic: MoneyInPayload = {
+        ...current,
+        entries: [optimisticEntry, ...current.entries],
+        totalThisMonth: current.totalThisMonth + (countsThisMonth ? amount : 0),
+        countThisMonth: current.countThisMonth + (countsThisMonth ? 1 : 0),
+      };
+      set((s) => ({ money: { ...s.money, data: optimistic } }));
+    }
+
+    try {
+      const data = await dashboardService.createMoneyEntry({
+        label: trimmed,
+        amount,
+        date: entryDate,
+        source: source?.trim(),
+        recurring,
+      });
+      set((s) => ({ money: { ...s.money, data, updatedAt: Date.now(), error: null } }));
+    } catch (error) {
+      set((s) => ({ money: { ...s.money, data: current, error: describeError(error) } }));
+    }
+  },
+
+  deleteMoneyEntry: async (id) => {
+    const current = get().money.data;
+    if (!current) return;
+    const target = current.entries.find((e) => e.id === id);
+    if (!target) return;
+
+    // Only unwind the current-month totals if the entry was counting this month.
+    const thisKey = monthKey(localDayStr(new Date()));
+    const counted = target.recurring
+      ? monthKey(target.date) <= thisKey
+      : monthKey(target.date) === thisKey;
+
+    set((s) => ({
+      money: {
+        ...s.money,
+        data: {
+          ...current,
+          entries: current.entries.filter((e) => e.id !== id),
+          totalThisMonth: Math.max(0, current.totalThisMonth - (counted ? target.amount : 0)),
+          countThisMonth: Math.max(0, current.countThisMonth - (counted ? 1 : 0)),
+        },
+      },
+    }));
+
+    try {
+      const data = await dashboardService.deleteMoneyEntry(id);
+      set((s) => ({ money: { ...s.money, data, updatedAt: Date.now(), error: null } }));
+    } catch (error) {
+      set((s) => ({ money: { ...s.money, data: current, error: describeError(error) } }));
+    }
+  },
 }));
 
 /* ========================================================================== */
@@ -272,7 +377,7 @@ export const useDashboardStore = create<DashboardState>()((set, get) => ({
 /* ========================================================================== */
 
 export const selectAnyError = (state: DashboardState) => {
-  const keys: SliceKey[] = ['projects', 'system', 'tasks'];
+  const keys: SliceKey[] = ['projects', 'system', 'tasks', 'money'];
   return keys.some((k) => state[k].status === 'error');
 };
 

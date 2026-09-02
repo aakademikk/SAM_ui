@@ -25,6 +25,7 @@
 import os from 'node:os';
 import path from 'node:path';
 
+import { claudeBin } from '@/lib/server/claudeBin';
 import { getJobManager } from '@/lib/server/jobs/manager';
 import { fleetModel, isDeepSeekModel, personaMayUseDeepSeek } from '@/lib/fleetModels';
 import { reportFleetRun } from '@/lib/server/fleet/costLedger';
@@ -44,10 +45,6 @@ const DEFAULT_MODEL = 'sonnet';
 /** Where the agent runs. Its CLAUDE.md is what makes SAM sound like SAM. */
 function agentCwd(): string {
   return process.env.SAM_AGENT_CWD ?? path.join(os.homedir(), 'claude');
-}
-
-function claudeBin(): string {
-  return process.env.SAM_CLAUDE_BIN ?? 'claude';
 }
 
 export async function POST(request: Request) {

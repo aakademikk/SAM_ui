@@ -14,7 +14,7 @@ const store = globalThis as unknown as {
   __samLayout?: { layout: WidgetLayoutItem[]; savedAt: string };
 };
 
-const VALID_IDS: WidgetKind[] = ['active-projects', 'system-health', 'daily-tasks'];
+const VALID_IDS: WidgetKind[] = ['active-projects', 'system-health', 'daily-tasks', 'money-in'];
 const VALID_SIZES: WidgetSize[] = ['sm', 'md-wide', 'md-tall', 'lg'];
 
 function sanitize(raw: unknown): WidgetLayoutItem[] | null {

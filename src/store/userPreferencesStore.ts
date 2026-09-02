@@ -24,6 +24,7 @@ import { clamp, debounce } from '@/lib/utils';
 
 export const DEFAULT_LAYOUT: WidgetLayoutItem[] = [
   { id: 'daily-tasks', size: 'md-tall', visible: true },
+  { id: 'money-in', size: 'md-wide', visible: true },
   { id: 'active-projects', size: 'md-wide', visible: true },
   { id: 'system-health', size: 'md-wide', visible: true },
 ];

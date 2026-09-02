@@ -1,7 +1,7 @@
 'use client';
 
 import type { ComponentType } from 'react';
-import { CheckSquare, FolderKanban, Activity } from 'lucide-react';
+import { Banknote, CheckSquare, FolderKanban, Activity } from 'lucide-react';
 
 import type { WidgetKind, WidgetSize } from '@/types/dashboard';
 import type { ToneName } from '@/components/ui/Indicators';
@@ -9,6 +9,7 @@ import type { ToneName } from '@/components/ui/Indicators';
 import { ActiveProjectsWidget } from '@/components/dashboard/widgets/ActiveProjectsWidget';
 import { SystemHealthWidget } from '@/components/dashboard/widgets/SystemHealthWidget';
 import { DailyTasksWidget } from '@/components/dashboard/widgets/DailyTasksWidget';
+import { MoneyInWidget } from '@/components/dashboard/widgets/MoneyInWidget';
 
 /** Props every widget receives from the grid. */
 export interface WidgetProps {
@@ -52,6 +53,14 @@ export const WIDGET_REGISTRY: Record<WidgetKind, WidgetDescriptor> = {
     icon: CheckSquare,
     tone: 'accent',
     component: DailyTasksWidget,
+  },
+  'money-in': {
+    id: 'money-in',
+    title: 'Money In',
+    description: 'Income you logged — real money, no estimates.',
+    icon: Banknote,
+    tone: 'success',
+    component: MoneyInWidget,
   },
 };
 

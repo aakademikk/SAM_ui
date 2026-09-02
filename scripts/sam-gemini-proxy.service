@@ -1,0 +1,22 @@
+[Unit]
+Description=SAM Gemini proxy — Anthropic-compatible shim for samui chat
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/col/SAM_ui
+ExecStart=/usr/bin/node /home/col/SAM_ui/proxy/gemini-proxy.mjs
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+# Security hardening — least privilege. Home stays read-only; the proxy reads
+# GEMINI_API_KEY out of /home/col/SAM_ui/.env.local itself, no EnvironmentFile.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=default.target

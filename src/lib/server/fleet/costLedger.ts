@@ -1,19 +1,22 @@
 /**
- * SAM — report third-party fleet spend to the estate cost ledger.
+ * SAM — report third-party spend to the estate cost ledger.
  *
  * `cost_service.py` (loopback :8791) is the one place every token bill lands,
  * so the estate has a single cost picture rather than one slice per system.
- * Anthropic fleet runs are deliberately *not* reported: they are first-party,
+ * Anthropic runs are deliberately *not* reported: they are first-party,
  * already priced correctly by the CLI, and the SAM_ui spend view reads them
- * straight from the job store. Only DeepSeek runs go here, because their cost
- * is invisible to every other ledger.
+ * straight from the job store. Only models with local rates (DeepSeek, Gemini)
+ * go here, because their cost is invisible to every other ledger. Covers fleet
+ * dispatch runs (`sam_ui.fleet.<persona>`) and chat tiers
+ * (`sam_ui.chat.<tier>`).
  *
  * Best-effort by design. The ledger being down must never affect a job that
  * has already completed, so every failure path is a silent return.
  */
 
 import { readFrames } from '@/lib/server/jobs/manager';
-import { isDeepSeekModel } from '@/lib/fleetModels';
+import { DEEPSEEK_RATES, GEMINI_RATES } from '@/lib/rates';
+import type { TierId } from '@/types/chat';
 
 const LEDGER_URL = process.env.FLEET_COST_URL ?? 'http://127.0.0.1:8791/record';
 const TIMEOUT_MS = 2000;
@@ -58,25 +61,25 @@ async function resultUsage(jobId: string): Promise<ResultUsage | null> {
 }
 
 /**
- * Post a completed DeepSeek fleet run's token usage to the estate ledger.
- * No-ops for Anthropic models and for runs with no usable usage block.
+ * Post a completed third-party run's token usage to the estate ledger.
+ * No-ops for first-party Anthropic models (nothing in the local rate tables)
+ * and for runs with no usable usage block.
  */
-export async function reportFleetRun(
-  jobId: string,
-  persona: string,
-  model: string,
-): Promise<void> {
-  if (!isDeepSeekModel(model)) return;
+async function reportRun(jobId: string, source: string, model: string): Promise<void> {
+  // Only models with local rates are reported. Anthropic runs are first-party,
+  // priced correctly by the CLI and read straight from the job store by the
+  // spend view — sending them here would double-book them.
+  if (!(model in DEEPSEEK_RATES) && !(model in GEMINI_RATES)) return;
 
   const usage = await resultUsage(jobId);
   if (!usage) return;
 
-  // `usd` is deliberately omitted: the service prices DeepSeek from its own
-  // table, which is the same single source the router uses. Sending a figure
-  // computed here would create a second, drifting price list.
+  // `usd` is deliberately omitted: the service prices third-party models from
+  // its own table, which is the same single source the router uses. Sending a
+  // figure computed here would create a second, drifting price list.
   const body = {
     model,
-    source: `sam_ui.fleet.${persona}`,
+    source,
     usage: {
       input_tokens: usage.input_tokens ?? 0,
       cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
@@ -104,4 +107,23 @@ export async function reportFleetRun(
   } catch {
     // Ledger down, refusing, or slow. The run itself already succeeded.
   }
+}
+
+/** Report a completed DeepSeek fleet run to the estate ledger. */
+export async function reportFleetRun(
+  jobId: string,
+  persona: string,
+  model: string,
+): Promise<void> {
+  return reportRun(jobId, `sam_ui.fleet.${persona}`, model);
+}
+
+/** Report a completed third-party chat turn (fast / pro / gemini) to the estate
+    ledger. The max tier never reports: its model has no local rate entry. */
+export async function reportChatRun(
+  jobId: string,
+  tier: TierId,
+  model: string,
+): Promise<void> {
+  return reportRun(jobId, `sam_ui.chat.${tier}`, model);
 }

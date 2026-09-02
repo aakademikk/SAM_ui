@@ -203,7 +203,7 @@ export function WidgetFrame({
             to spare for a permanently reserved handle. */}
         <span className="relative size-[15px] shrink-0">
           <span
-            className="absolute inset-0 flex items-center justify-center transition-opacity group-hover/widget:opacity-0"
+            className="absolute inset-0 flex items-center justify-center transition-opacity group-hover/widget:opacity-0 pointer-coarse:opacity-0"
             style={{ color: accent }}
           >
             {icon}
@@ -216,6 +216,9 @@ export function WidgetFrame({
               'drag-none absolute inset-0 flex cursor-grab touch-none items-center justify-center',
               'rounded-[3px] text-dim-200 opacity-0 transition',
               'hover:text-slate-200 focus-visible:opacity-100 group-hover/widget:opacity-100',
+              // Touchscreens have no hover to reveal the grip, so show it
+              // always and give it a usable hit area (15px icon + 8px each side).
+              'pointer-coarse:opacity-100 pointer-coarse:-m-2 pointer-coarse:p-2',
               'active:cursor-grabbing',
             )}
           >
