@@ -152,7 +152,22 @@ export default function ChatPage() {
   /** How many speech handles are currently audible — see reportSpeech(). */
   const speakingCountRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-grow the composer with its content: text wraps to new rows instead of
+  // forcing a single line that scrolls sideways. CSS max-h caps the growth and
+  // overflow-y-auto takes over past that. Clearing the input returns it to one
+  // row (the inline height is removed so the stylesheet's default applies).
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    if (!input) {
+      el.style.height = '';
+      return;
+    }
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
   /** Root of the chat column — carries --kb (keyboard overlay height). */
   const rootRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -1238,17 +1253,26 @@ export default function ChatPage() {
           onSubmit={(e) => { e.preventDefault(); void send(input); }}
           className="flex items-center gap-2 max-w-3xl mx-auto"
         >
-          <input
+          <textarea
             ref={inputRef}
-            type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter sends, Shift+Enter inserts a newline. Guarded the same way
+              // as the submit button so an empty or mid-run composer never fires.
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (input.trim() && !running) void send(input);
+              }
+            }}
             placeholder={running ? 'SAM is working…' : 'Type a message…'}
             disabled={running}
-            className="flex-1 bg-void-800 border border-void-600 rounded-full px-4 py-2.5
-                       text-void-100 text-sm placeholder:text-dim-500
-                       focus:border-accent focus:outline-none disabled:opacity-50"
+            rows={1}
             autoComplete="off"
+            className="flex-1 bg-void-800 border border-void-600 rounded-2xl px-4 py-2.5
+                       text-void-100 text-sm placeholder:text-dim-500 leading-snug
+                       resize-none overflow-y-auto max-h-20 sm:max-h-40
+                       focus:border-accent focus:outline-none disabled:opacity-50"
           />
           <button
             type="submit"
