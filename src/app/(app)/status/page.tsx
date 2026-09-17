@@ -42,9 +42,36 @@ interface LaneRow {
   done: number;
 }
 
+interface WhatsappRow {
+  sector: string;
+  available: number;
+  messaged: number;
+  closed: number;
+}
+
+/**
+ * The WhatsApp lane, read from its own ledger by the ops-status collector. It
+ * rides under `outreach` because it is the same programme on a different
+ * transport, but every field is optional: an older collector simply omits it
+ * and the block disappears rather than breaking the page.
+ */
+interface OutreachWhatsapp {
+  ok: boolean;
+  error: string | null;
+  pool?: { available: number; messaged: number; replied: number; closed: number };
+  perSector?: WhatsappRow[];
+  /** Chases whose date has passed. A date, not a queue — see the footnote. */
+  overdue?: number;
+  dueToday?: number;
+  dueNext?: { date: string; count: number }[];
+  sentToday?: number;
+  chasedToday?: number;
+}
+
 interface OutreachOk {
   ok: true;
   cap: number | null;
+  whatsapp?: OutreachWhatsapp;
   pool: {
     active: number;
     fresh: number;
@@ -254,6 +281,20 @@ export default function StatusPage() {
   const outreach = payload?.outreach && payload.outreach.ok ? payload.outreach : null;
   const outreachErr = payload?.outreach && !payload.outreach.ok ? payload.outreach : null;
   const pool = outreach?.pool;
+  const wa = outreach?.whatsapp && outreach.whatsapp.ok ? outreach.whatsapp : null;
+
+  // The lane's footer sums the rows it sits under rather than reading `pool`:
+  // per-sector folds the one reply into "live" (61) while `pool` reports it split
+  // (60 messaged + 1 replied), so summing the rows is what keeps the total
+  // reconciling with the table above it.
+  const waTotals = (wa?.perSector ?? []).reduce(
+    (a, l) => ({
+      available: a.available + l.available,
+      messaged: a.messaged + l.messaged,
+      closed: a.closed + l.closed,
+    }),
+    { available: 0, messaged: 0, closed: 0 },
+  );
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-5 space-y-4">
@@ -326,13 +367,34 @@ export default function StatusPage() {
           {outreach && (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Card>
-                <Stat label="active in pool" value={pool?.active ?? '–'} tone="accent" />
+                <Stat
+                  label="active in pool"
+                  value={pool?.active ?? '–'}
+                  tone="accent"
+                  hint={
+                    wa
+                      ? `WhatsApp ${(wa.pool?.messaged ?? 0) + (wa.pool?.replied ?? 0)} live`
+                      : undefined
+                  }
+                />
               </Card>
               <Card>
-                <Stat label="due today" value={outreach.dueToday ?? '–'} />
+                <Stat
+                  label="due today"
+                  value={outreach.dueToday ?? '–'}
+                  hint={wa ? `WhatsApp ${wa.dueToday ?? 0} due · ${wa.overdue ?? 0} overdue` : undefined}
+                />
               </Card>
               <Card>
-                <Stat label="sent today" value={outreach.sentToday ?? '–'} />
+                <Stat
+                  label="sent today"
+                  value={outreach.sentToday ?? '–'}
+                  hint={
+                    wa
+                      ? `WhatsApp ${wa.sentToday ?? 0} sent · ${wa.chasedToday ?? 0} chased`
+                      : undefined
+                  }
+                />
               </Card>
               <Card>
                 <Stat
@@ -446,6 +508,103 @@ export default function StatusPage() {
                     )}
                   </div>
                 </div>
+
+                {wa && (
+                  <div className="space-y-3 border-t border-void-700 pt-4">
+                    <p className="font-mono text-[9.5px] tracking-[0.14em] text-slate-500 uppercase">
+                      WhatsApp lane
+                    </p>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <p className="mb-1 font-mono text-[9.5px] tracking-[0.14em] text-slate-600 uppercase">
+                          pool by trade
+                        </p>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-3 border-b border-void-700 pb-1 font-mono text-[9px] tracking-[0.12em] text-slate-600 uppercase">
+                          <span>sector</span>
+                          <span className="w-8 text-right">new</span>
+                          <span className="w-10 text-right">live</span>
+                          <span className="w-10 text-right">done</span>
+                        </div>
+                        {(wa.perSector ?? []).map((l) => (
+                          <div
+                            key={l.sector}
+                            className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-3 border-b border-void-800 py-1 text-[12px]"
+                          >
+                            <span className="truncate text-slate-200 capitalize">{l.sector}</span>
+                            <span className="tabular w-8 text-right font-semibold text-slate-100">
+                              {l.available}
+                            </span>
+                            <span className="tabular w-10 text-right text-slate-400">
+                              {l.messaged}
+                            </span>
+                            <span className="tabular w-10 text-right text-slate-500">
+                              {l.closed}
+                            </span>
+                          </div>
+                        ))}
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-3 border-t border-void-600 pt-1 font-mono text-[10px] tracking-[0.12em] text-slate-500 uppercase">
+                          <span className="truncate">
+                            total · {waTotals.available + waTotals.messaged + waTotals.closed}
+                          </span>
+                          <span className="tabular w-8 text-right">{waTotals.available}</span>
+                          <span className="tabular w-10 text-right">{waTotals.messaged}</span>
+                          <span className="tabular w-10 text-right">{waTotals.closed}</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Row k="chases overdue">
+                          <span
+                            className={`tabular text-[12px] ${
+                              (wa.overdue ?? 0) > 0 ? 'font-semibold text-amber-300' : 'text-slate-100'
+                            }`}
+                          >
+                            {wa.overdue ?? 0}
+                          </span>
+                        </Row>
+                        <Row k="due today">
+                          <span className="tabular text-[12px] text-slate-100">
+                            {wa.dueToday ?? 0}
+                          </span>
+                        </Row>
+                        <Row k="sent / chased today">
+                          <span className="tabular text-[12px] text-slate-100">
+                            {wa.sentToday ?? 0} / {wa.chasedToday ?? 0}
+                          </span>
+                        </Row>
+                        <Row k="in flight">
+                          <span className="tabular text-[12px] text-slate-100">
+                            {wa.pool?.messaged ?? 0} live · {wa.pool?.replied ?? 0} replied
+                          </span>
+                        </Row>
+                        {wa.dueNext && wa.dueNext.length > 0 && (
+                          <Row k="next due">
+                            <span className="flex flex-wrap justify-end gap-1">
+                              {wa.dueNext.map((d) => (
+                                <span
+                                  key={d.date}
+                                  className="rounded-[3px] border border-void-600 px-1.5 py-0.5 font-mono text-[10px] text-slate-300"
+                                >
+                                  {shortDate(d.date)} · {d.count}
+                                </span>
+                              ))}
+                            </span>
+                          </Row>
+                        )}
+                        <p className="mt-2 text-[10px] text-slate-600">
+                          {wa.pool?.available ?? 0} in the pool, unmessaged — a chase date is
+                          not a queue; read the row before sending
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {outreach.whatsapp && !outreach.whatsapp.ok && (
+                  <p className="border-t border-void-700 pt-3 text-[11.5px] text-red-300">
+                    WhatsApp db error — {outreach.whatsapp.error}
+                  </p>
+                )}
               </Card>
             ) : (
               <Card>

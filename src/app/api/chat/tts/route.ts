@@ -1,8 +1,12 @@
 /**
  * POST /api/chat/tts — SAM's chat voice.
  *
- * Body: { text: string, voice?: number }
+ * Body: { text: string, voice?: number, edgeVoice?: string, edgeRate?: string }
  * Returns: audio/mpeg
+ *
+ * `edgeVoice` picks the Edge voice; `edgeRate` its pace ("+0%", "-5%"). The
+ * rate exists for the practice agent's buyer, who must not inherit SAM's
+ * configured +15% — rushed delivery is most of what reads as robotic.
  *
  * Primary: the voice-line Edge service (Abeo) at 127.0.0.1:8790. Falls back
  * to local sherpa-onnx Kokoro if that service is unreachable, so chat audio
@@ -43,13 +47,22 @@ export async function POST(request: Request) {
   const edgeVoice = typeof body.edgeVoice === 'string' && body.edgeVoice
     ? body.edgeVoice
     : undefined;
+  // Per-request speaking rate ("+0%", "-5%"). Shape is validated downstream in
+  // voice-line's mouth.normalise_rate, which falls back to the service default
+  // rather than erroring — so a bad value degrades to the configured pace
+  // instead of leaving a chunk silent.
+  const edgeRate = typeof body.edgeRate === 'string' && body.edgeRate ? body.edgeRate : undefined;
 
   // Primary: voice-line Edge service (Abeo, or the selected Edge voice).
   try {
     const upstream = await fetch(VOICE_LINE_TTS_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text, ...(edgeVoice ? { voice: edgeVoice } : {}) }),
+      body: JSON.stringify({
+        text,
+        ...(edgeVoice ? { voice: edgeVoice } : {}),
+        ...(edgeRate ? { rate: edgeRate } : {}),
+      }),
       signal: AbortSignal.timeout(VOICE_LINE_TIMEOUT_MS),
     });
     if (upstream.ok) {
