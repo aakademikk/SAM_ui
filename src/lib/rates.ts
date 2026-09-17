@@ -14,6 +14,18 @@
 import type { TierRates } from '@/types/chat';
 
 export const DEEPSEEK_RATES: Record<string, TierRates> = {
+  // DeepSeek V4.1-Flash, shipped 2026-09-10 as `deepseek-flash`. Cheaper than
+  // the v4-flash it replaces on every axis. `old` mirrors `offPeak` because the
+  // model postdates the 2026-08-16 rate switch — the flat legacy window can
+  // never apply to it.
+  'deepseek-flash': {
+    old: { inputMiss: 0.15, cacheHit: 0.003, output: 0.6 },
+    offPeak: { inputMiss: 0.15, cacheHit: 0.003, output: 0.6 },
+    peak: { inputMiss: 0.3, cacheHit: 0.006, output: 1.2 },
+  },
+  // Retired 2026-09-10, kept deliberately: transcripts and ledger lines from
+  // before the rename are keyed by this id, and `computeRunCost` falls back to
+  // the CLI's ~100x-overstated figure for any id missing from this table.
   'deepseek-v4-flash': {
     old: { inputMiss: 0.14, cacheHit: 0.0028, output: 0.28 },
     offPeak: { inputMiss: 0.22, cacheHit: 0.007, output: 0.66 },

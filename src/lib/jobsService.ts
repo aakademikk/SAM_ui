@@ -55,6 +55,8 @@ export type JobEvent =
   | { type: 'output'; seq: number; text: string }
   /** Server-side phase ping — see the stream route's doc comment. */
   | { type: 'phase'; phase: string; ms: number }
+  /** A resume landed past output the server no longer retains. */
+  | { type: 'truncated'; from: number; to: number }
   | { type: 'closed'; status: 'exited' | 'killed' | 'lost'; exitCode: number | null };
 
 /**
@@ -203,6 +205,18 @@ function dispatchSSE(
         onEvent({ type: 'phase', phase: info.phase, ms: info.ms });
       } catch {
         // malformed ping — ignore
+      }
+      break;
+    }
+    case 'truncated': {
+      // The server's output buffer is bounded, so a resume can land past a gap
+      // it no longer holds. Surfaced rather than swallowed: the client renders
+      // the gap as a marker instead of passing a hole off as whole output.
+      try {
+        const info = JSON.parse(data) as { from: number; to: number };
+        onEvent({ type: 'truncated', from: info.from, to: info.to });
+      } catch {
+        onEvent({ type: 'truncated', from: 0, to: 0 });
       }
       break;
     }

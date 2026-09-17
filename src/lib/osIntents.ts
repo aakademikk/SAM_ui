@@ -69,7 +69,14 @@ export function intentClass(intent: OsIntent): IntentClass {
  * confirmations that matter stop working.
  */
 export function confirmsBeforeActing(intent: OsIntent): boolean {
-  return intent.kind === 'email' || intent.kind === 'sms' || intent.kind === 'call';
+  if (intent.kind === 'email' || intent.kind === 'sms') return true;
+  // `call` covers two things. "call mike" places a call — third party, cannot
+  // be taken back, confirms. "dial 07700 900123" only opens the dialler with
+  // the number filled in; nothing is sent and nobody is reached until Colin
+  // taps green. Confirming that is a yes in front of a tap, which is how the
+  // confirmations that matter get rubber-stamped.
+  if (intent.kind === 'call') return intent.place;
+  return false;
 }
 
 /* ========================================================================== */

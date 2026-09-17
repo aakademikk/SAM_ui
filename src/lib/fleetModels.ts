@@ -29,9 +29,9 @@ export const FLEET_MODELS: readonly FleetModel[] = [
   { id: 'sonnet', label: 'Sonnet', hint: 'balanced · generals', provider: 'anthropic' },
   { id: 'opus', label: 'Opus', hint: 'max capability · expensive', provider: 'anthropic' },
   {
-    id: 'deepseek-v4-flash',
+    id: 'deepseek-flash',
     label: 'Flash',
-    hint: 'deepseek · cheapest · read-only',
+    hint: 'deepseek · V4.1 · cheapest · read-only',
     provider: 'deepseek',
   },
   {

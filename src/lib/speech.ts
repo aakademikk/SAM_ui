@@ -166,6 +166,25 @@ export interface SpeechHandle {
 }
 
 /**
+ * Every handle currently able to make noise.
+ *
+ * This is what the mute button calls. A single slot would not do the job: the
+ * spoken ack is still finishing when the answer's speech starts and supersedes
+ * it through the shared audio element, so two handles legitimately overlap — a
+ * mute that silenced only the newest would leave the other one talking.
+ *
+ * Each stop() fires its own `onState(false)`, so the visualiser's ref-count
+ * unwinds by itself and callers need not know how many were playing.
+ */
+const liveStops = new Set<() => void>();
+
+/** Silence everything in flight, ack and answer alike. The global mute. */
+export function stopAllSpeech(): void {
+  for (const stop of [...liveStops]) stop();
+  liveStops.clear();
+}
+
+/**
  * Speak `text`, starting playback as soon as the first chunk is ready.
  *
  * `onState` reports whether audio is currently audible, which drives the
@@ -188,6 +207,7 @@ export function speakChunked(
   const stop = () => {
     if (stopped) return;
     stopped = true;
+    liveStops.delete(stop);
     controller.abort();
     const audio = getAudio();
     audio.pause();
@@ -196,6 +216,9 @@ export function speakChunked(
   };
 
   opts.signal?.addEventListener('abort', stop);
+  // Registered so stopAllSpeech() can reach a handle nobody kept — which is
+  // exactly the ack's situation: it is deliberately not held in speechRef.
+  liveStops.add(stop);
 
   const synth = async (chunk: string): Promise<string | null> => {
     // Edge voice is read live so a preference change applies to the next turn
@@ -238,7 +261,13 @@ export function speakChunked(
     });
 
   const done = (async () => {
-    if (chunks.length === 0) return;
+    if (chunks.length === 0) {
+      // Nothing to say. Drop the registration by hand — the finally below is
+      // not reached from here, and a stale stop would pause the shared audio
+      // element the next time it was called, cutting off unrelated speech.
+      liveStops.delete(stop);
+      return;
+    }
 
     try {
       opts.onState?.(true);
@@ -259,6 +288,7 @@ export function speakChunked(
     } catch {
       // Aborted or network failure — treated as "stopped speaking".
     } finally {
+      liveStops.delete(stop);
       opts.onState?.(false);
       opts.signal?.removeEventListener('abort', stop);
     }

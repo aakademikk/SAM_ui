@@ -19,6 +19,13 @@ import { VOICES } from '@/lib/voiceData';
 export const dynamic = 'force-dynamic';
 
 const VOICE_LINE_TTS_URL = 'http://127.0.0.1:8790/api/tts';
+/*
+ * Measured 13.4s for a single Edge request under concurrency, against ~1.1s
+ * when the service is idle — so the previous 10s abort was firing on stalls
+ * that would have completed. Every abort drops this chunk to the Kokoro
+ * fallback, which is a different voice, so a too-tight timeout is audible.
+ */
+const VOICE_LINE_TIMEOUT_MS = 20_000;
 
 export async function POST(request: Request) {
   const session = await requireSession(request);
@@ -43,7 +50,7 @@ export async function POST(request: Request) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text, ...(edgeVoice ? { voice: edgeVoice } : {}) }),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(VOICE_LINE_TIMEOUT_MS),
     });
     if (upstream.ok) {
       const mp3 = await upstream.arrayBuffer();
@@ -54,8 +61,17 @@ export async function POST(request: Request) {
         },
       });
     }
-  } catch {
-    // voice-line unreachable — fall through to local Kokoro
+    // Silent fallbacks are why a mid-answer voice swap went unexplained: the
+    // chunk changes voice and nothing anywhere records that it happened.
+    console.warn(
+      `[chat/tts] voice-line returned ${upstream.status} — falling back to local Kokoro (voice ${voiceId ?? 'default'})`,
+    );
+  } catch (err) {
+    // voice-line unreachable, stalled past the abort, or aborting a stopped
+    // turn — fall through to local Kokoro.
+    console.warn(
+      `[chat/tts] voice-line failed (${err instanceof Error ? err.name : 'unknown'}) — falling back to local Kokoro (voice ${voiceId ?? 'default'})`,
+    );
   }
 
   // Fallback: local sherpa-onnx Kokoro. no-store so a stale fallback WAV is

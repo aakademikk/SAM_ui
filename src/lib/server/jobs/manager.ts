@@ -21,6 +21,12 @@ import type { JobRecord, JobSummary } from '@/types/jobs';
 
 const JOBS_ROOT = path.join(os.homedir(), '.sam', 'jobs');
 const MAX_OUTPUT_BYTES = 1_048_576; // 1 MB per job
+/**
+ * Where a trim takes the retained output down to, as a fraction of the cap.
+ * Trimming to exactly the cap would re-read and rewrite the whole file on the
+ * very next chunk; dropping to 75% makes that happen once per ~250 KB instead.
+ */
+const TRIM_TO_FRACTION = 0.75;
 const MAX_JOBS = 128;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -74,15 +80,104 @@ async function readExitSentinel(id: string): Promise<number | null> {
 }
 
 /**
- * Wrap a payload so the scope writes its own exit code on the way out.
+ * Wrap a payload so the scope reports its own cgroup and exit code.
  *
  * `bash -c '<fixed script>' _ <bin> <args...>` puts the payload in `"$@"`, so
  * argument content is never interpolated into the script text — the shell:false
- * injection guarantee of createArgs() is preserved. The destination comes
+ * injection guarantee of createArgs() is preserved. Both destinations come
  * through the environment for the same reason.
  */
 function withExitSentinel(argv: string[]): string[] {
-  return ['bash', '-c', '"$@"; printf %s "$?" > "$SAM_EXIT_FILE"', '_', ...argv];
+  return [
+    'bash',
+    '-c',
+    // The cgroup is recorded first, while this wrapper is still the scope
+    // leader: it is the only handle that reaches every process the job owns,
+    // and the only way to unload the scope afterwards.
+    'cat /proc/self/cgroup > "$SAM_CGROUP_FILE" 2>/dev/null; "$@"; printf %s "$?" > "$SAM_EXIT_FILE"',
+    '_',
+    ...argv,
+  ];
+}
+
+function cgroupFilePath(id: string): string {
+  return path.join(jobDir(id), 'cgroup');
+}
+
+/**
+ * The transient scope this job runs in, read back from the cgroup the wrapper
+ * recorded at start. Null when the job never started, or predates the record.
+ */
+async function readScopeUnit(id: string): Promise<string | null> {
+  try {
+    const raw = (await fsp.readFile(cgroupFilePath(id), 'utf-8')).trim();
+    // "0::/user.slice/…/run-p123-i456.scope" → "run-p123-i456.scope"
+    const rel = raw.split(':').slice(2).join(':');
+    const unit = rel.split('/').filter(Boolean).pop();
+    return unit && unit.endsWith('.scope') ? unit : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Send a signal to every process in the job's scope.
+ *
+ * The cgroup — not the process group — is the correct handle. Measured from
+ * the server 2026-09-10: the scope leader's process group is the *sam-ui
+ * service's* group, not its own. `spawn` gives the child no job control, so it
+ * inherits the server's pgid; systemd-run --scope moves it into a new cgroup
+ * but does not call setsid. A group signal aimed at `record.pid` therefore
+ * throws ESRCH and quietly degrades to signalling the leader alone — which is
+ * the original orphan bug — and had the inherited pgid ever matched
+ * `record.pid`, the signal would have landed on the server's own group
+ * instead. The cgroup is the job's alone and cannot reach anything else.
+ *
+ * The unit name is validated against the shape systemd generates for a
+ * transient user scope before it goes anywhere near systemctl: the file it is
+ * read from lives in the job's own directory, and the payload inherits the
+ * path, so an untrusted payload must not be able to name a unit of its
+ * choosing (e.g. sam-ui.service) and have us stop it.
+ */
+function scopeSignal(unit: string, signal: NodeJS.Signals) {
+  if (!/^run-p\d+-i\d+\.scope$/.test(unit)) return;
+  try {
+    spawn('systemctl', ['--user', 'kill', `--signal=${signal}`, unit], {
+      shell: false,
+      stdio: 'ignore',
+      detached: true,
+    }).unref();
+  } catch {
+    // Best effort — a missing systemctl must not turn a stop into a 500.
+  }
+}
+
+/**
+ * SIGKILL whatever is left in the scope, then unload the unit.
+ *
+ * Both halves are needed: the kill reaches a payload that ignored the earlier
+ * SIGTERM or escaped into its own session, and the stop is what removes the
+ * unit. systemd does not collect an emptied scope on its own — a scope that
+ * ends *by itself* is collected, but one emptied by a kill stays `active
+ * running` with zero processes, which is how 22 of them accumulated by
+ * 2026-09-10. Sequenced in one shell so the stop cannot run before the kill.
+ */
+function teardownScope(unit: string) {
+  if (!/^run-p\d+-i\d+\.scope$/.test(unit)) return;
+  try {
+    spawn(
+      'bash',
+      [
+        '-c',
+        'systemctl --user kill --signal=SIGKILL "$1" 2>/dev/null; systemctl --user stop "$1" 2>/dev/null',
+        '_',
+        unit,
+      ],
+      { shell: false, stdio: 'ignore', detached: true },
+    ).unref();
+  } catch {
+    // Best effort: the kill has already been attempted.
+  }
 }
 
 /** Process start time in /proc clock ticks, or null if the PID is gone. */
@@ -163,13 +258,37 @@ class OutputWriter {
     await fsp.writeFile(this.filePath, '');
   }
 
+  /**
+   * The tail of the write queue. `child.stdout.on('data')` fires without
+   * awaiting its handler, so several write() calls are in flight at once, and
+   * each one used to check `this.bytes` and decide for itself whether the cap
+   * had been breached. Three concurrent trims then meant three `writeFile`
+   * calls racing on one path — `writeFile` truncates and writes from its own
+   * file offset, so the loser landed part-way down and left a 512 KB hole
+   * where the transcript should have started (measured: a 1055746-byte file
+   * whose first non-zero byte was at 524288, from which `readFrames` parsed
+   * nothing at all). Serialising makes the byte count honest and every fs
+   * operation sequential.
+   */
+  private tail: Promise<unknown> = Promise.resolve();
+
   async write(chunk: Buffer | string): Promise<number> {
+    const run = this.tail.then(
+      () => this.writeNow(chunk),
+      () => this.writeNow(chunk),
+    );
+    // The chain must survive a failed write, or one bad append would stall
+    // every frame behind it. The caller still sees the rejection.
+    this.tail = run.catch(() => undefined);
+    return run;
+  }
+
+  private async writeNow(chunk: Buffer | string): Promise<number> {
     const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, 'utf-8');
     if (data.length === 0) return this.seq;
 
-    if (this.bytes + data.length > MAX_OUTPUT_BYTES) {
-      this.bytes = 0;
-      await fsp.writeFile(this.filePath, '');
+    if (this.bytes + FRAME_HEADER_BYTES + data.length > MAX_OUTPUT_BYTES) {
+      await this.trim();
     }
 
     this.seq++;
@@ -186,8 +305,54 @@ class OutputWriter {
     return this.seq;
   }
 
+  /**
+   * Drop the OLDEST whole frames until the file is back under the low-water
+   * mark, keeping the most recent output rather than discarding all of it.
+   *
+   * The original code wiped stdout.log to empty here and reset the byte count,
+   * while `seq` carried on climbing. A client that reconnected and asked for
+   * everything after its last sequence number therefore received a transcript
+   * starting part-way through, with nothing to say so — job `…_1k` wrote
+   * 8.28 MB in one turn and the file held 142 KB of it, silently. The bounded
+   * window is fine; lying about it is not, which is why the stream route now
+   * reports the gap (see the `truncated` event).
+   *
+   * Whole frames only: readFrames walks the buffer by the length header, so a
+   * partial frame at the front would corrupt the parse of everything after it.
+   */
+  private async trim() {
+    let raw: Buffer;
+    try {
+      raw = await fsp.readFile(this.filePath);
+    } catch {
+      // Unreadable — treat as empty and let the append recreate it.
+      this.bytes = 0;
+      return;
+    }
+
+    // Trim to below the cap rather than exactly to it: a full read-and-rewrite
+    // once per ~250 KB beats one on every chunk once the file is at the limit.
+    const target = Math.floor(MAX_OUTPUT_BYTES * TRIM_TO_FRACTION);
+    let pos = 0;
+    while (raw.length - pos > target && pos + FRAME_HEADER_BYTES <= raw.length) {
+      const len = raw.readUInt32BE(pos + 4);
+      const next = pos + FRAME_HEADER_BYTES + len;
+      // Truncated tail — stop here rather than guess at an offset.
+      if (next > raw.length) break;
+      pos = next;
+    }
+
+    const kept = raw.subarray(pos);
+    await fsp.writeFile(this.filePath, kept);
+    this.bytes = kept.length;
+  }
+
   async close() {
-    // No persistent fd — nothing to flush.
+    // No persistent fd, but queued writes can still be draining: the 'data'
+    // handlers are async and unawaited, so the process can exit with frames
+    // still in the queue. Awaiting it here is what lets the caller treat the
+    // file, and the sequence count in the record, as final.
+    await this.tail.catch(() => undefined);
   }
 }
 
@@ -404,6 +569,7 @@ class JobManager {
         cwd: os.homedir(),
         env: mergeEnv({
           SAM_EXIT_FILE: exitCodePath(record.id),
+          SAM_CGROUP_FILE: cgroupFilePath(record.id),
           // `.env.local` puts ANTHROPIC_* on process.env, so a raw child would
           // inherit them — typing `claude` in the Terminal would silently route
           // to DeepSeek. Strip them so the CLI talks to Claude, matching the Max
@@ -450,7 +616,11 @@ class JobManager {
         shell: false,
         stdio: ['pipe', 'pipe', 'pipe'],
         cwd: opts.cwd ?? os.homedir(),
-        env: mergeEnv({ ...(opts.env ?? {}), SAM_EXIT_FILE: exitCodePath(record.id) }),
+        env: mergeEnv({
+          ...(opts.env ?? {}),
+          SAM_EXIT_FILE: exitCodePath(record.id),
+          SAM_CGROUP_FILE: cgroupFilePath(record.id),
+        }),
       },
     );
 
@@ -511,6 +681,12 @@ class JobManager {
     child.stderr?.on('data', onData);
 
     child.on('close', async (code, signal) => {
+      // Drain queued output BEFORE the record says the job is finished. Marking
+      // it exited first let the stream route read a stale `lastSeq`, send
+      // `closed`, and leave the client finalising a transcript whose tail was
+      // still being written — measured: the file stopped at line 2970 of 4000
+      // while the record claimed lastSeq 299.
+      await output.close();
       record.status = code === null ? 'killed' : 'exited';
       // Node reports `code: null` whenever a signal did the killing, so the
       // signal is the only thing that separates a restart SIGTERM from an OOM
@@ -522,7 +698,6 @@ class JobManager {
       record.exitCode = code ?? (await readExitSentinel(record.id));
       record.exitSource = code !== null ? 'parent' : record.exitCode !== null ? 'sentinel' : 'unknown';
       record.endedAt = new Date().toISOString();
-      await output.close();
       await this.writeMeta(record);
       this.jobs.delete(record.id);
       this.completedIds.push(record.id);
@@ -584,16 +759,54 @@ class JobManager {
     return summaries.slice(0, 64);
   }
 
-  /** Kill a running job. */
+  /**
+   * Kill a running job.
+   *
+   * Signals the job's SCOPE, not the recorded pid. `record.pid` is the scope
+   * leader — the `bash -c` wrapper from withExitSentinel, which systemd-run
+   * execs in place — and bash does not forward a signal it is handed. Killing
+   * the leader alone therefore killed the wrapper and *orphaned the payload*:
+   * the agent was reparented to the user manager and carried on running (and
+   * billing) while this method returned true and the API reported the job
+   * killed. Measured 2026-09-10: a job stopped at 18:09 still had its process
+   * alive and its scope `active running` ten minutes later — the "stop does
+   * nothing and I can't kill it either" report.
+   *
+   * The scope's cgroup holds the payload and every process it spawned, so
+   * signalling the scope reaches all of it in one go — including a payload
+   * that called `setsid`, which a process-group signal would miss. See
+   * scopeSignal() for why the process group is the wrong handle here.
+   *
+   * Graceful first, then the teardown: SIGTERM to the cgroup, and 3s later a
+   * SIGKILL sweep and the unit unloaded. The escalation is unconditional — the
+   * leader dying is exactly what used to mask a payload that ignored SIGTERM,
+   * so its exit code says nothing about whether the work is still running.
+   */
   async kill(id: string): Promise<boolean> {
     const running = this.jobs.get(id);
     if (!running) return false;
 
-    running.process.kill('SIGTERM');
+    const unit = await readScopeUnit(id);
+
+    if (unit) {
+      scopeSignal(unit, 'SIGTERM');
+      setTimeout(() => teardownScope(unit), 3000);
+      return true;
+    }
+
+    // No cgroup recorded: the job was spawned microseconds ago and the wrapper
+    // has not written it yet. Signal the leader to get the stop moving, then
+    // re-read a moment later — by then the file is there and the scope can be
+    // torn down properly, rather than leaving an empty scope behind.
+    try {
+      running.process.kill('SIGTERM');
+    } catch {
+      /* already gone */
+    }
     setTimeout(() => {
-      if (running.process.exitCode === null) {
-        running.process.kill('SIGKILL');
-      }
+      void readScopeUnit(id).then((late) => {
+        if (late) teardownScope(late);
+      });
     }, 3000);
 
     return true;

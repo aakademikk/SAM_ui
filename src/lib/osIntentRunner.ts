@@ -23,7 +23,7 @@ import {
   sendSms,
   setTorch,
 } from './osBridge';
-import { intentClass, matchOsIntent, type OsIntent } from './osIntents';
+import { confirmsBeforeActing, intentClass, matchOsIntent, type OsIntent } from './osIntents';
 import {
   desktopLock,
   desktopMedia,
@@ -68,15 +68,24 @@ function minutesish(ms: number): string {
 }
 
 /**
- * An email previewed but not yet sent.
+ * An action previewed but not yet carried out.
  *
  * The confirmation has to survive between turns: SAM shows the resolved
- * address, Colin says "yes", and only then does it send. Held in memory only —
- * a reload cancels the send, which is the safe direction to fail.
+ * destination, Colin says "yes", and only then does it act. Held in memory
+ * only — a reload cancels it, which is the safe direction to fail.
+ *
+ * One slot, not one per action kind. Two independent pendings could both be
+ * live at once, and "yes" would then be ambiguous about what it consented to.
+ * `query` is the words Colin actually said ("mike"), kept so the destination
+ * can be re-resolved at send time and compared — a contact edited between
+ * preview and send must fail closed, not silently redirect.
  */
-let pendingEmail:
-  | { to: string; subject: string; body: string; address: string; name: string }
-  | null = null;
+type Pending =
+  | { kind: 'email'; to: string; subject: string; body: string; address: string; name: string }
+  | { kind: 'sms'; query: string; number: string; name: string; message: string }
+  | { kind: 'call'; query: string; number: string; name: string; place: boolean };
+
+let pending: Pending | null = null;
 
 const YES = /^(?:yes|yep|yeah|yup|send it|send|confirm|ok|okay|do it|go ahead)\b/i;
 const NO = /^(?:no|nope|cancel|stop|don'?t|forget it|nevermind|never mind)\b/i;
@@ -126,7 +135,7 @@ async function previewEmail(intent: Extract<OsIntent, { kind: 'email' }>): Promi
       return { handled: true, reply: 'The mail relay is not configured yet, so I cannot send email.' };
     case 'confirm': {
       const c = out.contact!;
-      pendingEmail = { to: intent.who, subject, body: intent.body, address: c.email, name: c.name };
+      pending = { kind: 'email', to: intent.who, subject, body: intent.body, address: c.email, name: c.name };
       // Reads back the resolved address, not the spoken name — that is what
       // catches a wrong resolution even when there is only one match.
       return {
@@ -139,43 +148,148 @@ async function previewEmail(intent: Extract<OsIntent, { kind: 'email' }>): Promi
   }
 }
 
-/** Phase 2 — the pending send, or its cancellation. */
-async function resolvePendingEmail(message: string): Promise<OsIntentResult> {
-  const pending = pendingEmail;
-  if (!pending) return NOT_HANDLED;
+/**
+ * Phase 1 for SMS and calls — resolve and preview. Never sends.
+ *
+ * The phone's contacts live in ContactsContract, not the vault, so resolution
+ * happens here against the bridge rather than server-side the way email's does.
+ * The shape is the same: return candidates, never a winner.
+ */
+async function previewPhoneAction(
+  intent: Extract<OsIntent, { kind: 'sms' | 'call' }>,
+): Promise<OsIntentResult> {
+  let number = intent.who;
+  let name = intent.who;
 
-  if (NO.test(message.trim())) {
-    pendingEmail = null;
-    return { handled: true, reply: 'Cancelled — nothing sent.' };
-  }
-  if (!YES.test(message.trim())) {
-    // Anything that is not a clear yes or no cancels and falls through to the
-    // agent. An ambiguous reply must never be read as consent to send.
-    pendingEmail = null;
-    return NOT_HANDLED;
+  if (!isNumber(intent.who)) {
+    const contacts = await findContacts(intent.who);
+    if (contacts.length === 0) {
+      return { handled: true, reply: `No contact matching “${intent.who}”.` };
+    }
+    if (contacts.length > 1) {
+      // Deliberately does not choose. Asking "Text Mike?" when there are two
+      // Mikes confirms the action while hiding the recipient error — and the
+      // recipient error is the one that costs something.
+      const names = contacts.map((c) => `${c.name} (${c.number})`).join(', or ');
+      return { handled: true, reply: `More than one match for “${intent.who}”: ${names}. Which one?` };
+    }
+    number = contacts[0].number;
+    name = contacts[0].name;
   }
 
+  // Reads back the resolved number, not the spoken name — that is what catches
+  // a wrong resolution even when there is only one match.
+  if (intent.kind === 'sms') {
+    pending = { kind: 'sms', query: intent.who, number, name, message: intent.message };
+    return {
+      handled: true,
+      reply: `Text ${name} — ${number} — saying “${intent.message}”? Say yes to send.`,
+    };
+  }
+
+  pending = { kind: 'call', query: intent.who, number, name, place: intent.place };
+  return { handled: true, reply: `Call ${name} — ${number}? Say yes to place it.` };
+}
+
+/**
+ * Has the destination moved since it was previewed?
+ *
+ * Re-resolves the same words and compares. A literal number cannot go stale, so
+ * it is skipped. This is a client-side check because the client is the actor
+ * here — the PWA holds the bridge token and there is no server in the send
+ * path, unlike email. It is not a privilege boundary; it catches the contact
+ * genuinely changing between preview and send, which is the real failure.
+ */
+async function destinationMoved(p: Extract<Pending, { kind: 'sms' | 'call' }>): Promise<string | null> {
+  if (isNumber(p.query)) return null;
+  const contacts = await findContacts(p.query);
+  if (contacts.length !== 1) return contacts.length === 0 ? 'nothing' : 'more than one contact';
+  return contacts[0].number === p.number ? null : contacts[0].number;
+}
+
+async function sendPendingSms(p: Extract<Pending, { kind: 'sms' }>): Promise<OsIntentResult> {
+  const moved = await destinationMoved(p);
+  if (moved) {
+    return {
+      handled: true,
+      reply: `Not sent — “${p.query}” now resolves to ${moved}, not ${p.number}. Say it again to re-confirm.`,
+    };
+  }
+  const ok = await sendSms(p.number, p.message);
+  return ok
+    ? { handled: true, reply: `Sent to ${p.name} — ${p.number}: “${p.message}”.` }
+    : { handled: true, reply: `Couldn't send that text — SMS permission may be off.` };
+}
+
+async function placePendingCall(p: Extract<Pending, { kind: 'call' }>): Promise<OsIntentResult> {
+  const moved = await destinationMoved(p);
+  if (moved) {
+    return {
+      handled: true,
+      reply: `Not placed — “${p.query}” now resolves to ${moved}, not ${p.number}. Say it again to re-confirm.`,
+    };
+  }
+  const res = await callNumber(p.number, p.place);
+  if (!res.ok) return { handled: true, reply: `Couldn't start the call.` };
+  // Says what actually happened. If CALL_PHONE was refused the dialler is
+  // merely open, and claiming otherwise would be a lie Colin acts on.
+  return {
+    handled: true,
+    reply: res.placed ? `Calling ${p.name} — ${p.number}.` : `Dialler open for ${p.name} — ${p.number}.`,
+  };
+}
+
+async function sendPendingEmail(p: Extract<Pending, { kind: 'email' }>): Promise<OsIntentResult> {
   const out = await postEmail({
-    to: pending.to,
-    subject: pending.subject,
-    body: pending.body,
-    confirmAddress: pending.address,
+    to: p.to,
+    subject: p.subject,
+    body: p.body,
+    confirmAddress: p.address,
   });
-  pendingEmail = null;
   if (!out) return NOT_HANDLED;
 
   switch (out.status) {
     case 'sent':
-      return { handled: true, reply: `Sent to ${pending.name} — ${pending.address}.` };
+      return { handled: true, reply: `Sent to ${p.name} — ${p.address}.` };
     case 'stale':
       return {
         handled: true,
-        reply: `Not sent — ${pending.name}'s address changed to ${out.expected} since I asked. Say it again to re-confirm.`,
+        reply: `Not sent — ${p.name}'s address changed to ${out.expected} since I asked. Say it again to re-confirm.`,
       };
     case 'unconfigured':
       return { handled: true, reply: 'The mail relay is not configured yet, so I cannot send email.' };
     default:
       return { handled: true, reply: out.reason ?? 'The send failed.' };
+  }
+}
+
+/** Phase 2 — carry out the pending action, or cancel it. */
+async function resolvePending(message: string): Promise<OsIntentResult> {
+  const p = pending;
+  if (!p) return NOT_HANDLED;
+
+  if (NO.test(message.trim())) {
+    pending = null;
+    return { handled: true, reply: 'Cancelled — nothing sent.' };
+  }
+  if (!YES.test(message.trim())) {
+    // Anything that is not a clear yes or no cancels and falls through to the
+    // agent. An ambiguous reply must never be read as consent to send.
+    pending = null;
+    return NOT_HANDLED;
+  }
+
+  // Cleared before acting, not after: a throw mid-send must not leave a live
+  // confirmation that the next "yes" could fire a second time.
+  pending = null;
+
+  switch (p.kind) {
+    case 'email':
+      return sendPendingEmail(p);
+    case 'sms':
+      return sendPendingSms(p);
+    case 'call':
+      return placePendingCall(p);
   }
 }
 
@@ -230,46 +344,23 @@ async function run(intent: OsIntent): Promise<OsIntentResult> {
         : { handled: true, reply: `Couldn't open ${app.label}.` };
     }
 
-    case 'call': {
-      let number = intent.who;
-      let name = intent.who;
-
-      if (!isNumber(intent.who)) {
-        const contacts = await findContacts(intent.who);
-        if (contacts.length === 0) {
-          return { handled: true, reply: `No contact matching “${intent.who}”.` };
-        }
-        number = contacts[0].number;
-        name = contacts[0].name;
-      }
-
-      const res = await callNumber(number, intent.place);
-      if (!res.ok) return { handled: true, reply: `Couldn't start the call.` };
-      // Says what actually happened. If CALL_PHONE was refused the dialler is
-      // merely open, and claiming otherwise would be a lie Colin acts on.
-      return {
-        handled: true,
-        reply: res.placed ? `Calling ${name}.` : `Dialler open for ${name}.`,
-      };
-    }
-
+    case 'call':
     case 'sms': {
-      let number = intent.who;
-      let name = intent.who;
+      // `confirmsBeforeActing` has declared these gated since the intent
+      // taxonomy was written; until now only email honoured it. "dial <number>"
+      // is the one call form it exempts — see the note on that function.
+      if (confirmsBeforeActing(intent)) return previewPhoneAction(intent);
 
-      if (!isNumber(intent.who)) {
-        const contacts = await findContacts(intent.who);
-        if (contacts.length === 0) {
-          return { handled: true, reply: `No contact matching “${intent.who}”.` };
-        }
-        number = contacts[0].number;
-        name = contacts[0].name;
-      }
+      // Only `dial <number>` gets here. Asserting the kind rather than trusting
+      // the predicate is deliberate: if `confirmsBeforeActing` ever changed, an
+      // unconfirmed *sms* reaching this branch would silently dial its
+      // recipient instead of texting them. Fail closed to the agent instead.
+      if (intent.kind !== 'call') return NOT_HANDLED;
 
-      const ok = await sendSms(number, intent.message);
-      return ok
-        ? { handled: true, reply: `Texted ${name}: “${intent.message}”.` }
-        : { handled: true, reply: `Couldn't send that text — SMS permission may be off.` };
+      const res = await callNumber(intent.who, false);
+      return res.ok
+        ? { handled: true, reply: `Dialler open for ${intent.who}.` }
+        : { handled: true, reply: `Couldn't start the call.` };
     }
 
     case 'torch': {
@@ -306,12 +397,12 @@ async function run(intent: OsIntent): Promise<OsIntentResult> {
 export async function tryOsIntent(message: string): Promise<OsIntentResult> {
   // A pending confirmation outranks matching: "yes" is not an intent, and must
   // not be re-parsed as one.
-  if (pendingEmail) {
+  if (pending) {
     try {
-      const settled = await resolvePendingEmail(message);
+      const settled = await resolvePending(message);
       if (settled.handled) return settled;
     } catch {
-      pendingEmail = null;
+      pending = null;
       return NOT_HANDLED;
     }
   }

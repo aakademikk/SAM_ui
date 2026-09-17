@@ -85,3 +85,74 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// ─── Web Push ────────────────────────────────────────────────────────────────
+//
+// Payload contract: scripts (sam-push) send { title, body, url, tag, ts }.
+// The notification click either focuses an existing SAM_ui window or opens a
+// new one at url. url is always same-origin — sam-push only ever builds
+// absolute paths, never full origins.
+
+self.addEventListener('push', (event) => {
+  let payload: { title?: unknown; body?: unknown; url?: unknown; tag?: unknown } = {};
+  try {
+    const data = event.data?.json();
+    if (data && typeof data === 'object') payload = data as typeof payload;
+  } catch {
+    // Malformed payload — show a minimal fallback rather than nothing.
+  }
+
+  const title =
+    typeof payload.title === 'string' && payload.title ? payload.title : 'SAM';
+  const body = typeof payload.body === 'string' ? payload.body : '';
+  const url = typeof payload.url === 'string' ? payload.url : '/';
+  const tag = typeof payload.tag === 'string' ? payload.tag : 'sam';
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      tag,
+      data: { url, ts: Date.now() },
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    (async () => {
+      const url = new URL(target, self.location.origin);
+      if (url.origin !== self.location.origin) return;
+
+      // matchAll with type:'window' only ever returns WindowClients.
+      const wins = (await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      })) as WindowClient[];
+
+      // Prefer a window already sat on the target path — just focus it.
+      for (const win of wins) {
+        if (win.url && new URL(win.url).pathname === url.pathname) {
+          await win.focus();
+          return;
+        }
+      }
+
+      // Otherwise take the first window and drive it there.
+      for (const win of wins) {
+        await win.focus();
+        if (win.url && new URL(win.url).pathname !== url.pathname) {
+          await win.navigate(url);
+        }
+        return;
+      }
+
+      // No window open at all.
+      await self.clients.openWindow(url);
+    })(),
+  );
+});

@@ -27,12 +27,13 @@ import { splitBlocks, AnswerBlocks } from '@/components/chat/MessageBlocks';
 import { WorkPanel } from '@/components/chat/WorkPanel';
 import { readMessage as readCrossTab } from '@/lib/crossTab';
 import { jobsService } from '@/lib/jobsService';
+import { ApiError } from '@/lib/dashboardService';
 import { authService } from '@/lib/authService';
 import { startAgentTurn, StepUpRequiredError } from '@/lib/chatAgentService';
 import { AgentStreamParser, type AgentPhase } from '@/lib/agentStream';
 import { computeCost, formatCost, formatTokens } from '@/lib/costing';
-import { spokenText, type ChatMessage, type TierId, type TierInfo } from '@/types/chat';
-import { speakChunked, primeSpeech, isSpeechBlocked, type SpeechHandle } from '@/lib/speech';
+import { spokenText, type ChatBlock, type ChatMessage, type TierId, type TierInfo } from '@/types/chat';
+import { speakChunked, primeSpeech, isSpeechBlocked, stopAllSpeech, type SpeechHandle } from '@/lib/speech';
 import { setSamActivity, clearSamActivity } from '@/lib/samActivity';
 import { configureOsBridge } from '@/lib/osBridge';
 import { tryOsIntent } from '@/lib/osIntentRunner';
@@ -52,6 +53,19 @@ const STUCK_WARN_MS = 180_000;
  * stream events for minutes. Raised to give real work room while still catching
  * a genuinely wedged turn. */
 const STUCK_KILL_MS = 480_000;
+/** How long a server phase ping stays trustworthy. The server re-sends one
+ * every second for as long as the job is running, so a ping older than this
+ * means the stream has stopped talking to us — the label it carried is stale
+ * and must not keep being shown as if it were current. Four missed beats. */
+const SERVER_PHASE_TTL_MS = 4_000;
+
+/** Shown once, at the top of the turn, when a resume lands past output the
+ * server no longer retains. Rendered as an error block because it *is* a loss:
+ * the alternative is a hole in the transcript presented as complete output. */
+const TRUNCATED_NOTICE: ChatBlock = {
+  kind: 'error',
+  text: 'Earlier output was trimmed — the server keeps only the most recent 1 MB of a run.',
+};
 
 /**
  * Immediate ack spoken the moment a turn starts, covering the agent boot +
@@ -119,8 +133,9 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState<AgentPhase>('starting');
-  /** Latest server-side phase ping, with ms since process start. */
-  const [serverPhase, setServerPhase] = useState<{ phase: string; ms: number } | null>(null);
+  /** Latest server-side phase ping, with ms since process start. `at` is the
+      local receipt time, which is what lets a stale ping be spotted. */
+  const [serverPhase, setServerPhase] = useState<{ phase: string; ms: number; at: number } | null>(null);
   const [elapsed, setElapsed] = useState(0);
   /** True while a turn is running but producing no real output — likely a runaway. */
   const [stuck, setStuck] = useState(false);
@@ -154,6 +169,18 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Mute is a standing preference, not a per-turn one, so it is restored on
+  // mount. Read in an effect rather than as the useState initialiser: the
+  // server has no localStorage, and an initialiser that disagreed with the
+  // server render would be a hydration mismatch.
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('sam-muted') === '1') setMuted(true);
+    } catch {
+      // Storage disabled (private mode) — stay unmuted rather than fail.
+    }
+  }, []);
+
   // Auto-grow the composer with its content: text wraps to new rows instead of
   // forcing a single line that scrolls sideways. CSS max-h caps the growth and
   // overflow-y-auto takes over past that. Clearing the input returns it to one
@@ -186,6 +213,18 @@ export default function ChatPage() {
       resumes from here, so a dropped mobile connection re-reads only the
       delta instead of re-streaming the whole turn. */
   const lastSeqRef = useRef(0);
+  /** Set when a resume landed past output the server's bounded buffer no
+      longer holds. The marker has to live in a ref rather than only in the
+      message: every `output` event rebuilds the block list from the parser, so
+      a block appended once would be wiped by the very replay it describes. */
+  const truncatedRef = useRef(false);
+
+  /** Re-apply the truncation marker. Idempotent — the event repeats on every
+      reconnect, and the notice must sit at the top exactly once. */
+  const withTruncationNotice = (blocks: ChatBlock[]): ChatBlock[] =>
+    truncatedRef.current && blocks[0] !== TRUNCATED_NOTICE
+      ? [TRUNCATED_NOTICE, ...blocks]
+      : blocks;
   /** Times we've tried to drain a finished job after losing the stream —
       caps the retry loop on an unrecoverably flaky link. */
   const drainTriesRef = useRef(0);
@@ -369,6 +408,8 @@ export default function ChatPage() {
     if (!opts.reconnect) {
       lastSeqRef.current = 0;
       drainTriesRef.current = 0;
+      // A fresh turn has no gap yet; a reconnect keeps whatever was reported.
+      truncatedRef.current = false;
     }
     lastProgressRef.current = Date.now();
     lastMeaningfulRef.current = 0;
@@ -445,6 +486,9 @@ export default function ChatPage() {
       setRunning(false);
       setPhase('done');
       setStuck(false);
+      // Drop the phase label with the turn: a ping belongs to the process it
+      // came from, and the next turn boots a new one.
+      setServerPhase(null);
       activeJobRef.current = null;
       // The mobile sheet covered the chat to show the working; once the answer
       // is here, put it away. Manually-opened panels stay.
@@ -457,7 +501,14 @@ export default function ChatPage() {
         // Server-named pre-output gap (spawn/context) — the parser has
         // nothing to say until the first byte, so trust the ping for the
         // status line.
-        setServerPhase({ phase: event.phase, ms: event.ms });
+        setServerPhase({ phase: event.phase, ms: event.ms, at: Date.now() });
+      } else if (event.type === 'truncated') {
+        // The output buffer is bounded, so a long turn can outgrow it and a
+        // resume lands past output the server no longer holds. Say so in the
+        // transcript: the alternative is a hole rendered as though the run
+        // were complete, which is how a client lies without ever erroring.
+        truncatedRef.current = true;
+        patch((m) => ({ ...m, blocks: withTruncationNotice(m.blocks) }));
       } else if (event.type === 'output') {
         retriesRef.current = 0;
         lastSeqRef.current = Math.max(lastSeqRef.current, event.seq);
@@ -472,7 +523,7 @@ export default function ChatPage() {
         // Persist the session id the moment it appears, not at the end — a
         // turn interrupted mid-flight must still be resumable next time.
         if (state.sessionId) localStorage.setItem(SESSION_KEY, state.sessionId);
-        patch((m) => ({ ...m, blocks: [...state.blocks] }));
+        patch((m) => ({ ...m, blocks: withTruncationNotice(state.blocks) }));
       } else if (event.type === 'closed') {
         // 'lost' means the connection dropped, not that the job ended — which
         // is exactly what a phone does when the app is backgrounded. The job
@@ -671,6 +722,7 @@ export default function ChatPage() {
       setError(null);
       setRunning(true);
       setPhase('starting');
+      setServerPhase(null);
 
       try {
         // Always resume the conversation — every fresh session re-reads the
@@ -739,7 +791,29 @@ export default function ChatPage() {
     const jobId = activeJobRef.current;
     if (!jobId) return;
     stopInitiatedRef.current = true;
-    try { await jobsService.kill(jobId); } catch { /* already gone */ }
+    try {
+      await jobsService.kill(jobId);
+    } catch (err) {
+      // A 401 here is the step-up gate, not a missing job: DELETE /api/jobs/[id]
+      // requires a fresh biometric. Swallowing it — as an empty catch did —
+      // makes the stop button do nothing at all, with no error shown and the
+      // turn still running. That silence is half of "couldn't stop the chat".
+      // Ask for the biometric once, then retry the kill.
+      if (err instanceof ApiError && err.status === 401) {
+        try {
+          await authService.stepUp();
+          await jobsService.kill(jobId);
+          return;
+        } catch {
+          stopInitiatedRef.current = false;
+          setError('Stopping needs a biometric unlock. Tap stop to try again.');
+          return;
+        }
+      }
+      // Anything else must be visible too — never a silent no-op.
+      stopInitiatedRef.current = false;
+      setError('Could not stop that turn — it may already have finished.');
+    }
   }, []);
 
   /* ── Stuck watchdog — a pure-thinking runaway must not pin the tab ─────── */
@@ -918,6 +992,7 @@ export default function ChatPage() {
     parserRef.current = null;
     lastSeqRef.current = 0;
     drainTriesRef.current = 0;
+    truncatedRef.current = false;
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(MESSAGES_KEY);
     localStorage.removeItem(ACTIVE_KEY);
@@ -974,14 +1049,23 @@ export default function ChatPage() {
   // Prefer the server's phase name while the parser is still in a pre-output
   // gap (starting/thinking); it names the delay truthfully and carries ms
   // since process start. Once content flows, the parser's label wins.
+  // A ping is only worth showing while it is fresh. The server heartbeats one
+  // a second for as long as the job runs, so anything older means the stream
+  // has gone quiet — and showing that stale label forever is what left
+  // "Booting SAM · 317.8s" frozen over a turn that was working perfectly well.
+  // Freshness is read at render time; `elapsed` ticks twice a second while a
+  // turn is running, so this re-evaluates on its own.
+  const freshServerPhase =
+    serverPhase && Date.now() - serverPhase.at < SERVER_PHASE_TTL_MS ? serverPhase : null;
+
   const serverLabel =
-    serverPhase && (phase === 'starting' || phase === 'thinking')
-      ? SERVER_PHASE_LABEL[serverPhase.phase]
+    freshServerPhase && (phase === 'starting' || phase === 'thinking')
+      ? SERVER_PHASE_LABEL[freshServerPhase.phase]
       : null;
   const statusLabel = serverLabel || PHASE_LABEL[phase] || 'Working';
   const statusSeconds =
-    serverLabel && serverPhase
-      ? `${(serverPhase.ms / 1000).toFixed(1)}s`
+    serverLabel && freshServerPhase
+      ? `${(freshServerPhase.ms / 1000).toFixed(1)}s`
       : elapsed > 1
         ? `${elapsed}s`
         : '';
@@ -1052,7 +1136,23 @@ export default function ChatPage() {
 
         <button
           type="button"
-          onClick={() => setMuted(!muted)}
+          onClick={() => {
+            const next = !muted;
+            setMuted(next);
+            try {
+              localStorage.setItem('sam-muted', next ? '1' : '0');
+            } catch {
+              // Storage disabled — the toggle still works for this session.
+            }
+            if (next) {
+              // Muting must silence what is playing NOW, not just gate the next
+              // answer. stopAllSpeech() reaches the spoken ack too, which is
+              // held nowhere and so cannot be stopped through speechRef.
+              stopAllSpeech();
+              speechRef.current = null;
+              setSpeaking(null);
+            }
+          }}
           className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded transition-colors ${
             muted
               ? 'text-red-400 bg-red-900/20 border border-red-700/30'

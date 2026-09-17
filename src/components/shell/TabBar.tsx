@@ -13,6 +13,7 @@ import {
   Settings,
   Bot,
   Radio,
+  Activity,
 } from 'lucide-react';
 
 const TABS = [
@@ -20,6 +21,7 @@ const TABS = [
   { id: 'terminal', label: 'Term', href: '/terminal', icon: Terminal },
   { id: 'chat', label: 'Chat', href: '/chat', icon: MessageSquare },
   { id: 'fleet', label: 'Fleet', href: '/fleet', icon: Bot },
+  { id: 'status', label: 'Status', href: '/status', icon: Activity },
   { id: 'operations', label: 'Ops', href: '/operations', icon: Radio },
   { id: 'settings', label: 'Prefs', href: '/settings', icon: Settings },
 ] as const;

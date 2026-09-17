@@ -8,13 +8,18 @@
  *
  * A final event with event: "closed" is sent when the job exits.
  * The first event is always event: "meta" with the job record.
+ * A reconnecting client that asked for output the bounded buffer no longer
+ * holds gets event: "truncated" with the missing sequence range, before the
+ * replay, so it can mark the gap rather than render a hole as whole output.
  *
  * Server-side phase pings are emitted as event: "phase" with
  *   data: { "phase": "spawn"|"boot"|"context"|"model"|"done", "ms": <since start> }
  * naming the silent pre-output gaps (process boot, session/context load, first
- * model output) and heartbeating once a second while one is open, so a client
- * can show liveness instead of an indefinite spinner. Phase events carry no id
- * and are re-derived on reconnect rather than replayed.
+ * model output) and heartbeating once a second for as long as the job is
+ * running, so a client can show liveness instead of an indefinite spinner.
+ * Phase events carry no id and are re-derived on reconnect rather than
+ * replayed — but one is always emitted once the replay has settled, so a
+ * reconnecting client can never keep a stale label.
  *
  * Query params:
  *   ?resume=1  — skip meta, only send new output (for reconnect)
@@ -22,6 +27,7 @@
 
 import { getJobManager, type OutputFrame } from '@/lib/server/jobs/manager';
 import { requireSession } from '@/lib/server/auth/guard';
+import { onShutdown } from '@/lib/server/shutdown';
 import { failure } from '@/lib/server/respond';
 
 export const dynamic = 'force-dynamic';
@@ -70,6 +76,27 @@ export async function GET(
       const enqueue = (data: string) => {
         controller.enqueue(encoder.encode(data));
       };
+
+      // Every terminal path funnels through here: stop polling, leave the
+      // shutdown registry, and close the response. Without the unregister, each
+      // stream the server has ever served would leave a dead closer behind; and
+      // without the close, an open stream holds Next's `server.close()` open and
+      // turns a restart into a 90-second SIGKILL (see lib/server/shutdown.ts).
+      let pollInterval: ReturnType<typeof setInterval> | null = null;
+      let finished = false;
+      let offShutdown: () => void = () => {};
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        if (pollInterval) clearInterval(pollInterval);
+        offShutdown();
+        try {
+          controller.close();
+        } catch {
+          // Already closed — the client disconnected first. Nothing to do.
+        }
+      };
+      offShutdown = onShutdown(finish);
 
       let lastSeq = fromSeq;
       // Last time the stream's internal queue drained (desiredSize >= 0). A
@@ -152,14 +179,25 @@ export async function GET(
         enqueue(`id: 0\n`);
         enqueue(`event: meta\n`);
         enqueue(`data: ${JSON.stringify(job)}\n\n`);
-        // Spawn ping only when nothing has been written yet — a reconnect to
-        // an already-running job must not claim it is booting again.
-        if (job.lastSeq === 0) emitPhase();
       }
 
       // 2. Replay any buffered output from the requested sequence
       try {
         const frames = await manager.getOutput(id, fromSeq);
+
+        // The output file is a bounded window — whole frames are dropped off
+        // the front once it reaches its cap — so a resume can land in a gap.
+        // Saying so matters more than the trim itself: a client that is told
+        // nothing renders an incomplete transcript as though it were whole.
+        // Sequence numbers rise by one per frame, so a first frame past
+        // `fromSeq + 1` is proof that exactly that happened.
+        if (fromSeq > 0 && frames.length > 0 && frames[0].seq > fromSeq + 1) {
+          enqueue(`event: truncated\n`);
+          enqueue(
+            `data: ${JSON.stringify({ from: fromSeq + 1, to: frames[0].seq - 1 })}\n\n`,
+          );
+        }
+
         for (const frame of frames) {
           const text = frame.data.toString('utf-8');
           enqueue(formatFrame(frame));
@@ -170,6 +208,13 @@ export async function GET(
         // output file not readable yet — fine, proceed to live
       }
 
+      // 2b. State the phase the replay settled on, on every connect. A
+      // reconnect used to get no phase event at all, so the client kept
+      // whatever label it last saw — the frozen "Booting SAM" sitting over a
+      // turn that was working fine. Emitting after the replay means the label
+      // always describes the real current phase, never the one it was born in.
+      if (live.phase !== 'done') emitPhase();
+
       // 3. If job is already done (or orphaned), send closed and stop
       if (job.status === 'exited' || job.status === 'killed' || orphaned) {
         if (live.phase !== 'done') {
@@ -178,29 +223,27 @@ export async function GET(
         }
         enqueue(`event: closed\n`);
         enqueue(`data: ${JSON.stringify({ status: orphaned ? 'killed' : job.status, exitCode: job.exitCode })}\n\n`);
-        controller.close();
+        finish();
         return;
       }
 
       // 4. Poll for new output on running jobs.
-      const pollInterval = setInterval(async () => {
+      pollInterval = setInterval(async () => {
         try {
           const current = await manager.get(id);
           if (!current) {
-            clearInterval(pollInterval);
             enqueue(`event: closed\n`);
             enqueue(`data: ${JSON.stringify({ status: 'lost' })}\n\n`);
-            controller.close();
+            finish();
             return;
           }
 
           // Orphan re-check: the record claims running but the process is gone
           // (external kill). Close instead of polling a corpse forever.
           if (current.status === 'running' && !manager.isLive(id)) {
-            clearInterval(pollInterval);
             enqueue(`event: closed\n`);
             enqueue(`data: ${JSON.stringify({ status: 'killed', exitCode: null })}\n\n`);
-            controller.close();
+            finish();
             return;
           }
 
@@ -213,10 +256,9 @@ export async function GET(
             if (desiredSize >= 0) {
               lastDrain = Date.now();
             } else if (Date.now() - lastDrain > BACKPRESSURE_CLOSE_MS) {
-              clearInterval(pollInterval);
               enqueue(`event: closed\n`);
               enqueue(`data: ${JSON.stringify({ status: 'lost', exitCode: null })}\n\n`);
-              controller.close();
+              finish();
               return;
             }
           }
@@ -232,26 +274,25 @@ export async function GET(
             }
           }
 
-          // Heartbeat while stuck in a pre-output gap, so the client can tell
-          // "still working" from "connection died".
-          if (
-            (live.phase === 'spawn' || live.phase === 'context') &&
-            Date.now() - live.lastPing >= 1000
-          ) {
+          // Heartbeat for as long as the job is running, so the client can
+          // tell "still working" from "connection died". This used to fire
+          // only in spawn/context, which left the longest gap of all — a model
+          // turn producing no output yet — with no liveness signal at all,
+          // and the client's status line frozen on a stale label.
+          if (live.phase !== 'done' && Date.now() - live.lastPing >= 1000) {
             live.lastPing = Date.now();
             emitPhase();
           }
 
           // Job finished
           if (current.status === 'exited' || current.status === 'killed') {
-            clearInterval(pollInterval);
             if (live.phase !== 'done') {
               live.phase = 'done';
               emitPhase();
             }
             enqueue(`event: closed\n`);
             enqueue(`data: ${JSON.stringify({ status: current.status, exitCode: current.exitCode })}\n\n`);
-            controller.close();
+            finish();
           }
         } catch {
           // Manager error — keep polling
@@ -259,10 +300,7 @@ export async function GET(
       }, 100);
 
       // Cleanup on client disconnect
-      request.signal.addEventListener('abort', () => {
-        clearInterval(pollInterval);
-        controller.close();
-      });
+      request.signal.addEventListener('abort', finish);
     },
   });
 

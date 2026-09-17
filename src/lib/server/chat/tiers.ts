@@ -26,7 +26,7 @@ import { DEEPSEEK_RATES, GEMINI_RATES } from '@/lib/rates';
    per-run cost line. Re-exported here so existing server importers stay put. */
 export { DEEPSEEK_RATES, GEMINI_RATES };
 
-const DEFAULT_FAST_MODEL = 'deepseek-v4-flash';
+const DEFAULT_FAST_MODEL = 'deepseek-flash';
 const DEFAULT_PRO_MODEL = 'deepseek-v4-pro';
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_PROXY_URL = 'http://127.0.0.1:8788';

@@ -15,6 +15,7 @@ import { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
 import { InstallButton } from './InstallButton';
+import { PushNotifications } from './PushNotifications';
 import { BootSequence } from './BootSequence';
 import { useDevDuplicateCheck } from './useDevDuplicateCheck';
 import { SamBackground } from '@/components/visualiser/SamBackground';
@@ -54,6 +55,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="md:hidden pt-3 px-3">
           <InstallButton variant="banner" />
         </div>
+
+        {/* Push enable banner — appears only until notifications are allowed */}
+        <PushNotifications />
 
         {children}
       </main>
