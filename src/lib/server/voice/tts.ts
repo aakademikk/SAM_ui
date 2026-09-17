@@ -89,3 +89,21 @@ export function synthesize(text: string, voiceId?: number): TtsResult {
     latencyMs: Date.now() - start,
   };
 }
+
+/**
+ * Warm the Kokoro engine: construct it and run one throwaway synthesis.
+ *
+ * The engine in `getTts()` is a per-process singleton, so a sam-ui restart
+ * throws the ~330MB model away and the next fallback pays to load it again.
+ * Calling this at boot moves that cost off the first real reply.
+ *
+ * The throwaway call is the point, not decoration: constructing the engine is
+ * cheap and the expensive work is whatever it initialises lazily on the first
+ * `generate()`. Synthesising one short word forces all of it now.
+ *
+ * Safe to call repeatedly — the singleton makes a second call nearly free.
+ * Returns how long the warm took, for the boot log.
+ */
+export function warmTts(): number {
+  return synthesize('warm', DEFAULT_VOICE).latencyMs;
+}
