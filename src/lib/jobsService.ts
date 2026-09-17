@@ -114,6 +114,15 @@ export function streamJob(
       // silently afterwards (no closed event) is reported as lost, not
       // double-reported on top of a real exit.
       let sawClosed = false;
+      // SSE event state lives OUTSIDE the read loop. A single event is several
+      // lines on the wire (id/event plus one `data:` per line of output), so it
+      // routinely straddles a chunk boundary — and resetting this per read()
+      // discards the half-parsed event silently, with no error and no gap
+      // marker. The loss scales with event size: telemetry survives, the final
+      // answer does not.
+      let currentId: string | undefined;
+      let currentEvent: string | undefined;
+      let currentData: string[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -135,10 +144,6 @@ export function streamJob(
         // Parse SSE frames
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? ''; // keep incomplete line in buffer
-
-        let currentId: string | undefined;
-        let currentEvent: string | undefined;
-        let currentData: string[] = [];
 
         for (const line of lines) {
           if (line === '') {
