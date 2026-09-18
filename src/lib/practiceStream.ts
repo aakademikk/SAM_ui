@@ -62,7 +62,8 @@ export class PracticeStream {
       this.consume(this.buffer);
       this.buffer = '';
     }
-    return this.take(this.text.length);
+    this.sanitise();
+    return this.take(Math.min(this.text.length, this.cutoff()));
   }
 
   private consume(raw: string): void {
@@ -101,6 +102,42 @@ export class PracticeStream {
     }
   }
 
+  /**
+   * Remove the CLI's injected token reminder from the accumulated text.
+   *
+   * The CLI drops a `<total_tokens>N tokens left</total_tokens>` reminder into
+   * every turn. Claude ignores it — which is why the dashboard chat is clean —
+   * but Gemini-2.5-flash sometimes parrots it back, and the parrot gets spoken:
+   * Colin's 2026-09-18 Steve session had the buyer say "Tokens Left one five
+   * zero zero zero zero" out loud mid-rehearsal. It is a tag, never speech, so
+   * it is cut out here, wherever in the reply it lands.
+   *
+   * This runs before a hand-out rather than on append because a tag can arrive
+   * split across two deltas; by the time the text is spoken the pair is whole.
+   * A reminder that has not finished arriving is fenced instead — see `cutoff`.
+   *
+   * Removing text shifts every offset after it, but `spoken` needs no
+   * correction: anything at an index below `spoken` was sanitised on an earlier
+   * pass, so any pair still present here starts at or after it.
+   */
+  private sanitise(): void {
+    if (!this.text.includes('<total_tokens>')) return;
+    this.text = this.text.replace(/<total_tokens>[\s\S]*?<\/total_tokens>/g, '');
+    // A closing tag the model emitted on its own is not speech either.
+    this.text = this.text.replace(/<\/total_tokens>/g, '');
+  }
+
+  /**
+   * Where the speakable text ends. An opening tag with no closing tag yet means
+   * the reminder is still streaming, so everything from it on is withheld until
+   * `sanitise` can take the completed pair out. Returns `text.length` when there
+   * is no reminder, which is the ordinary case.
+   */
+  private cutoff(): number {
+    const at = this.text.indexOf('<total_tokens>');
+    return at === -1 ? this.text.length : at;
+  }
+
   /** Spoken form of `text[from..to)`; advances the spoken offset past it. */
   private take(to: number): string {
     if (to <= this.spoken) return '';
@@ -111,11 +148,13 @@ export class PracticeStream {
 
   /** Complete sentences not yet spoken, leaving any in-flight one alone. */
   private drain(): string {
+    this.sanitise();
     const at = Math.max(
       this.text.lastIndexOf('.'),
       this.text.lastIndexOf('!'),
       this.text.lastIndexOf('?'),
     );
-    return this.take(at + 1);
+    // The last sentence end can sit past a still-arriving reminder; stop short.
+    return this.take(Math.min(at + 1, this.cutoff()));
   }
 }
