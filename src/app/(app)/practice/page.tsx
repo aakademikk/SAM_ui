@@ -33,17 +33,20 @@ import { isSpeechBlocked, primeSpeech, speakChunked, stopAllSpeech, type SpeechH
 import type { PracticeBrief, PracticeLine, PracticeTurnResult } from '@/types/practice';
 
 /**
- * The buyer's voice. en-GB-RyanNeural at +0% — the desktop practice agent's
- * choice, and emphatically not SAM's Abeo at +15%.
+ * The voice each persona actually speaks in comes from that brief's own
+ * `## Voice` section — three tradesmen rehearsed back to back in one voice is a
+ * worse exercise, because the ear cannot tell the scenarios apart. These two
+ * are only the fallback for a brief that declares none, and emphatically not
+ * SAM's Abeo at +15%.
  */
-const BUYER_EDGE_VOICE = 'en-GB-RyanNeural';
-const BUYER_EDGE_RATE = '+0%';
+const FALLBACK_EDGE_VOICE = 'en-GB-RyanNeural';
+const FALLBACK_EDGE_RATE = '+0%';
 /**
  * Kokoro fallback index used when voice-line is unreachable. It is the wrong
  * voice for the character, but a buyer who sounds like someone else is a better
  * rehearsal than a buyer who says nothing.
  */
-const BUYER_FALLBACK_VOICE = 7;
+const KOKORO_FALLBACK_VOICE = 7;
 
 type Turn = 'idle' | 'loading-brief' | 'thinking' | 'speaking';
 
@@ -101,9 +104,12 @@ export default function PracticePage() {
     if (!text.trim()) return;
     setTurn('speaking');
     const handle = speakChunked(text, {
-      voice: BUYER_FALLBACK_VOICE,
-      edgeVoice: BUYER_EDGE_VOICE,
-      edgeRate: BUYER_EDGE_RATE,
+      voice: KOKORO_FALLBACK_VOICE,
+      // The persona's own voice, from its brief. Read through the ref rather
+      // than taken as a dependency so this callback stays stable — it is
+      // captured by the stream handlers, which must not be re-created mid-turn.
+      edgeVoice: briefRef.current?.voice || FALLBACK_EDGE_VOICE,
+      edgeRate: briefRef.current?.rate || FALLBACK_EDGE_RATE,
     });
     speechRef.current = handle;
     void handle.done.then(() => {
@@ -166,6 +172,17 @@ export default function PracticePage() {
       }
 
       sessionRef.current = started.sessionId;
+      // The route reads the brief from disk, so its voice is fresher than the
+      // list this page loaded at mount. Prefer it when it carries one.
+      if (started.voice) {
+        const active: PracticeBrief = {
+          ...selected,
+          voice: started.voice,
+          rate: started.rate,
+        };
+        briefRef.current = active;
+        setBrief(active);
+      }
       note(`${started.speaker || selected.speaker} is on the line`);
       // The scenario's own opening line is spoken by us, not generated — the
       // model's "ready" is never heard. Same as the desktop.
@@ -266,8 +283,8 @@ export default function PracticePage() {
       <div className="sam-practice-root flex flex-col">
         <header className="sticky top-0 z-20 flex items-center gap-2 px-3 py-2 border-b border-void-800 bg-void-900/85 backdrop-blur-md shrink-0">
           <Users size={16} className="text-accent" />
-          <h1 className="text-sm font-semibold">Practice</h1>
-          <span className="text-[11px] text-void-300 ml-auto">Rehearse the other side</span>
+          <h1 className="text-sm font-semibold">Roleplay</h1>
+          <span className="text-[11px] text-dim-300 ml-auto">Rehearse the other side</span>
         </header>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2">
@@ -278,10 +295,10 @@ export default function PracticePage() {
             </p>
           )}
 
-          {!briefs && !listError && <p className="text-xs text-void-300">Loading briefs…</p>}
+          {!briefs && !listError && <p className="text-xs text-dim-300">Loading briefs…</p>}
 
           {briefs?.length === 0 && (
-            <p className="text-xs text-void-300">
+            <p className="text-xs text-dim-300">
               No briefs found in the practice project&rsquo;s briefs folder.
             </p>
           )}
@@ -314,14 +331,14 @@ export default function PracticePage() {
                 )}
               </div>
               {item.openingLine && (
-                <p className="text-[11px] text-void-300 mt-2 line-clamp-2 italic">
+                <p className="text-[11px] text-dim-300 mt-2 line-clamp-2 italic">
                   &ldquo;{item.openingLine}&rdquo;
                 </p>
               )}
             </button>
           ))}
 
-          <p className="text-[10px] text-void-400 pt-2 leading-relaxed">
+          <p className="text-[10px] text-dim-500 pt-2 leading-relaxed">
             The buyer will not fold because you made a good point. Say
             &ldquo;{DEBRIEF_WORD}&rdquo; at any time for a blunt critique of how it went.
           </p>
@@ -338,25 +355,25 @@ export default function PracticePage() {
         <button
           type="button"
           onClick={endSession}
-          className="text-xs px-2 py-1 rounded border border-void-700 text-void-200 hover:border-void-500 transition-colors shrink-0"
+          className="text-xs px-2 py-1 rounded border border-void-700 text-dim-200 hover:border-void-500 transition-colors shrink-0"
         >
           End
         </button>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold truncate">{brief.speaker}</p>
-          <p className="text-[10px] text-void-300 truncate">{brief.title}</p>
+          <p className="text-[10px] text-dim-300 truncate">{brief.title}</p>
         </div>
         {turn === 'loading-brief' && (
           <span className="text-[10px] text-accent shrink-0">getting into character…</span>
         )}
-        {turn === 'thinking' && <span className="text-[10px] text-void-300 shrink-0">thinking…</span>}
+        {turn === 'thinking' && <span className="text-[10px] text-dim-300 shrink-0">thinking…</span>}
       </header>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2">
         {lines.map((line, index) => {
           if (line.role === 'note') {
             return (
-              <p key={index} className="text-[10px] text-void-400 text-center py-1">
+              <p key={index} className="text-[10px] text-dim-500 text-center py-1">
                 {line.text}
               </p>
             );
@@ -460,7 +477,7 @@ export default function PracticePage() {
             onChange={(event) => setTyped(event.target.value)}
             placeholder="Or type your line…"
             className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded border border-void-700
-                       bg-void-950/60 placeholder:text-void-400 focus:border-accent/60 outline-none"
+                       bg-void-950/60 placeholder:text-dim-500 focus:border-accent/60 outline-none"
           />
           <button
             type="submit"

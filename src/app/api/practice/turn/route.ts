@@ -84,6 +84,11 @@ export async function POST(request: Request) {
 
   const briefId = validBriefId(body.brief) ? body.brief : 'unknown';
 
+  // Read once, before the branch: opening a session needs the whole brief, and
+  // a continuation still needs its voice, so a resumed turn keeps speaking the
+  // same character instead of reverting to the default one.
+  const loaded = typeof body.brief === 'string' ? readBrief(body.brief) : null;
+
   let message: string;
   let speaker = '';
   let openingLine = '';
@@ -98,7 +103,6 @@ export async function POST(request: Request) {
   } else {
     // Opening a session = the first message IS the brief. The character comes
     // entirely from the file, so there is nothing else to send it.
-    const loaded = readBrief(typeof body.brief === 'string' ? body.brief : '');
     if (!loaded) return failure('Unknown brief.', 404);
     if (!loaded.brief.openingLine) {
       return failure(`Brief '${loaded.brief.id}' has no ## Opening line — refusing to start.`, 422);
@@ -219,7 +223,17 @@ export async function POST(request: Request) {
   });
 
   return envelope(
-    { jobId: job.id, sessionId, speaker, openingLine, brief: briefId },
+    {
+      jobId: job.id,
+      sessionId,
+      speaker,
+      openingLine,
+      brief: briefId,
+      // The persona's own voice, straight off disk. Empty when the brief
+      // declares none, which the page reads as "use the default".
+      voice: loaded?.brief.voice ?? '',
+      rate: loaded?.brief.rate ?? '',
+    },
     'sam.practice.turn',
     startedAt,
     estate.tick,

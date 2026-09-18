@@ -62,8 +62,50 @@ function section(text: string, heading: string): string {
   return '';
 }
 
+/** Every non-empty body line under a `## Heading`, in file order. */
+function sectionLines(text: string, heading: string): string[] {
+  const lines = text.split('\n');
+  const wanted = `## ${heading}`.toLowerCase();
+  const at = lines.findIndex((line) => line.trim().toLowerCase() === wanted);
+  if (at === -1) return [];
+  const out: string[] = [];
+  for (let i = at + 1; i < lines.length; i += 1) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    if (line.startsWith('#')) break;
+    out.push(line);
+  }
+  return out;
+}
+
+/** `key: value` lines under a `## Heading`, keys lowercased. */
+function keyValues(text: string, heading: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of sectionLines(text, heading)) {
+    const at = line.indexOf(':');
+    if (at === -1) continue;
+    out[line.slice(0, at).trim().toLowerCase()] = line.slice(at + 1).trim();
+  }
+  return out;
+}
+
+/**
+ * An Edge voice name, `en-GB-ThomasNeural`.
+ *
+ * Validated rather than trusted because the value ends up in two places that
+ * do not fail loudly: the client hands it to voice-line as a synthesis
+ * argument, and the desktop reads it out of the same file. `''` means the
+ * brief declares no voice, and the caller falls back — which is the right
+ * outcome for a brief written before this section existed.
+ */
+const VOICE_RE = /^[a-z]{2}-[A-Z]{2}-[A-Za-z]{3,24}Neural$/;
+
+/** The signed percentage shape edge-tts accepts, e.g. `-4%` or `+15%`. */
+const RATE_RE = /^[+-]\d{1,3}%$/;
+
 function parseBrief(id: string, text: string): PracticeBrief {
   const heading = text.split('\n').find((line) => line.startsWith('# Brief')) ?? '';
+  const voice = keyValues(text, 'Voice');
   return {
     id,
     title: heading.replace(/^#\s*Brief\s*[—-]\s*/, '').trim() || id,
@@ -72,6 +114,8 @@ function parseBrief(id: string, text: string): PracticeBrief {
     // here, so keep them unwrapped when writing new ones.
     openingLine: section(text, 'Opening line'),
     realLead: /\[real\b/.test(text),
+    voice: VOICE_RE.test(voice.voice ?? '') ? voice.voice : '',
+    rate: RATE_RE.test(voice.rate ?? '') ? voice.rate : '',
   };
 }
 

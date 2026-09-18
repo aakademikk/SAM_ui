@@ -23,6 +23,15 @@ export interface PracticeBrief {
    * one — and because the two should not be confused while scrolling a list.
    */
   realLead: boolean;
+  /**
+   * An Edge TTS voice name from the brief's `## Voice` section, or `''` when
+   * the brief declares none. The voice belongs to the persona, not to the app:
+   * three tradesmen rehearsed back to back in one voice is a worse exercise,
+   * because the ear cannot tell the scenarios apart.
+   */
+  voice: string;
+  /** Signed percentage (`-4%`) from `## Voice`, or `''` for the default. */
+  rate: string;
 }
 
 export interface PracticeBriefsResult {
@@ -38,6 +47,9 @@ export interface PracticeTurnResult {
   /** The scenario's opening line — empty on a continuation turn. */
   openingLine: string;
   brief: string;
+  /** The persona's voice/pace, read from the brief on disk. */
+  voice: string;
+  rate: string;
 }
 
 /** A line of the rehearsal transcript. */

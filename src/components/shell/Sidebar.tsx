@@ -24,7 +24,7 @@ const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', href: '/', icon: LayoutDashboard },
   { id: 'terminal', label: 'Terminal', href: '/terminal', icon: Terminal },
   { id: 'chat', label: 'Chat', href: '/chat', icon: MessageSquare },
-  { id: 'practice', label: 'Practice', href: '/practice', icon: Users },
+  { id: 'practice', label: 'Roleplay', href: '/practice', icon: Users },
   { id: 'fleet', label: 'Fleet', href: '/fleet', icon: Bot },
   { id: 'status', label: 'Status', href: '/status', icon: Activity },
   { id: 'operations', label: 'Operations', href: '/operations', icon: Radio },
