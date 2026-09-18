@@ -14,12 +14,14 @@ import {
   Bot,
   Radio,
   Activity,
+  Users,
 } from 'lucide-react';
 
 const TABS = [
   { id: 'dashboard', label: 'Dash', href: '/', icon: LayoutDashboard },
   { id: 'terminal', label: 'Term', href: '/terminal', icon: Terminal },
   { id: 'chat', label: 'Chat', href: '/chat', icon: MessageSquare },
+  { id: 'practice', label: 'Prac', href: '/practice', icon: Users },
   { id: 'fleet', label: 'Fleet', href: '/fleet', icon: Bot },
   { id: 'status', label: 'Status', href: '/status', icon: Activity },
   { id: 'operations', label: 'Ops', href: '/operations', icon: Radio },

@@ -194,6 +194,19 @@ export function speakChunked(
   text: string,
   opts: {
     voice: number;
+    /**
+     * Override the Edge voice for this utterance. Absent → the stored SAM
+     * preference. The practice agent needs the buyer's voice, which is not
+     * SAM's and must not follow the operator's chat-voice setting.
+     */
+    edgeVoice?: string;
+    /**
+     * Override the Edge speaking rate for this utterance ("+0%", "-5%").
+     * Absent → the voice service's configured default (SAM's +15%), which is
+     * right for an assistant reading an answer back and wrong for a person sat
+     * across a table.
+     */
+    edgeRate?: string;
     signal?: AbortSignal;
     onState?: (speaking: boolean) => void;
   },
@@ -223,13 +236,19 @@ export function speakChunked(
   const synth = async (chunk: string): Promise<string | null> => {
     // Edge voice is read live so a preference change applies to the next turn
     // without a rebuild. Absent → voice-line falls back to its default (Abeo).
-    const edgeVoice = localStorage.getItem('sam-tts-edge-voice') ?? undefined;
+    // A caller-supplied voice wins: the practice buyer is not SAM.
+    const edgeVoice = opts.edgeVoice ?? localStorage.getItem('sam-tts-edge-voice') ?? undefined;
     const response = await fetch('/api/chat/tts', {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       signal,
-      body: JSON.stringify({ text: chunk, voice: opts.voice, edgeVoice }),
+      body: JSON.stringify({
+        text: chunk,
+        voice: opts.voice,
+        edgeVoice,
+        ...(opts.edgeRate ? { edgeRate: opts.edgeRate } : {}),
+      }),
     });
     if (!response.ok) return null;
     return URL.createObjectURL(await response.blob());

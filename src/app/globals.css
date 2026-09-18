@@ -404,6 +404,18 @@
   }
 }
 
+/* Practice page — same fixed-height contract as the chat column, so the
+   transcript scrolls inside the page rather than carrying the controls off
+   the bottom of a phone. */
+.sam-practice-root {
+  height: calc(100dvh - 3.5rem - env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 768px) {
+  .sam-practice-root {
+    height: 100dvh;
+  }
+}
+
 /* Mobile composer floats above the tab bar. --kb is the soft-keyboard overlay
    height driven by the visualViewport hook; it lifts the composer above the
    keyboard on browsers that ignore interactive-widget=resizes-content (Brave).

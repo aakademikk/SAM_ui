@@ -66,6 +66,23 @@ interface OutreachWhatsapp {
   dueNext?: { date: string; count: number }[];
   sentToday?: number;
   chasedToday?: number;
+  /**
+   * The field pages themselves, discovered from the served directory by the
+   * collector — so a page that is built or retired shows up here without a code
+   * change. `actionable` is what is still owed on it: unmessaged leads on a cold
+   * page, unchased ones on a chase page.
+   */
+  pages?: WhatsappPage[];
+}
+
+interface WhatsappPage {
+  file: string;
+  url: string;
+  label: string;
+  kind: string;
+  leads: number;
+  actionable: number;
+  state: string;
 }
 
 interface OutreachOk {
@@ -597,6 +614,38 @@ export default function StatusPage() {
                         </p>
                       </div>
                     </div>
+
+                    {wa.pages && wa.pages.length > 0 && (
+                      <div>
+                        <p className="mb-1 font-mono text-[9.5px] tracking-[0.14em] text-slate-600 uppercase">
+                          pages
+                        </p>
+                        {wa.pages.map((p) => (
+                          <a
+                            key={p.file}
+                            href={p.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`flex items-baseline justify-between gap-3 border-b border-void-800 py-1 text-[12px] transition-colors ${
+                              p.actionable > 0
+                                ? 'text-slate-200 hover:text-slate-50'
+                                : 'text-slate-500 hover:text-slate-400'
+                            }`}
+                          >
+                            <span className="truncate">
+                              {p.label} <span className="text-slate-600">↗</span>
+                            </span>
+                            <span
+                              className={`shrink-0 font-mono text-[10px] tracking-[0.1em] uppercase ${
+                                p.actionable > 0 ? 'text-slate-100' : 'text-slate-600'
+                              }`}
+                            >
+                              {p.state}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 

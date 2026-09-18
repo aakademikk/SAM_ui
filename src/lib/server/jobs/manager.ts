@@ -614,7 +614,16 @@ class JobManager {
       ['--user', '--scope', '--quiet', '--collect', ...withExitSentinel([bin, ...args])],
       {
         shell: false,
-        stdio: ['pipe', 'pipe', 'pipe'],
+        // stdin is /dev/null here, not a pipe. Nothing writes to a createArgs
+        // job's stdin, and the CLI blocks on a pipe it never hears from: it
+        // warns at 3s and then proceeds, which costs ~2.9s a turn (measured
+        // 5.2s open-pipe vs 2.3s /dev/null, timing the CLI alone). The wait
+        // happens before a model is chosen, so it is the same on every tier.
+        //
+        // create() keeps its pipe on purpose: the Terminal is the only caller
+        // that types into stdin (jobsService.sendInput), and a terminal job
+        // with /dev/null stdin would silently swallow every keystroke.
+        stdio: ['ignore', 'pipe', 'pipe'],
         cwd: opts.cwd ?? os.homedir(),
         env: mergeEnv({
           ...(opts.env ?? {}),
