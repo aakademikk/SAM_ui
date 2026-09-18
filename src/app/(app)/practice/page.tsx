@@ -29,7 +29,15 @@ import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { jobsService } from '@/lib/jobsService';
 import { PracticeStream } from '@/lib/practiceStream';
 import { listBriefs, sendTurn, startSession } from '@/lib/practiceService';
-import { isSpeechBlocked, primeSpeech, speakChunked, stopAllSpeech, type SpeechHandle } from '@/lib/speech';
+import {
+  clearSpeechError,
+  getSpeechError,
+  isSpeechBlocked,
+  primeSpeech,
+  speakChunked,
+  stopAllSpeech,
+  type SpeechHandle,
+} from '@/lib/speech';
 import type { PracticeBrief, PracticeLine, PracticeTurnResult } from '@/types/practice';
 
 /**
@@ -63,6 +71,8 @@ export default function PracticePage() {
   const [handsfree, setHandsfree] = useState(true);
   const [typed, setTyped] = useState('');
   const [audioBlocked, setAudioBlocked] = useState(false);
+  /** Why the last utterance made no sound, when it made none. */
+  const [speechError, setSpeechError] = useState<string | null>(null);
 
   const streamRef = useRef<{ close(): void } | null>(null);
   const speechRef = useRef<SpeechHandle | null>(null);
@@ -116,6 +126,9 @@ export default function PracticePage() {
       if (speechRef.current !== handle) return;
       speechRef.current = null;
       setAudioBlocked(isSpeechBlocked());
+      // If the turn was seen to be "speaking" but nothing came out, this is
+      // where that becomes a sentence on screen instead of a mystery.
+      setSpeechError(getSpeechError());
       // Only the newest handle may re-open the mic: an earlier sentence's
       // completion must not do it while the last one is still playing.
       setTurn((current) => (current === 'speaking' ? 'idle' : current));
@@ -407,11 +420,20 @@ export default function PracticePage() {
 
       {/* Controls */}
       <div className="shrink-0 border-t border-void-800 bg-void-900/85 backdrop-blur-md px-3 py-2 space-y-2">
+        {speechError && !audioBlocked && (
+          <p className="text-xs text-rose-300 flex items-start gap-1.5 break-all">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            No audio — {speechError}
+          </p>
+        )}
+
         {audioBlocked && (
           <button
             type="button"
             onClick={() => {
               primeSpeech();
+              clearSpeechError();
+              setSpeechError(null);
               setAudioBlocked(false);
             }}
             className="w-full text-xs px-3 py-1.5 rounded border border-amber-700/50 text-amber-300 bg-amber-900/20"

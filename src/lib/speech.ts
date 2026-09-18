@@ -103,6 +103,23 @@ export const clearSpeechBlocked = () => {
 };
 
 /**
+ * Why the last utterance failed to reach the speaker, or null.
+ *
+ * Everything in this file used to fail silently: `synth` returned null on a
+ * non-ok response and `play` treated a rejected `play()` as a normal finish, so
+ * a turn that produced no sound was indistinguishable from one that was never
+ * asked to. That cost a whole debugging session on 2026-09-18 chasing a fault
+ * that was happening in the browser the entire time. Failures are recorded here
+ * so the page can say what went wrong instead of just going quiet.
+ */
+let lastSpeechError: string | null = null;
+
+export const getSpeechError = () => lastSpeechError;
+export const clearSpeechError = () => {
+  lastSpeechError = null;
+};
+
+/**
  * Split text into speakable chunks on sentence boundaries.
  *
  * Markdown fences, list bullets and inline code markers are stripped — they
@@ -225,6 +242,12 @@ export function speakChunked(
     const audio = getAudio();
     audio.pause();
     audio.removeAttribute('src');
+    // Removing `src` does NOT abort resource selection — the spec is explicit
+    // that only an assignment triggers the load algorithm, not a removal. So
+    // without this the element can still be holding the previous resource when
+    // the next chunk assigns a new one, and that assignment is where playback
+    // was being lost. `load()` with no source is the documented reset.
+    audio.load();
     opts.onState?.(false);
   };
 
@@ -250,7 +273,12 @@ export function speakChunked(
         ...(opts.edgeRate ? { edgeRate: opts.edgeRate } : {}),
       }),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      // Otherwise invisible: the chunk is dropped and the turn simply goes
+      // quiet, which reads as "the character said nothing".
+      lastSpeechError = `voice service returned ${response.status}`;
+      return null;
+    }
     return URL.createObjectURL(await response.blob());
   };
 
@@ -272,11 +300,25 @@ export function speakChunked(
       audio.onended = finish;
       audio.onerror = finish;
       audio.src = url;
-      audio.play().catch((err) => {
-        // NotAllowedError means autoplay was blocked despite priming.
-        if ((err as Error)?.name === 'NotAllowedError') blockedRef.blocked = true;
-        finish();
-      });
+      audio
+        .play()
+        .then(() => {
+          // Playback actually started, so whatever went wrong last time did not
+          // this time. Clear it, or a one-off fault would be reported forever.
+          lastSpeechError = null;
+        })
+        .catch((err) => {
+          const error = err as Error;
+          // NotAllowedError means autoplay was blocked despite priming.
+          if (error?.name === 'NotAllowedError') {
+            blockedRef.blocked = true;
+          } else {
+            // Anything else — AbortError from a racing load, NotSupportedError
+            // on a codec the element will not take — used to vanish here.
+            lastSpeechError = `${error?.name ?? 'play failed'}: ${error?.message ?? ''}`.trim();
+          }
+          finish();
+        });
     });
 
   const done = (async () => {
