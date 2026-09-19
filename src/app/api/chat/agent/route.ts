@@ -20,6 +20,11 @@ import { claudeBin } from '@/lib/server/claudeBin';
 import { getJobManager } from '@/lib/server/jobs/manager';
 import { envelope, failure, readJson } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
+import {
+  MAX_ATTACHMENTS,
+  attachmentBlock,
+  resolveUploadPath,
+} from '@/lib/server/uploads';
 import { requireStepUp } from '@/lib/server/auth/guard';
 import { logCommand } from '@/lib/server/auth/auditLog';
 import {
@@ -67,15 +72,51 @@ export async function POST(request: Request) {
   const body = await readJson(request);
 
   const message = typeof body.message === 'string' ? body.message.trim() : '';
-  if (!message) return failure('message is required.', 400);
+  const rawAttachments = Array.isArray(body.attachments) ? body.attachments : [];
+
+  // A turn is either something said or something shown, so an empty message is
+  // only an error when there is nothing attached to carry it.
+  if (!message && rawAttachments.length === 0) {
+    return failure('message is required.', 400);
+  }
   if (message.length > MAX_MESSAGE_CHARS) {
     return failure(`Message too long (max ${MAX_MESSAGE_CHARS} chars).`, 413);
   }
+  if (rawAttachments.length > MAX_ATTACHMENTS) {
+    return failure(`Too many attachments (max ${MAX_ATTACHMENTS}).`, 413);
+  }
+
+  // Every path must resolve inside the uploads directory. Without this check
+  // the field is an arbitrary-file read primitive: post `/home/col/.ssh/id_rsa`
+  // and the agent reads it out. resolveUploadPath also refuses anything that is
+  // not an existing regular file, so a directory or a stale path fails here
+  // rather than silently inside the agent.
+  const attachments: { path: string; name: string }[] = [];
+  for (const candidate of rawAttachments) {
+    const resolved = resolveUploadPath(candidate);
+    if (!resolved) return failure('Attachment is not a file you uploaded.', 400);
+    attachments.push({ path: resolved, name: path.basename(resolved) });
+  }
+
+  // The paths ride with the message because that is the one channel the CLI
+  // already understands. Appended after the length check, so a long attachment
+  // list can never push Colin's own text over the cap.
+  const prompt = message + attachmentBlock(attachments);
+
+  // The job label is display-only, so it names the files rather than carrying
+  // their paths — and an attachment-only turn still gets a label instead of a
+  // blank one.
+  const fileCount = `${attachments.length} file${attachments.length === 1 ? '' : 's'}`;
+  const labelText = message
+    ? `${message.slice(0, 60)}${message.length > 60 ? '…' : ''}`
+    : fileCount;
 
   // Unknown tier ids fall back to the cheap default rather than erroring.
   const tier: TierId =
-    body.tier === 'max' || body.tier === 'pro' || body.tier === 'gemini' ? body.tier : 'fast';
-  if (tier !== 'max') {
+    body.tier === 'max' || body.tier === 'max2' || body.tier === 'pro' || body.tier === 'gemini'
+      ? body.tier
+      : 'fast';
+  if (tier !== 'max' && tier !== 'max2') {
     const label = tier === 'gemini' ? 'Gemini' : tier === 'pro' ? 'Pro' : 'Fast';
     const configured =
       tier === 'gemini' ? geminiTierAvailable() : deepseekTierAvailable();
@@ -92,7 +133,7 @@ export async function POST(request: Request) {
 
   const args = [
     '-p',
-    message,
+    prompt,
     '--output-format',
     'stream-json',
     // stream-json only emits the full event set in verbose mode.
@@ -144,7 +185,7 @@ export async function POST(request: Request) {
     .createArgs(claudeBin(), args, {
       // Display-only label. Never executed, and deliberately not the full argv:
       // the message text would otherwise land in the job list and audit log.
-      label: `sam-agent (${info.label}) — ${message.slice(0, 60)}${message.length > 60 ? '…' : ''}`,
+      label: `sam-agent (${info.label}) — ${labelText}`,
       cwd: agentCwd(),
       env: {
         ...tierEnv(tier),
@@ -176,7 +217,9 @@ export async function POST(request: Request) {
 
   await logCommand({
     jobId: job.id,
-    command: `[chat:${tier}] ${message.slice(0, 200)}`,
+    command: `[chat:${tier}] ${message.slice(0, 200)}${
+      attachments.length ? ` (+${fileCount})` : ''
+    }`,
     device: stepUp.device,
     credentialId: stepUp.sub.slice(0, 12),
     timestamp: new Date().toISOString(),

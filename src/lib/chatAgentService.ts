@@ -24,6 +24,8 @@ export async function startAgentTurn(params: {
   message: string;
   tier: TierId;
   resumeSessionId?: string;
+  /** Absolute paths returned by POST /api/uploads. The server re-validates them. */
+  attachments?: string[];
   signal?: AbortSignal;
 }): Promise<StartTurnResult> {
   const response = await fetch('/api/chat/agent', {
@@ -36,6 +38,7 @@ export async function startAgentTurn(params: {
       message: params.message,
       tier: params.tier,
       resumeSessionId: params.resumeSessionId,
+      attachments: params.attachments,
     }),
   });
 

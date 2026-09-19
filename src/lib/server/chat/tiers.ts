@@ -8,6 +8,9 @@
  *            (Anthropic-compatible shim in proxy/gemini-proxy.mjs). Cheapest
  *            fast option and usually the quickest first token.
  *   max    — whatever the Claude CLI is configured to use by default.
+ *   max2   — a second Claude Pro seat, chosen by hand. Same as max, but the
+ *            spawned CLI runs with CLAUDE_CONFIG_DIR pointed at a second config
+ *            home, so it draws on the other account's subscription quota.
  *
  * The split exists for cost and quota reasons: routing every mobile message
  * through the Claude subscription competes directly with desktop work, and
@@ -21,6 +24,9 @@ import type { TierId, TierInfo } from '@/types/chat';
 
 import { DEEPSEEK_RATES, GEMINI_RATES } from '@/lib/rates';
 
+import os from 'node:os';
+import path from 'node:path';
+
 /* Rate tables live in @/lib/rates — pure data, client-safe, shared by the
    chat tiers, the fleet spend scan, transcript costing and the fleet page's
    per-run cost line. Re-exported here so existing server importers stay put. */
@@ -30,6 +36,7 @@ const DEFAULT_FAST_MODEL = 'deepseek-flash';
 const DEFAULT_PRO_MODEL = 'deepseek-v4-pro';
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_PROXY_URL = 'http://127.0.0.1:8788';
+const DEFAULT_MAX2_CONFIG_DIR = path.join(os.homedir(), '.claude-max2');
 
 /* ========================================================================== */
 /* Tier definitions                                                            */
@@ -54,6 +61,17 @@ export function geminiProxyUrl(): string {
 /** True when the Gemini tier has somewhere to point at. */
 export function geminiTierAvailable(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);
+}
+
+/**
+ * Config home for the Max 2 account. A second Claude Pro seat, selected by
+ * hand rather than automatically: the whole point is that choosing it is a
+ * deliberate act, so this tier only changes which login the spawned CLI reads.
+ * The home must exist and be logged in separately, or Max 2 silently runs
+ * account one while the UI claims otherwise.
+ */
+export function max2ConfigDir(): string {
+  return process.env.SAM_MAX2_CONFIG_DIR ?? DEFAULT_MAX2_CONFIG_DIR;
 }
 
 export function tierInfo(tier: TierId): TierInfo {
@@ -95,6 +113,15 @@ export function tierInfo(tier: TierId): TierInfo {
       rates: GEMINI_RATES[model] ?? GEMINI_RATES[DEFAULT_GEMINI_MODEL],
     };
   }
+  if (tier === 'max2') {
+    return {
+      id: 'max2',
+      label: 'Max 2',
+      model: process.env.SAM_MAX2_MODEL ?? 'claude (account 2 default)',
+      thirdParty: false,
+      // No rates: the reported figure is correct for first-party models.
+    };
+  }
   return {
     id: 'max',
     label: 'Max',
@@ -121,6 +148,19 @@ export function tierEnv(tier: TierId): Record<string, string | null> {
   if (tier === 'fast') return deepseekEnv(fastModel());
   if (tier === 'pro') return deepseekEnv(proModel());
   if (tier === 'gemini') return geminiEnv();
+  if (tier === 'max2') {
+    // Like max, this deletes the inherited DeepSeek env so the CLI falls back
+    // to a real login — then points CLAUDE_CONFIG_DIR at the second account's
+    // home. A missing or wrong CLAUDE_CONFIG_DIR means this silently runs the
+    // first account, the exact failure the max tier's delete guard exists for.
+    return {
+      ANTHROPIC_BASE_URL: null,
+      ANTHROPIC_AUTH_TOKEN: null,
+      ANTHROPIC_API_KEY: null,
+      ANTHROPIC_MODEL: process.env.SAM_MAX2_MODEL ?? null,
+      CLAUDE_CONFIG_DIR: max2ConfigDir(),
+    };
+  }
 
   return {
     ANTHROPIC_BASE_URL: null,

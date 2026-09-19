@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Gem, Lock, Square, Wrench } from 'lucide-react';
+import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Gem, Lock, Square, Wrench, Paperclip, X as XIcon } from 'lucide-react';
 
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { HandsFreeMic } from '@/components/voice/HandsFreeMic';
@@ -43,6 +43,27 @@ const SESSION_KEY = 'sam-agent-session';
 const TIER_KEY = 'sam-agent-tier';
 const ACTIVE_KEY = 'sam-agent-active';
 const PENDING_KEY = 'sam-agent-pending';
+
+/** What POST /api/uploads hands back for one saved file. */
+interface StagedFile {
+  path: string;
+  name: string;
+  size: number;
+  type: string;
+}
+
+/**
+ * The picker's filter. It is a hint, not a control — the server decides what it
+ * accepts, and a phone will offer its camera roll regardless.
+ */
+const ACCEPT_ATTR =
+  'image/*,video/*,.pdf,.txt,.md,.csv,.json,.rtf,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 const MAX_STORED = 40;
 /** Dropped connections are retried before a turn is declared lost. */
 const MAX_RECONNECTS = 5;
@@ -132,6 +153,17 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
   const [input, setInput] = useState('');
   const [running, setRunning] = useState(false);
+
+  // Staged uploads. The bytes are already on the server by the time a file
+  // appears here — uploading on pick rather than on send means a rejected type
+  // or an oversize video says so immediately, instead of after a turn has
+  // already been paid for. The ref is the source of truth for `send`, because
+  // `send` is a useCallback and would otherwise close over a stale list.
+  const [staged, setStaged] = useState<StagedFile[]>([]);
+  const stagedRef = useRef<StagedFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [phase, setPhase] = useState<AgentPhase>('starting');
   /** Latest server-side phase ping, with ms since process start. `at` is the
       local receipt time, which is what lets a stale ping be spotted. */
@@ -255,7 +287,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     const stored = localStorage.getItem(TIER_KEY);
-    if (stored === 'fast' || stored === 'pro' || stored === 'max' || stored === 'gemini') {
+    if (stored === 'fast' || stored === 'pro' || stored === 'max' || stored === 'max2' || stored === 'gemini') {
       setTier(stored);
     }
   }, []);
@@ -667,9 +699,69 @@ export default function ChatPage() {
 
   /* ── Send ────────────────────────────────────────────────────────────── */
 
+  /* ── Uploads ─────────────────────────────────────────────────────────── */
+
+  const setStagedBoth = useCallback((next: StagedFile[]) => {
+    stagedRef.current = next;
+    setStaged(next);
+  }, []);
+
+  const onPickFiles = useCallback(
+    async (picked: FileList | null) => {
+      if (!picked || picked.length === 0) return;
+
+      setAttachError(null);
+      setUploading(true);
+      try {
+        const form = new FormData();
+        for (const file of Array.from(picked)) form.append('files', file);
+
+        const response = await fetch('/api/uploads', {
+          method: 'POST',
+          credentials: 'include',
+          body: form,
+        });
+        const body = (await response.json().catch(() => ({}))) as {
+          data?: { files: StagedFile[] };
+          error?: string;
+          stepUpRequired?: boolean;
+        };
+
+        if (!response.ok) {
+          // The unlock button resends a pending message, which cannot work
+          // here: the FileList is gone by the time the biometric prompt
+          // returns. Say what to do rather than offering a button that
+          // appears to work and silently does nothing.
+          if (response.status === 401 && body.stepUpRequired) {
+            setNeedsStepUp(true);
+            throw new Error('Unlock first, then pick the file again.');
+          }
+          throw new Error(body.error ?? `Upload failed (${response.status})`);
+        }
+
+        setStagedBoth([...stagedRef.current, ...(body.data?.files ?? [])]);
+      } catch (err) {
+        setAttachError(err instanceof Error ? err.message : 'Upload failed.');
+      } finally {
+        setUploading(false);
+      }
+    },
+    [setStagedBoth],
+  );
+
+  const removeStaged = useCallback(
+    (path: string) => {
+      setStagedBoth(stagedRef.current.filter((f) => f.path !== path));
+    },
+    [setStagedBoth],
+  );
+
   const send = useCallback(async (text: string) => {
     const message = text.trim();
-    if (!message || running) return;
+    // A turn is something said or something shown, so an empty box is only
+    // fatal when there is nothing staged to carry it.
+    const files = stagedRef.current;
+    if ((!message && files.length === 0) || running) return;
 
     // `running` is a render-time closure, so a hands-free re-fire landing
     // before the next render could otherwise start two turns. The lock closes
@@ -693,7 +785,11 @@ export default function ChatPage() {
     // or the tier is expensive. Anything that is not clearly a device command,
     // or that the phone could not carry out, falls through to the agent below
     // exactly as before. On desktop there is no bridge, so this is a no-op.
-    const osResult = await tryOsIntent(message);
+    // Device commands are matched on the words alone, so a turn carrying files
+    // never takes this path — "open Spotify" with a photo attached is a real
+    // agent turn, not a device command.
+    const osResult =
+      files.length === 0 ? await tryOsIntent(message) : { handled: false, reply: null };
     if (osResult.handled && osResult.reply) {
       sendLockRef.current = false;
       const osStamp = Date.now();
@@ -713,12 +809,20 @@ export default function ChatPage() {
       const stamp = Date.now();
       const assistantId = `a_${stamp}`;
 
+      // The transcript has to read sensibly for a files-only turn, so the
+      // bubble falls back to naming what was sent.
+      const shown = message || `${files.length} file${files.length === 1 ? '' : 's'}`;
+
       setMessages((prev) => [
         ...prev,
-        { id: `u_${stamp}`, role: 'user', blocks: [{ kind: 'text', text: message }], done: true },
+        { id: `u_${stamp}`, role: 'user', blocks: [{ kind: 'text', text: shown }], done: true },
         { id: assistantId, role: 'assistant', blocks: [], done: false, tier },
       ]);
+      // The files are already on disk, so clearing the composer now costs a
+      // re-pick at worst if the turn fails.
       setInput('');
+      setStagedBoth([]);
+      setAttachError(null);
       setError(null);
       setRunning(true);
       setPhase('starting');
@@ -730,7 +834,12 @@ export default function ChatPage() {
         // behaviour). Runaway turns are the watchdog's job; the old token gate
         // existed only to fit under the removed budget cap.
         const resumeSessionId = localStorage.getItem(SESSION_KEY) ?? undefined;
-        const started = await startAgentTurn({ message, tier, resumeSessionId });
+        const started = await startAgentTurn({
+          message,
+          tier,
+          resumeSessionId,
+          attachments: files.map((f) => f.path),
+        });
 
         const run: ActiveRun = {
           jobId: started.jobId,
@@ -767,7 +876,7 @@ export default function ChatPage() {
     } finally {
       sendLockRef.current = false;
     }
-  }, [running, tier, attachToRun, muted, speak, speakAck]);
+  }, [running, tier, attachToRun, muted, speak, speakAck, setStagedBoth]);
 
   /* ── Hands-free loop wiring ──────────────────────────────────────────── */
 
@@ -978,9 +1087,9 @@ export default function ChatPage() {
     };
   }, []);
 
-  /** Four-tier cycle — Fast → Pro → Max → Gemini → Fast. The button shows the
-      current tier; tapping steps to the next one. */
-  const NEXT_TIER: Record<TierId, TierId> = { fast: 'pro', pro: 'max', max: 'gemini', gemini: 'fast' };
+  /** Five-tier cycle — Fast → Pro → Max → Max 2 → Gemini → Fast. The button
+      shows the current tier; tapping steps to the next one. */
+  const NEXT_TIER: Record<TierId, TierId> = { fast: 'pro', pro: 'max', max: 'max2', max2: 'gemini', gemini: 'fast' };
   const toggleTier = () => {
     const next = NEXT_TIER[tier];
     setTier(next);
@@ -1092,7 +1201,9 @@ export default function ChatPage() {
                 ? 'text-sky-300 bg-sky-900/20 border-sky-700/40'
                 : tier === 'gemini'
                   ? 'text-violet-300 bg-violet-900/20 border-violet-700/40'
-                  : 'text-amber-300 bg-amber-900/20 border-amber-700/40'
+                  : tier === 'max2'
+                    ? 'text-emerald-300 bg-emerald-900/20 border-emerald-700/40'
+                    : 'text-amber-300 bg-amber-900/20 border-amber-700/40'
           }`}
           title={
             tier === 'fast'
@@ -1101,7 +1212,9 @@ export default function ChatPage() {
                 ? 'Pro tier — DeepSeek pro, stronger, ~3x the cost of Fast. Tap for Max.'
                 : tier === 'gemini'
                   ? 'Gemini tier — Google Flash via local proxy, fastest first token. Tap for Fast.'
-                  : 'Max tier — Claude, uses your subscription quota. Tap for Fast.'
+                  : tier === 'max2'
+                    ? 'Max 2 tier — Claude account 2, separate Pro quota. Tap for Gemini.'
+                    : 'Max tier — Claude, uses your main subscription quota. Tap for Max 2.'
           }
         >
           {tier === 'fast' ? (
@@ -1113,7 +1226,7 @@ export default function ChatPage() {
           ) : (
             <Sparkles size={12} />
           )}
-          {tier === 'fast' ? 'Fast' : tier === 'pro' ? 'Pro' : tier === 'gemini' ? 'Gemini' : 'Max'}
+          {tier === 'fast' ? 'Fast' : tier === 'pro' ? 'Pro' : tier === 'gemini' ? 'Gemini' : tier === 'max2' ? 'Max 2' : 'Max'}
         </button>
 
         {sessionCost > 0 && (
@@ -1351,38 +1464,96 @@ export default function ChatPage() {
 
         <form
           onSubmit={(e) => { e.preventDefault(); void send(input); }}
-          className="flex items-center gap-2 max-w-3xl mx-auto"
+          className="max-w-3xl mx-auto"
         >
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              // Enter sends, Shift+Enter inserts a newline. Guarded the same way
-              // as the submit button so an empty or mid-run composer never fires.
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (input.trim() && !running) void send(input);
+          {(staged.length > 0 || attachError) && (
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              {staged.map((f) => (
+                <span
+                  key={f.path}
+                  className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1
+                             bg-void-800 border border-void-600 rounded-full
+                             text-void-200 text-xs"
+                >
+                  <span className="max-w-[160px] truncate">{f.name}</span>
+                  <span className="text-dim-500">{formatSize(f.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeStaged(f.path)}
+                    aria-label={`Remove ${f.name}`}
+                    className="p-0.5 rounded-full text-dim-500 hover:text-red-400 transition-colors"
+                  >
+                    <XIcon size={12} />
+                  </button>
+                </span>
+              ))}
+              {attachError && (
+                <span className="text-xs text-red-400 bg-red-900/20 px-3 py-1 rounded-full">
+                  {attachError}
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={ACCEPT_ATTR}
+              className="hidden"
+              onChange={(e) => {
+                void onPickFiles(e.target.files);
+                // Cleared so picking the same file twice running still fires a
+                // change event the second time.
+                e.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              aria-label="Attach files"
+              title="Attach photos, video or documents"
+              className="p-2.5 bg-void-800 border border-void-600 rounded-full
+                         text-dim-400 hover:text-accent hover:border-accent/40
+                         disabled:opacity-40 transition-colors shrink-0"
+            >
+              <Paperclip size={16} />
+            </button>
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter sends, Shift+Enter inserts a newline. Guarded the same way
+                // as the submit button so an empty or mid-run composer never fires.
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if ((input.trim() || stagedRef.current.length > 0) && !running) void send(input);
+                }
+              }}
+              placeholder={
+                running ? 'SAM is working…' : uploading ? 'Uploading…' : 'Type a message…'
               }
-            }}
-            placeholder={running ? 'SAM is working…' : 'Type a message…'}
-            disabled={running}
-            rows={1}
-            autoComplete="off"
-            className="flex-1 bg-void-800 border border-void-600 rounded-2xl px-4 py-2.5
-                       text-void-100 text-sm placeholder:text-dim-500 leading-snug
-                       resize-none overflow-y-auto max-h-20 sm:max-h-40
-                       focus:border-accent focus:outline-none disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || running}
-            className="p-2.5 bg-accent/20 border border-accent/40 rounded-full
-                       text-accent hover:bg-accent/30 disabled:opacity-30
-                       transition-colors shrink-0"
-          >
-            <Send size={16} />
-          </button>
+              disabled={running}
+              rows={1}
+              autoComplete="off"
+              className="flex-1 bg-void-800 border border-void-600 rounded-2xl px-4 py-2.5
+                         text-void-100 text-sm placeholder:text-dim-500 leading-snug
+                         resize-none overflow-y-auto max-h-20 sm:max-h-40
+                         focus:border-accent focus:outline-none disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={(!input.trim() && staged.length === 0) || running}
+              className="p-2.5 bg-accent/20 border border-accent/40 rounded-full
+                         text-accent hover:bg-accent/30 disabled:opacity-30
+                         transition-colors shrink-0"
+            >
+              <Send size={16} />
+            </button>
+          </div>
         </form>
       </div>
       </div>

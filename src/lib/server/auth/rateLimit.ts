@@ -61,6 +61,7 @@ class RateLimiter {
 const globalForSam = globalThis as unknown as {
   __samAuthLimiter?: RateLimiter;
   __samRegisterLimiter?: RateLimiter;
+  __samUploadLimiter?: RateLimiter;
 };
 
 /** Auth attempts: 5 per second per IP. Fail closed. */
@@ -77,4 +78,17 @@ export function getRegisterLimiter(): RateLimiter {
     globalForSam.__samRegisterLimiter = new RateLimiter(3, 60_000);
   }
   return globalForSam.__samRegisterLimiter;
+}
+
+/**
+ * Uploads: 10 per minute per credential. Keyed on the credential rather than
+ * the IP because every device here reaches the box over the tailnet, where IPs
+ * are few and shared. This is a disk guard, not a security control — the
+ * step-up check is the security control.
+ */
+export function getUploadLimiter(): RateLimiter {
+  if (!globalForSam.__samUploadLimiter) {
+    globalForSam.__samUploadLimiter = new RateLimiter(10, 60_000);
+  }
+  return globalForSam.__samUploadLimiter;
 }
