@@ -11,11 +11,21 @@
  */
 import { NextResponse } from 'next/server';
 
+import { requireSession } from '@/lib/server/auth/guard';
 import type { AvatarErrorPayload, TTSRequest } from '@/types/avatar';
 
 const ELEVENLABS_API_BASE = 'https://api.elevenlabs.io/v1';
 
+/*
+ * Session-gated 2026-09-20 (SAM_ui_Audit_2026-09-20 finding 6). This proxies to
+ * a metered third-party synthesis service billed per character, and was open to
+ * anything that could reach the origin. The sibling route /api/chat/tts has
+ * required a session since it was written; this one was simply missed.
+ */
 export async function POST(request: Request): Promise<NextResponse | Response> {
+  const session = await requireSession(request);
+  if (session instanceof Response) return session;
+
   const apiKey = process.env.ELEVENLABS_API_KEY;
   const defaultVoiceId = process.env.ELEVENLABS_VOICE_ID;
 

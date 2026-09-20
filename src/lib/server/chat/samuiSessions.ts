@@ -21,6 +21,23 @@ import path from 'node:path';
 
 const REGISTRY_FILE = path.join(os.homedir(), '.sam', 'samui-sessions.json');
 
+/**
+ * How many session ids to keep, newest last.
+ *
+ * This registry only has to answer one question: "did SAM_ui create the session
+ * this client is asking to resume?" A client resumes the session it is holding,
+ * which is the one from its last turn — so the useful window is small, and the
+ * set was growing without any bound at all (SAM_ui_Audit_2026-09-20 finding 12).
+ * Every fresh turn added a UUID, nothing ever removed one, and the whole set was
+ * held in memory and rewritten to disk on every single add.
+ *
+ * 500 is far more than any real resume window and still bounds the file at
+ * roughly 20 KB. The cost of trimming too aggressively is mild and self-healing:
+ * an unrecognised id falls back to a fresh server-assigned session, which is
+ * exactly what happens for a foreign id today.
+ */
+const MAX_SESSIONS = 500;
+
 /** Cached on globalThis so all route handlers see one set across module reloads. */
 const globalForSam = globalThis as unknown as { __samuiSessions?: Set<string> };
 
@@ -51,9 +68,25 @@ export function registerSamuiSession(id: string): void {
   const set = load();
   if (set.has(id)) return;
   set.add(id);
+
+  // A Set iterates in insertion order, so the oldest ids are simply the first
+  // ones out. Trim before writing so the file and the in-memory set never
+  // disagree about what is retained.
+  while (set.size > MAX_SESSIONS) {
+    const oldest = set.values().next().value;
+    if (oldest === undefined) break;
+    set.delete(oldest);
+  }
+
   try {
     fs.mkdirSync(path.dirname(REGISTRY_FILE), { recursive: true });
-    fs.writeFileSync(REGISTRY_FILE, JSON.stringify([...set], null, 2));
+    // Atomic: a truncating write that is interrupted leaves a corrupt file, and
+    // load() swallows the parse failure and starts empty — which silently makes
+    // every in-flight conversation unresumable. Same reasoning as the passkey
+    // store; see lib/server/auth/store.ts.
+    const tmp = `${REGISTRY_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify([...set], null, 2));
+    fs.renameSync(tmp, REGISTRY_FILE);
   } catch {
     // A lost registry only means a future resume falls back to a fresh session.
   }

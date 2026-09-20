@@ -61,7 +61,9 @@ export function getChallenge(userId: string): string | null {
 /* ========================================================================== */
 
 async function ensureDir() {
-  await fsp.mkdir(AUTH_DIR, { recursive: true });
+  // 0700: this directory also holds the JWT signing key. Default umask would
+  // leave it group- and world-readable on a box that has other service users.
+  await fsp.mkdir(AUTH_DIR, { recursive: true, mode: 0o700 });
 }
 
 async function readCredentials(): Promise<StoredCredential[]> {
@@ -87,7 +89,34 @@ async function writeCredentials(creds: StoredCredential[]) {
     deviceName: c.deviceName,
     createdAt: c.createdAt,
   }));
-  await fsp.writeFile(CREDENTIALS_PATH, JSON.stringify(list, null, 2));
+  /*
+   * Atomic write: temp file in the same directory, fsync, then rename.
+   * (SAM_ui_Audit_2026-09-20 finding 9.)
+   *
+   * This was a bare writeFile, which truncates first and then writes. A crash,
+   * an OOM kill or a full disk between those two steps leaves a truncated or
+   * empty file — and readCredentials() swallows a parse failure and returns [],
+   * so the failure presents as "every passkey silently forgotten". Recovery is
+   * re-running sam-enrol on the desktop for every device, and until 2026-09-20
+   * there was no backup of this file either.
+   *
+   * rename(2) within a filesystem is atomic: a reader sees either the whole old
+   * file or the whole new one, never a partial. The fsync before it is what
+   * makes that true across a power loss rather than just across a crash —
+   * without it the rename can land before the data does.
+   *
+   * mode 0o600 on the temp file, because the rename preserves the temp file's
+   * permissions, not the destination's.
+   */
+  const tmp = `${CREDENTIALS_PATH}.tmp`;
+  const handle = await fsp.open(tmp, 'w', 0o600);
+  try {
+    await handle.writeFile(JSON.stringify(list, null, 2), 'utf-8');
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await fsp.rename(tmp, CREDENTIALS_PATH);
 }
 
 /* ========================================================================== */

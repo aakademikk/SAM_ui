@@ -2,13 +2,15 @@
   "name": "sam-ui",
   "version": "0.1.0",
   "private": true,
-  "description": "SAM (Seriously Awesome Machine) — Core Dashboard Module",
+  "description": "SAM (Seriously Awesome Machine) \u2014 Core Dashboard Module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pretest": "rm -rf .test-build && tsc -p tsconfig.test.json",
+    "test": "node --test \".test-build/**/*.test.js\""
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

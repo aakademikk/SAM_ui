@@ -1,0 +1,81 @@
+# SAM_ui CI.
+#
+# Added 2026-09-20 (SAM_ui_Audit_2026-09-20 finding 4). Until now there was no
+# gate of any kind: `tsc` and `eslint` passed only because someone remembered to
+# run them, while an hourly timer auto-committed and pushed straight onto the
+# branch production serves from.
+#
+# The audit found what that costs. A `tsc --noEmit` reported clean for weeks
+# while actually being served from the stale `tsconfig.tsbuildinfo` cache, and
+# underneath it six declared dependencies were missing from disk entirely —
+# including @types/node, without which 101 real type errors were invisible.
+# `npm ci` from a clean checkout plus a cold typecheck catches exactly that
+# class, because a fresh runner has neither a cache nor a half-installed tree.
+#
+# Deliberately NOT run here: `next build`. It needs the native sherpa-onnx
+# addon and the local voice models, so a hosted runner cannot complete it
+# honestly. The build gate stays where it can actually be proved — ./deploy.sh
+# on the box, which now also checks /api/health's rolled-up status.
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Match the box. npm bundled with Node 22 is npm 10; the box itself
+          # is stuck on npm 9.2.0, which is what silently produced the
+          # half-installed tree in the first place — pinning here means CI
+          # cannot reproduce that particular local fault and hide behind it.
+          node-version: '22'
+          cache: npm
+
+      # `npm ci` deletes node_modules and installs strictly from the lockfile.
+      # That is the point: it proves the lockfile alone can reconstruct a
+      # complete tree, which is exactly the property the box had lost.
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Verify no declared dependency is missing from disk
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            const fs = require('fs');
+            const missing = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })
+              .filter((n) => !fs.existsSync('node_modules/' + n));
+            if (missing.length) {
+              console.error('Declared but not installed:', missing.join(', '));
+              process.exit(1);
+            }
+            console.log('All declared dependencies present.');
+          "
+
+      # Cold: no tsbuildinfo exists on a fresh checkout, so this cannot be
+      # served from cache the way the local one was.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Audit (advisory — does not fail the build)
+        run: npm audit --omit=dev || true

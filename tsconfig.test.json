@@ -1,0 +1,34 @@
+{
+  // Test-only compile. Emits the *.test.ts graph to .test-build/ as CommonJS so
+  // `node --test` can run it with no extra dependency.
+  //
+  // Why this exists rather than `tsx` or `node --experimental-strip-types`
+  // (SAM_ui_Audit_2026-09-20 finding 3): this box runs npm 9.2.0 against Node
+  // 22, a mismatched pair. `npm i -D tsx` writes tsx into package.json, reports
+  // "up to date", and installs nothing — a phantom dependency, which is worse
+  // than none. And this Node build was compiled without the TypeScript
+  // stripper, so `--experimental-strip-types` fails with ERR_NO_TYPESCRIPT.
+  //
+  // The project's own TypeScript is already on disk and already the thing CI
+  // typechecks with, so using it to emit the tests adds nothing new to install
+  // and cannot drift from the compiler that validates the source.
+  //
+  // Every import in the current test graph is relative, so emitted requires
+  // resolve as-is. If a test ever needs an "@/..." import, add a resolver step
+  // here rather than reaching for a bundler.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".test-build",
+    "rootDir": "src",
+    "module": "node16",
+    "moduleResolution": "node16",
+    "target": "ES2022",
+    "jsx": "react-jsx",
+    "incremental": false,
+    "isolatedModules": false,
+    "verbatimModuleSyntax": false
+  },
+  "include": ["src/**/*.test.ts"],
+  "exclude": ["node_modules", ".next", ".test-build"]
+}

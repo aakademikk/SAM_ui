@@ -52,6 +52,31 @@ class RateLimiter {
       }
     }
   }
+
+  /** Bucket count, for the health endpoint and tests. */
+  size(): number {
+    return this.buckets.size;
+  }
+
+  /**
+   * Start the sweep that makes `prune()` actually happen.
+   *
+   * Until 2026-09-20 `prune()` existed and was called from precisely nowhere
+   * (SAM_ui_Audit_2026-09-20 finding 12), so every distinct key this limiter
+   * ever saw stayed in the Map for the lifetime of the process. On a tailnet
+   * with a handful of stable addresses that is a slow leak; on the upload
+   * limiter, which is keyed per credential, and on anything keyed by a
+   * client-supplied header, it is an unbounded one.
+   *
+   * `unref` so a pending sweep can never hold the process open at shutdown.
+   */
+  startSweep(intervalMs = 600_000): void {
+    if (this.sweepTimer) return;
+    this.sweepTimer = setInterval(() => this.prune(), intervalMs);
+    this.sweepTimer.unref();
+  }
+
+  private sweepTimer: ReturnType<typeof setInterval> | null = null;
 }
 
 /* ========================================================================== */
@@ -68,6 +93,7 @@ const globalForSam = globalThis as unknown as {
 export function getAuthLimiter(): RateLimiter {
   if (!globalForSam.__samAuthLimiter) {
     globalForSam.__samAuthLimiter = new RateLimiter(5, 1000);
+    globalForSam.__samAuthLimiter.startSweep();
   }
   return globalForSam.__samAuthLimiter;
 }
@@ -76,6 +102,7 @@ export function getAuthLimiter(): RateLimiter {
 export function getRegisterLimiter(): RateLimiter {
   if (!globalForSam.__samRegisterLimiter) {
     globalForSam.__samRegisterLimiter = new RateLimiter(3, 60_000);
+    globalForSam.__samRegisterLimiter.startSweep();
   }
   return globalForSam.__samRegisterLimiter;
 }
@@ -89,6 +116,7 @@ export function getRegisterLimiter(): RateLimiter {
 export function getUploadLimiter(): RateLimiter {
   if (!globalForSam.__samUploadLimiter) {
     globalForSam.__samUploadLimiter = new RateLimiter(10, 60_000);
+    globalForSam.__samUploadLimiter.startSweep();
   }
   return globalForSam.__samUploadLimiter;
 }

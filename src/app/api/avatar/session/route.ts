@@ -10,11 +10,26 @@
  */
 import { NextResponse } from 'next/server';
 
+import { requireSession } from '@/lib/server/auth/guard';
 import type { AvatarErrorPayload, AvatarSession } from '@/types/avatar';
 
 const SIMLI_API_BASE = 'https://api.simli.ai';
 
-export async function POST(): Promise<NextResponse<AvatarSession | AvatarErrorPayload>> {
+/*
+ * Session-gated 2026-09-20 (SAM_ui_Audit_2026-09-20 finding 6). Every call here
+ * spends a real Simli session against a paid quota, and it was reachable by any
+ * client on the origin with nothing to prove who they were. That makes it a
+ * quota-drain primitive, not merely an information leak — which is why it is
+ * worth gating even though the avatar feature is currently disabled.
+ */
+export async function POST(
+  request: Request,
+): Promise<NextResponse<AvatarSession | AvatarErrorPayload>> {
+  const session = await requireSession(request);
+  if (session instanceof Response) {
+    return session as NextResponse<AvatarErrorPayload>;
+  }
+
   const apiKey = process.env.SIMLI_API_KEY;
   const faceId = process.env.SIMLI_FACE_ID;
 

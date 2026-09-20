@@ -29,6 +29,8 @@ const MAX_OUTPUT_BYTES = 1_048_576; // 1 MB per job
 const TRIM_TO_FRACTION = 0.75;
 const MAX_JOBS = 128;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+/** How often the on-disk retention sweep runs after the one at boot. */
+const SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
 /* ========================================================================== */
 /* Helpers                                                                    */
@@ -451,6 +453,25 @@ class JobManager {
     // disk is a zombie from a service restart. Flip it now so a reconnect gets
     // a terminal status instead of a stream that polls a frozen record forever.
     void this.reconcileOrphans();
+
+    // Retention, which until 2026-09-20 had never actually run against the
+    // store on disk. Once at boot, then hourly — a server that stays up for
+    // days must not wait for a restart to collect anything. `unref` so this
+    // timer can never hold the process open at shutdown.
+    void this.sweepDisk();
+    this.sweepTimer = setInterval(() => void this.sweepDisk(), SWEEP_INTERVAL_MS);
+    this.sweepTimer.unref();
+  }
+
+  /** Hourly retention sweep. Held so tests and shutdown can stop it. */
+  private sweepTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** Stop the background sweep. Idempotent. */
+  stopSweep() {
+    if (this.sweepTimer) {
+      clearInterval(this.sweepTimer);
+      this.sweepTimer = null;
+    }
   }
 
   async ensure() {
@@ -863,6 +884,109 @@ class JobManager {
       }
       return true;
     });
+  }
+
+  /**
+   * Retention sweep over the job store ON DISK.
+   *
+   * `prune()` above only ever walked `completedIds`, which is an *in-process*
+   * array of jobs this server instance happened to finish. It is empty after
+   * every restart, so nothing a previous instance created was ever collected —
+   * the cap and the retention window were both dead letters. Measured
+   * 2026-09-20: 834 job directories, 491 MB, oldest 11 days, against a declared
+   * MAX_JOBS of 128 and a 7-day window. The store had never once been swept.
+   *
+   * Runs at boot alongside reconcileOrphans (which already reads this directory,
+   * so the listing is not a new cost) and hourly after that, because a server
+   * that stays up for days would otherwise not sweep again until it restarted.
+   *
+   * Deliberately conservative about what it will delete:
+   *   - never a job that is live in this process (`this.jobs`)
+   *   - never a job whose meta still says 'running' and whose process is alive;
+   *     a job that outlived a restart in its own systemd scope is still working
+   *   - never a directory whose name does not parse as one of ours
+   *
+   * Age comes from the id's own base-36 timestamp segment, falling back to the
+   * directory mtime when that is unparseable, so a pre-format directory is aged
+   * out rather than kept forever.
+   */
+  private async sweepDisk() {
+    let entries;
+    try {
+      entries = await fsp.readdir(JOBS_ROOT, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    const cutoff = Date.now() - RETENTION_MS;
+    const candidates: { id: string; ts: number }[] = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !entry.name.startsWith('job_')) continue;
+      const id = entry.name;
+
+      // Live in this process — the close handler owns its lifecycle.
+      if (this.jobs.has(id)) continue;
+
+      let ts = Number.NaN;
+      const tsPart = id.split('_')[1];
+      if (tsPart) ts = parseInt(tsPart, 36);
+      if (!Number.isFinite(ts) || ts <= 0) {
+        // Unparseable id (pre-format, or hand-made like job_curate-2026-09-09_…).
+        // Fall back to the directory's own mtime rather than keeping it forever.
+        try {
+          ts = (await fsp.stat(jobDir(id))).mtimeMs;
+        } catch {
+          continue;
+        }
+      }
+
+      candidates.push({ id, ts });
+    }
+
+    // Newest first, so the count-based cut keeps the most recent MAX_JOBS.
+    candidates.sort((a, b) => b.ts - a.ts);
+
+    const doomed = candidates.filter(
+      ({ ts }, index) => ts < cutoff || index >= MAX_JOBS,
+    );
+
+    let removed = 0;
+    for (const { id } of doomed) {
+      // A record still claiming 'running' with a live process is a job that
+      // survived a restart in its own scope. Age says delete; the process says
+      // it is mid-flight. The process wins — deleting its directory out from
+      // under it would destroy the output it is still writing.
+      try {
+        const record = JSON.parse(
+          await fsp.readFile(metaPath(id), 'utf-8'),
+        ) as JobRecord;
+        if (
+          record.status === 'running' &&
+          record.pid &&
+          processAlive(record.pid, record.procStart ?? null)
+        ) {
+          continue;
+        }
+      } catch {
+        // No readable meta — a half-written or abandoned directory. Collect it.
+      }
+
+      try {
+        await fsp.rm(jobDir(id), { recursive: true, force: true });
+        removed++;
+      } catch {
+        // Locked or already gone; the next sweep will retry.
+      }
+    }
+
+    if (removed > 0) {
+      console.log(
+        `[jobs] retention sweep removed ${removed} job dir(s); ${
+          candidates.length - removed
+        } retained`,
+      );
+    }
   }
 }
 

@@ -1,6 +1,7 @@
 import type { WidgetKind, WidgetLayoutItem, WidgetSize } from '@/types/dashboard';
 import { envelope, failure, readJson } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
+import { requireSession } from '@/lib/server/auth/guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +44,14 @@ function sanitize(raw: unknown): WidgetLayoutItem[] | null {
   return layout;
 }
 
-export async function GET() {
+/*
+ * Both verbs session-gated 2026-09-20 (SAM_ui_Audit_2026-09-20 finding 6).
+ * PATCH writes server-side state and was reachable with no login at all.
+ */
+export async function GET(request: Request) {
+  const session = await requireSession(request);
+  if (session instanceof Response) return session;
+
   const startedAt = Date.now();
   const estate = getEstate();
   return envelope(
@@ -55,6 +63,9 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  const session = await requireSession(request);
+  if (session instanceof Response) return session;
+
   const startedAt = Date.now();
   const body = await readJson(request);
   const layout = sanitize(body.layout);

@@ -24,11 +24,46 @@ cd "$(dirname "$0")"
 PORT="${SAM_UI_PORT:-3000}"
 HEALTH_URL="http://127.0.0.1:${PORT}/api/health"
 
+# /api/health reports a rolled-up status of ok | degraded | fail across the job
+# store, disk, memory and voice-line (see src/app/api/health/route.ts).
+# Until 2026-09-20 this function only checked that the endpoint answered at all,
+# which no running process can fail — a build that left chat completely dead
+# still printed "healthy" and exited 0.
+#
+#   ok        pass
+#   degraded  pass, but say so — voice-line down or disk tight is not a reason
+#             to block a deploy that fixed something else
+#   fail      block — the job store is unreadable, disk is gone, or memory is
+#             at the cgroup ceiling
 wait_healthy() {
+  local body status
   for i in $(seq 1 45); do
-    if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
-      echo "healthy after ${i}s"
-      return 0
+    if body=$(curl -fsS "$HEALTH_URL" 2>/dev/null); then
+      # Pull .data.status out of the SAM envelope without needing jq.
+      status=$(printf '%s' "$body" | grep -oE '"status":"(ok|degraded|fail)"' | head -1 | cut -d'"' -f4)
+      case "$status" in
+        ok)
+          echo "healthy after ${i}s"
+          return 0
+          ;;
+        degraded)
+          echo "healthy after ${i}s — DEGRADED:"
+          printf '%s' "$body" | grep -oE '"[a-z]+":\{"status":"(degraded|fail)","detail":"[^"]*"' \
+            | sed 's/^/    /' || true
+          return 0
+          ;;
+        fail)
+          echo "!! /api/health reports FAIL:" >&2
+          printf '%s' "$body" | grep -oE '"[a-z]+":\{"status":"fail","detail":"[^"]*"' \
+            | sed 's/^/    /' >&2 || true
+          return 1
+          ;;
+        *)
+          # Endpoint answered but carries no status field — an older build still
+          # being served, or a partial response. Keep waiting rather than
+          # accepting it.
+          ;;
+      esac
     fi
     sleep 1
   done

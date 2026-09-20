@@ -46,3 +46,6 @@ backup-keys.env
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# Test emit (npm run pretest) — regenerable, never committed.
+/.test-build

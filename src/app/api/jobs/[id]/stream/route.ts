@@ -73,10 +73,6 @@ export async function GET(
 
   const stream = new ReadableStream({
     async start(controller) {
-      const enqueue = (data: string) => {
-        controller.enqueue(encoder.encode(data));
-      };
-
       // Every terminal path funnels through here: stop polling, leave the
       // shutdown registry, and close the response. Without the unregister, each
       // stream the server has ever served would leave a dead closer behind; and
@@ -97,6 +93,39 @@ export async function GET(
         }
       };
       offShutdown = onShutdown(finish);
+
+      /**
+       * Enqueueing onto a closed controller throws ERR_INVALID_STATE, and in
+       * Next's production server an unhandled one of those is a process-level
+       * `uncaughtException` — logged on 2026-08-28, 2026-09-08 and 2026-09-10
+       * from this exact route before the abort path was fixed. `finish()` is
+       * guarded but every `enqueue` call site was not, and several of them sit
+       * outside any try (the post-replay phase emit, for one).
+       *
+       * Marking the stream finished on the first failure is the important half:
+       * a closed controller never reopens, so continuing to poll it would just
+       * throw once per tick forever. This turns a crash into a clean stop.
+       */
+      const enqueue = (data: string) => {
+        if (finished) return;
+        try {
+          controller.enqueue(encoder.encode(data));
+        } catch {
+          finish();
+        }
+      };
+
+      /* Registered BEFORE the replay and the poll interval, not after.
+         `addEventListener('abort')` on an already-aborted signal never fires,
+         so a client that disconnected during the awaited disk replay below used
+         to leave the poll interval running to job end against a dead
+         controller. Checking `aborted` as well covers the case where the signal
+         fired before this line was reached. */
+      if (request.signal.aborted) {
+        finish();
+        return;
+      }
+      request.signal.addEventListener('abort', finish, { once: true });
 
       let lastSeq = fromSeq;
       // Last time the stream's internal queue drained (desiredSize >= 0). A
@@ -229,6 +258,10 @@ export async function GET(
 
       // 4. Poll for new output on running jobs.
       pollInterval = setInterval(async () => {
+        // The callback is async, so one can already be in flight when finish()
+        // clears the interval. Without this, that straggler still does two disk
+        // reads for a stream nobody is listening to.
+        if (finished) return;
         try {
           const current = await manager.get(id);
           if (!current) {
@@ -298,9 +331,6 @@ export async function GET(
           // Manager error — keep polling
         }
       }, 100);
-
-      // Cleanup on client disconnect
-      request.signal.addEventListener('abort', finish);
     },
   });
 
