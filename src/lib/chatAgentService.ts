@@ -24,8 +24,12 @@ export async function startAgentTurn(params: {
   message: string;
   tier: TierId;
   resumeSessionId?: string;
-  /** Absolute paths returned by POST /api/uploads. The server re-validates them. */
-  attachments?: string[];
+  /**
+   * Uploaded files: the absolute path returned by POST /api/uploads plus the
+   * name to show for it. The name rides along so the agent sees what Colin
+   * called the file rather than a generated one. The server re-validates both.
+   */
+  attachments?: { path: string; name: string }[];
   signal?: AbortSignal;
 }): Promise<StartTurnResult> {
   const response = await fetch('/api/chat/agent', {

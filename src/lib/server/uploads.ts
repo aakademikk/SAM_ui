@@ -83,10 +83,13 @@ const ALLOWED_EXTENSIONS = new Set([
  * what stops `../../.ssh/authorized_keys` being a filename, and the control
  * characters would otherwise let a name rewrite the terminal it is printed in.
  */
-export function safeLabel(name: string): string {
+export function safeLabel(name: string, fallback = 'file'): string {
   const base = path.basename(name.replace(/\\/g, '/'));
   const cleaned = base.replace(/[\x00-\x1f\x7f]/g, '').trim();
-  return cleaned.slice(0, 120) || 'file';
+  // A name that is nothing but dots (`..`, `...`) reads like a path to a model
+  // and tells a person nothing, so it counts as empty rather than as a label.
+  if (!cleaned || /^\.+$/.test(cleaned)) return fallback;
+  return cleaned.slice(0, 120);
 }
 
 /**
@@ -156,6 +159,42 @@ export function resolveUploadPath(candidate: unknown): string | null {
   }
 
   return resolved;
+}
+
+/**
+ * One entry on the chat route's `attachments` field: a safe path plus the name
+ * to show for it.
+ *
+ * Two shapes are accepted deliberately. The client sends `{ path, name }` so a
+ * turn keeps the name Colin actually picked — `Q3 report.pdf` tells the model
+ * something a timestamped filename does not. A bare string is still accepted
+ * because a browser holding a cached chunk from the previous build posts one,
+ * and a stale-chunk client should get a working turn rather than a 400. (This
+ * app has been bitten by stale chunks before; see the deploy.sh header.)
+ *
+ * The label is client-supplied and ends up in a prompt, so it goes through
+ * safeLabel: basename only, control characters gone, length capped.
+ */
+export function resolveAttachment(
+  candidate: unknown,
+): { path: string; name: string } | null {
+  if (typeof candidate === 'string') {
+    const resolved = resolveUploadPath(candidate);
+    return resolved ? { path: resolved, name: path.basename(resolved) } : null;
+  }
+
+  if (typeof candidate === 'object' && candidate !== null) {
+    const entry = candidate as Record<string, unknown>;
+    const resolved = resolveUploadPath(entry.path);
+    if (!resolved) return null;
+    // '' as the fallback, not safeLabel's usual 'file': here an unusable name
+    // must fall through to the generated basename, which at least carries the
+    // real extension, rather than becoming the literal label "file".
+    const label = typeof entry.name === 'string' ? safeLabel(entry.name, '') : '';
+    return { path: resolved, name: label || path.basename(resolved) };
+  }
+
+  return null;
 }
 
 /**

@@ -23,7 +23,7 @@ import { getEstate } from '@/lib/server/telemetry';
 import {
   MAX_ATTACHMENTS,
   attachmentBlock,
-  resolveUploadPath,
+  resolveAttachment,
 } from '@/lib/server/uploads';
 import { requireStepUp } from '@/lib/server/auth/guard';
 import { logCommand } from '@/lib/server/auth/auditLog';
@@ -88,14 +88,15 @@ export async function POST(request: Request) {
 
   // Every path must resolve inside the uploads directory. Without this check
   // the field is an arbitrary-file read primitive: post `/home/col/.ssh/id_rsa`
-  // and the agent reads it out. resolveUploadPath also refuses anything that is
+  // and the agent reads it out. resolveAttachment also refuses anything that is
   // not an existing regular file, so a directory or a stale path fails here
-  // rather than silently inside the agent.
+  // rather than silently inside the agent, and it sanitises the display name
+  // because that name is client-supplied and lands in the prompt.
   const attachments: { path: string; name: string }[] = [];
   for (const candidate of rawAttachments) {
-    const resolved = resolveUploadPath(candidate);
-    if (!resolved) return failure('Attachment is not a file you uploaded.', 400);
-    attachments.push({ path: resolved, name: path.basename(resolved) });
+    const attachment = resolveAttachment(candidate);
+    if (!attachment) return failure('Attachment is not a file you uploaded.', 400);
+    attachments.push(attachment);
   }
 
   // The paths ride with the message because that is the one channel the CLI

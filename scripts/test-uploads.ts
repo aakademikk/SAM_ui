@@ -18,6 +18,7 @@ import assert from 'node:assert/strict';
 
 import {
   resolveUploadPath,
+  resolveAttachment,
   safeLabel,
   typeAllowed,
   generatedName,
@@ -110,6 +111,53 @@ check('a shell-style path with a null byte', () => {
   assert.equal(resolveUploadPath(`${realUpload}\u0000.png`), null);
 });
 
+/* ---- the attachment entry ---------------------------------------------- */
+
+console.log('\nresolveAttachment');
+
+check('keeps the name Colin picked, not the generated one', () => {
+  const got = resolveAttachment({ path: realUpload, name: 'Q3 report (final).jpg' });
+  assert.deepEqual(got, { path: realUpload, name: 'Q3 report (final).jpg' });
+});
+
+check('still accepts a bare string from a stale client chunk', () => {
+  assert.deepEqual(resolveAttachment(realUpload), {
+    path: realUpload,
+    name: '1758300000000-ab12cd34.jpg',
+  });
+});
+
+check('strips a traversal smuggled in through the name', () => {
+  const got = resolveAttachment({ path: realUpload, name: '../../.ssh/id_rsa' });
+  assert.equal(got?.name, 'id_rsa');
+  assert.equal(got?.path, realUpload);
+});
+
+check('falls back to the basename when the name is unusable', () => {
+  for (const name of [undefined, '', '   ', '..', '...', '///', 42, null]) {
+    const got = resolveAttachment({ path: realUpload, name });
+    assert.equal(got?.name, '1758300000000-ab12cd34.jpg', `name was ${String(name)}`);
+  }
+});
+
+check('refuses an object pointing outside the root', () => {
+  assert.equal(resolveAttachment({ path: outsideFile, name: 'ok.jpg' }), null);
+});
+
+check('refuses a directory dressed up as an attachment', () => {
+  assert.equal(resolveAttachment({ path: dayDir, name: 'ok.jpg' }), null);
+});
+
+check('refuses an object with no path', () => {
+  assert.equal(resolveAttachment({ name: 'ok.jpg' }), null);
+  assert.equal(resolveAttachment({ path: 42, name: 'ok.jpg' }), null);
+  assert.equal(resolveAttachment(null), null);
+});
+
+check('refuses a null byte in the path even with a good name', () => {
+  assert.equal(resolveAttachment({ path: `${realUpload}\u0000.png`, name: 'ok.jpg' }), null);
+});
+
 /* ---- the label --------------------------------------------------------- */
 
 console.log('\nsafeLabel');
@@ -132,6 +180,12 @@ check('keeps ordinary punctuation', () => {
 
 check('falls back when there is nothing left', () => {
   assert.equal(safeLabel(''), 'file');
+  assert.equal(safeLabel('..'), 'file');
+  assert.equal(safeLabel('   '), 'file');
+});
+
+check('honours a caller-supplied fallback', () => {
+  assert.equal(safeLabel('..', ''), '');
 });
 
 /* ---- the type allow-list ---------------------------------------------- */

@@ -838,7 +838,7 @@ export default function ChatPage() {
           message,
           tier,
           resumeSessionId,
-          attachments: files.map((f) => f.path),
+          attachments: files.map((f) => ({ path: f.path, name: f.name })),
         });
 
         const run: ActiveRun = {
