@@ -543,6 +543,10 @@ export default function ChatPage() {
         patch((m) => ({ ...m, blocks: withTruncationNotice(m.blocks) }));
       } else if (event.type === 'output') {
         retriesRef.current = 0;
+        // Belt and braces with the server's serialTick: a frame already applied
+        // (same or lower sequence) must never reach the parser twice, or its
+        // text is shown and spoken twice.
+        if (event.seq > 0 && event.seq <= lastSeqRef.current) return;
         lastSeqRef.current = Math.max(lastSeqRef.current, event.seq);
         const state = parser.push(event.text);
         // Only real progress (text, tool calls, results) resets the stuck

@@ -29,6 +29,7 @@ import { getJobManager, type OutputFrame } from '@/lib/server/jobs/manager';
 import { requireSession } from '@/lib/server/auth/guard';
 import { onShutdown } from '@/lib/server/shutdown';
 import { failure } from '@/lib/server/respond';
+import { serialTick } from '@/lib/server/serialTick';
 
 export const dynamic = 'force-dynamic';
 
@@ -256,8 +257,9 @@ export async function GET(
         return;
       }
 
-      // 4. Poll for new output on running jobs.
-      pollInterval = setInterval(async () => {
+      // 4. Poll for new output on running jobs. serialTick: a slow tick must
+      // not overlap the next, or both send the same frames (doubled replies).
+      pollInterval = setInterval(serialTick(async () => {
         // The callback is async, so one can already be in flight when finish()
         // clears the interval. Without this, that straggler still does two disk
         // reads for a stream nobody is listening to.
@@ -330,7 +332,7 @@ export async function GET(
         } catch {
           // Manager error — keep polling
         }
-      }, 100);
+      }), 100);
     },
   });
 
