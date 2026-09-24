@@ -115,7 +115,7 @@ function contentBlockToParts(block) {
         is_error: Boolean(block.is_error),
       };
       const part = { functionResponse: { name: entry?.name ?? 'unknown', response } };
-      if (entry?.callId) part.functionResponse.call_id = entry.callId;
+      if (entry?.callId) part.functionResponse.id = entry.callId;
       return [part];
     }
     default:
@@ -260,7 +260,7 @@ function geminiRequest(model, body) {
     `SAM_GEMINI_MODEL` points at. The list is advisory; Gemini itself is the
     real gate. */
 function handleModels(res) {
-  const ids = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.7-flash'];
+  const ids = ['gemini-3.6-flash', 'gemini-2.5-flash-lite', 'gemini-3.7-flash'];
   const configured = env.SAM_GEMINI_MODEL;
   if (configured && !ids.includes(configured)) ids.push(configured);
   const data = ids.map((id) => ({

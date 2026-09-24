@@ -34,7 +34,7 @@ export { DEEPSEEK_RATES, GEMINI_RATES };
 
 const DEFAULT_FAST_MODEL = 'deepseek-flash';
 const DEFAULT_PRO_MODEL = 'deepseek-v4-pro';
-const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.7-flash';
 const GEMINI_PROXY_URL = 'http://127.0.0.1:8788';
 const DEFAULT_MAX2_CONFIG_DIR = path.join(os.homedir(), '.claude-max2');
 
