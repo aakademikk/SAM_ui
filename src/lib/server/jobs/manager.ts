@@ -580,6 +580,10 @@ class JobManager {
         '--scope',
         '--quiet',
         '--collect',
+        // systemd expands `$NAME` in argv by default: a chat message starting
+        // "$100 …" became an empty prompt, and one naming a server env var
+        // would have had its value pasted in. Leave `$` to bash and the CLI.
+        '--expand-environment=no',
         // The inner `bash -c` keeps the Terminal's shell semantics; the wrapper
         // around it records the exit code so a sam-ui restart can't lose it.
         ...withExitSentinel(['bash', '-c', command]),
@@ -632,7 +636,14 @@ class JobManager {
     // args pass through systemd-run as literal argv.
     const child = spawn(
       'systemd-run',
-      ['--user', '--scope', '--quiet', '--collect', ...withExitSentinel([bin, ...args])],
+      [
+        '--user',
+        '--scope',
+        '--quiet',
+        '--collect',
+        '--expand-environment=no', // see create(): `$` in a prompt must reach the CLI verbatim
+        ...withExitSentinel([bin, ...args]),
+      ],
       {
         shell: false,
         // stdin is /dev/null here, not a pipe. Nothing writes to a createArgs

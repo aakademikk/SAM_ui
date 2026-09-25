@@ -303,7 +303,9 @@ export default function FleetPage() {
           })}
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Equal cells, not content-width chips: hint lengths differ, so a flex
+            row gave five different box sizes and squashed on mobile. */}
+        <div className="grid grid-cols-3 sm:grid-cols-5 auto-rows-fr gap-2">
           {modelsForPersona(selectedPersona).map((m) => {
             const active = model === m.id;
             return (
@@ -312,7 +314,7 @@ export default function FleetPage() {
                 type="button"
                 onClick={() => setModel(m.id)}
                 disabled={running}
-                className={`px-3 py-1.5 rounded-lg border text-xs transition-colors disabled:opacity-50 ${
+                className={`w-full h-full flex flex-col items-center justify-center text-center px-2 py-1.5 rounded-lg border text-xs transition-colors disabled:opacity-50 ${
                   active
                     ? 'border-accent/50 bg-accent/10 text-accent'
                     : 'border-void-700 bg-void-950 text-dim-300 hover:border-void-600'

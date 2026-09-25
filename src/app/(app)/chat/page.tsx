@@ -1197,7 +1197,7 @@ export default function ChatPage() {
           type="button"
           onClick={toggleTier}
           disabled={running}
-          className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded border
+          className={`flex items-center justify-center gap-1.5 w-20 shrink-0 text-xs px-2 py-1 rounded border
                       transition-colors disabled:opacity-40 ${
             tier === 'fast'
               ? 'text-accent bg-accent/10 border-accent/30'
