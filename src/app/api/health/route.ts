@@ -80,10 +80,27 @@ export interface HealthPayload {
   checks: Record<string, HealthCheck>;
 }
 
+/**
+ * This process's own cgroup directory. `/sys/fs/cgroup` itself is the root of
+ * the tree, which has no `memory.high`/`memory.max`, so reading there reported
+ * "no ceiling" even with the unit's MemoryHigh/MemoryMax in force.
+ */
+async function ownCgroupDir(): Promise<string> {
+  try {
+    const line = (await fsp.readFile('/proc/self/cgroup', 'utf-8'))
+      .split('\n')
+      .find((l) => l.startsWith('0::'));
+    if (line) return path.join('/sys/fs/cgroup', line.slice(3).trim());
+  } catch {
+    /* not on cgroup v2 — fall through to the root */
+  }
+  return '/sys/fs/cgroup';
+}
+
 /** Read one cgroup v2 memory file. Null when not under a cgroup or unreadable. */
 async function cgroupValue(file: string): Promise<number | null> {
   try {
-    const raw = (await fsp.readFile(`/sys/fs/cgroup/${file}`, 'utf-8')).trim();
+    const raw = (await fsp.readFile(path.join(await ownCgroupDir(), file), 'utf-8')).trim();
     if (raw === 'max') return null;
     const n = Number(raw);
     return Number.isFinite(n) ? n : null;
