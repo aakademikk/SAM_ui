@@ -29,6 +29,8 @@ const MAX_OUTPUT_BYTES = 1_048_576; // 1 MB per job
 const TRIM_TO_FRACTION = 0.75;
 const MAX_JOBS = 128;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+/** Ids whose timestamp segment decodes earlier than this are not ours to date. */
+const MIN_PLAUSIBLE_TS = Date.UTC(2024, 0, 1);
 /** How often the on-disk retention sweep runs after the one at boot. */
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -942,6 +944,10 @@ class JobManager {
       let ts = Number.NaN;
       const tsPart = id.split('_')[1];
       if (tsPart) ts = parseInt(tsPart, 36);
+      // sam-job ids are `job_<slug>_<YYYYMMDD-HHMMSS>`: the slug parses as a
+      // base-36 number in 1970, which aged every one of them out at the next
+      // sweep, running or not (2026-09-26). Only trust a plausible timestamp.
+      if (!(ts >= MIN_PLAUSIBLE_TS && ts <= Date.now() + 86_400_000)) ts = Number.NaN;
       if (!Number.isFinite(ts) || ts <= 0) {
         // Unparseable id (pre-format, or hand-made like job_curate-2026-09-09_…).
         // Fall back to the directory's own mtime rather than keeping it forever.
@@ -976,6 +982,16 @@ class JobManager {
           record.status === 'running' &&
           record.pid &&
           processAlive(record.pid, record.procStart ?? null)
+        ) {
+          continue;
+        }
+        // Jobs launched outside this server (sam-job) record no pid, so the
+        // check above cannot see them. Still unfinished and touched inside the
+        // retention window means still working: keep it.
+        if (
+          !record.pid &&
+          (record.status === 'running' || record.status === 'queued') &&
+          (await fsp.stat(jobDir(id))).mtimeMs >= cutoff
         ) {
           continue;
         }
