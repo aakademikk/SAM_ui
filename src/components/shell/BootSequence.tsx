@@ -213,9 +213,11 @@ export interface BootSequenceProps {
 }
 
 export function BootSequence({ onDone, once = false, visualiser = 'classic' }: BootSequenceProps) {
-  // `null` means "not yet decided" — nothing renders on the server, and the
-  // decision is made before first paint so the dashboard never flashes.
-  const [active, setActive] = useState<boolean | null>(null);
+  // Start active so the intro is the server-rendered first paint — the installed
+  // PWA must open on the intro, not flash the empty dashboard while the JS
+  // bundle loads. The `once` skip still resolves in the layout effect below,
+  // before the browser paints, so an already-booted session never replays it.
+  const [active, setActive] = useState<boolean>(true);
   const [progress, setProgress] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const vaultMode = visualiser === 'vault';
