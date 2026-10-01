@@ -156,3 +156,13 @@ export async function notify(title: string, body: string, whenMs = 0): Promise<b
   const res = await call<{ ok: boolean }>('notify', { title, body, whenMs });
   return Boolean(res?.ok);
 }
+
+/**
+ * Phone wake counter (see WakeGate.java). Polling it also tells the phone the
+ * page is on screen, so "Hey Sam" is handed to this page instead of
+ * relaunching the app over it. visible=false tells it the page has gone.
+ */
+export async function phoneWakeSeq(visible = true): Promise<number | null> {
+  const res = await call<{ seq?: number }>('wake', { visible });
+  return typeof res?.seq === 'number' ? res.seq : null;
+}

@@ -41,6 +41,7 @@ const OPS: Record<string, ['GET' | 'POST', string]> = {
   sms: ['POST', '/os/sms'],
   torch: ['POST', '/os/torch'],
   notify: ['POST', '/os/notify'],
+  wake: ['POST', '/os/wake'],
 };
 
 let cachedToken: string | null = null;

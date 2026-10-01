@@ -47,7 +47,8 @@ import {
 } from '@/types/chat';
 import { speakChunked, primeSpeech, isSpeechBlocked, stopAllSpeech, type SpeechHandle } from '@/lib/speech';
 import { setSamActivity, clearSamActivity } from '@/lib/samActivity';
-import { configureOsBridge } from '@/lib/osBridge';
+import { configureOsBridge, phoneWakeSeq } from '@/lib/osBridge';
+import { newWakeTracker, observeWakeSeq } from '@/lib/wakeSeq';
 import { tryOsIntent } from '@/lib/osIntentRunner';
 import {
   clearActiveRun,
@@ -1611,19 +1612,11 @@ function ChatPageInner() {
     if (/android|iphone|ipad|ipod/i.test(navigator.userAgent)) return;
 
     let alive = true;
-    let seen: number | null = null;
+    const tracker = newWakeTracker();
 
     const tick = async () => {
       const seq = await desktopWakeSeq();
-      if (!alive || seq === null) return;
-      // First read only establishes the baseline; a page opened hours after a
-      // detection must not think it was just woken.
-      if (seen === null) {
-        seen = seq;
-        return;
-      }
-      if (seq === seen) return;
-      seen = seq;
+      if (!alive || !observeWakeSeq(tracker, seq)) return;
       setWokenByVoice(true);
       setHandsFree(true);
       setHandsFreeFailed(null);
@@ -1634,6 +1627,42 @@ function ChatPageInner() {
     return () => {
       alive = false;
       clearInterval(id);
+    };
+  }, []);
+
+  /* ── Phone wake word while SAM is on screen ──────────────────────────── */
+
+  // Relaunching the app over itself closed it (2026-10-01), so while this
+  // page is visible on the phone it polls the bridge's wake counter instead.
+  // The polls are also how the phone knows SAM is on screen (WakeGate.java);
+  // hidden, the page stops polling and says so, and the next "Hey Sam"
+  // launches the app as before.
+  useEffect(() => {
+    if (!/android/i.test(navigator.userAgent)) return;
+
+    let alive = true;
+    const tracker = newWakeTracker();
+
+    const tick = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const seq = await phoneWakeSeq(true);
+      if (!alive || !observeWakeSeq(tracker, seq)) return;
+      setWokenByVoice(true);
+      setHandsFree(true);
+      setHandsFreeFailed(null);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void tick();
+      else void phoneWakeSeq(false);
+    };
+
+    void tick();
+    const id = setInterval(tick, 2000);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      alive = false;
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
