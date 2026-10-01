@@ -156,3 +156,22 @@ test('one line is logged per call: five calls so far logged exactly five lines',
   // this file, i.e. no call ever logs zero or more than one line.
   assert.equal(readLog().length, 5);
 });
+
+test('the staged send.next.mjs creates push-log.jsonl mode 0600, not the default umask (code review, 2026-10-01)', () => {
+  // This fix only exists in the staged copy (the live send.mjs must never be
+  // edited directly), so unlike every other test in this file, this one does
+  // NOT fall back to the live script — if the staged copy is ever removed,
+  // this must fail loudly rather than silently stop proving the fix.
+  assert.ok(fs.existsSync(STAGED), 'send.next.mjs must exist to prove the log-permission fix');
+
+  const freshLog = path.join(tmp, 'push-log-perm.jsonl');
+  const r = spawnSync(STAGED, ['--title', 'Perm check', '--body', 'x'], {
+    env: { ...process.env, HOME: home, SAM_PUSH_SUBS: subsFile, SAM_PUSH_LOG: freshLog },
+    encoding: 'utf8',
+    timeout: 10_000,
+  });
+  assert.equal(r.status, NO_VAPID_EXIT_CODE, r.stderr);
+
+  const mode = fs.statSync(freshLog).mode & 0o777;
+  assert.equal(mode.toString(8), '600', `expected push-log.jsonl mode 0600, got 0${mode.toString(8)}`);
+});

@@ -8,9 +8,16 @@
  * chat's own record, so they take the same auth as starting a turn. Archive
  * and delete are refused with 409 while a turn is running in this chat (spec
  * must-do 12) — `chatActions.ts` holds that rule; this route just relays it.
+ *
+ * `id` is rejected outright unless it is a well-formed UUID (review finding
+ * 8) — `chatStore.ts`'s `getChat`/`update` already guard against `__proto__`
+ * and friends resolving to `Object.prototype`, but checking the shape here
+ * too means an id that was never going to be a real chat never reaches the
+ * store at all, on any of the three methods.
  */
 
 import { archive, openChat, remove, restore } from '@/lib/server/chat/chatActions';
+import { validSessionId } from '@/lib/server/chat/startTurn';
 import { envelope, failure, readJson } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
 import { requireSession, requireStepUp } from '@/lib/server/auth/guard';
@@ -27,6 +34,7 @@ export async function GET(
   const startedAt = Date.now();
   const estate = getEstate();
   const { id } = await params;
+  if (!validSessionId(id)) return failure('Chat not found.', 404);
 
   const result = openChat(id);
   if (!result) return failure('Chat not found.', 404);
@@ -44,6 +52,7 @@ export async function PATCH(
   const startedAt = Date.now();
   const estate = getEstate();
   const { id } = await params;
+  if (!validSessionId(id)) return failure('Chat not found.', 404);
   const body = await readJson(request);
 
   const action = body.action;
@@ -67,6 +76,7 @@ export async function DELETE(
   const startedAt = Date.now();
   const estate = getEstate();
   const { id } = await params;
+  if (!validSessionId(id)) return failure('Chat not found.', 404);
 
   const result = remove(id);
   if (!result.ok) return failure(result.error, result.status);

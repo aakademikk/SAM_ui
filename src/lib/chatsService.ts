@@ -20,6 +20,9 @@ export interface OpenChatResult {
   chat: ChatRecord;
   messages: ChatMessage[];
   runningJobId: string | null;
+  /** The in-flight turn's prompt text (review finding 7) — set whenever a
+   *  turn is running and its job is still found live server-side. */
+  pendingPrompt?: string;
 }
 
 interface ErrorBody {
@@ -111,6 +114,11 @@ export function handoff(id: string, tier: TierId): Promise<{ memoJobId: string }
  * be past step-up yet — must never surface as a chat error, so it is never
  * awaited and its rejection is always swallowed.
  *
+ * `tabId` (from `@/lib/tabId`) rides along so the server can key its focus
+ * map by device AND tab (review finding 9) — without it, two tabs or windows
+ * on one device overwrite each other's report, so a chat Colin still has
+ * open in the other window can read as off-screen.
+ *
  * The `null` report has to survive the moment the page is hidden or
  * unmounted, which an ordinary fetch does not reliably do — the browser can
  * cancel an in-flight request once the page is gone. `sendBeacon` is built
@@ -118,8 +126,8 @@ export function handoff(id: string, tier: TierId): Promise<{ memoJobId: string }
  * unavailable (sendBeacon needs no response, so its own failure is nothing
  * to catch).
  */
-export function sendFocus(chatId: string | null): void {
-  const body = JSON.stringify({ chatId });
+export function sendFocus(chatId: string | null, tabId: string): void {
+  const body = JSON.stringify({ chatId, tabId });
 
   if (chatId === null && typeof navigator !== 'undefined' && navigator.sendBeacon) {
     const sent = navigator.sendBeacon(

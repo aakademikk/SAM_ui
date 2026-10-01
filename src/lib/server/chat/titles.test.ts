@@ -192,3 +192,66 @@ test('queueTitle: a chat with no store record is a no-op', async () => {
   await titles.queueTitle('11111111-2222-3333-4444-555555555555');
   assert.equal(store.getChat('11111111-2222-3333-4444-555555555555'), null);
 });
+
+test('finding 10: a live (default) queueTitle call jumps ahead of an already-queued background backlog', async () => {
+  const logPath = path.join(tmp, 'queue-order.log');
+  const ids = { bg1: 'chat-bg-1', bg2: 'chat-bg-2', bg3: 'chat-bg-3', live: 'chat-live' };
+  // Transcripts built BEFORE FAKE_CLAUDE_LOG is set — buildTranscript spawns
+  // the fake CLI too, and its log line would otherwise land in the same file
+  // and be mistaken for one of the title calls this test is ordering.
+  for (const [key, id] of Object.entries(ids)) {
+    buildTranscript(id, `message for ${key}`);
+    store.createChat({ id, tier: 'max', account: 'main', firstMessage: `message for ${key}`, title: key });
+  }
+
+  process.env.FAKE_CLAUDE_LOG = logPath;
+  process.env.FAKE_TITLE = 'Shared Title';
+  delete process.env.FAKE_TITLE_FAIL;
+  // Each title call sleeps a bit, so the live call queued after them has
+  // something to actually jump ahead of, rather than the whole backlog
+  // having already finished before it is even queued.
+  process.env.FAKE_CLAUDE_DELAY_MS = '150';
+
+  try {
+    const pending = [
+      titles.queueTitle(ids.bg1, { background: true }),
+      titles.queueTitle(ids.bg2, { background: true }),
+      titles.queueTitle(ids.bg3, { background: true }),
+    ];
+    // Give bg1 time to actually start (it is already dequeued and spawned)
+    // before the live call is queued — otherwise there is nothing yet for
+    // the live call to jump ahead of.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    const live = titles.queueTitle(ids.live);
+
+    await Promise.all([...pending, live]);
+  } finally {
+    delete process.env.FAKE_CLAUDE_LOG;
+    delete process.env.FAKE_CLAUDE_DELAY_MS;
+  }
+
+  // Invocation order, from the fake CLI's own log — each call's prompt
+  // literally contains "message for <key>" (buildPrompt embeds firstMessage,
+  // and each test chat's firstMessage IS that string), so matching on it
+  // directly avoids any ambiguity about which call is which.
+  const prompts = fs
+    .readFileSync(logPath, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { argv: string[] })
+    .map((entry) => entry.argv[entry.argv.indexOf('-p') + 1]);
+  const invoked = prompts.map((prompt) => Object.keys(ids).find((key) => prompt.includes(`message for ${key}`)));
+
+  // bg1 was already running when `live` was queued, so it cannot be
+  // pre-empted — but `live` must run immediately after it, before bg2/bg3.
+  // Before this fix (a single FIFO queue), `live` ran 4th, dead last.
+  const liveIndex = invoked.indexOf('live');
+  assert.ok(liveIndex >= 0 && liveIndex <= 1, `expected the live call to run 1st or 2nd, got order: ${invoked.join(', ')}`);
+  assert.ok(invoked.indexOf('bg2') > liveIndex, 'bg2 must run after the live call');
+  assert.ok(invoked.indexOf('bg3') > liveIndex, 'bg3 must run after the live call');
+
+  // All four still got their title — priority only reorders, it never drops.
+  for (const id of Object.values(ids)) {
+    assert.equal(store.getChat(id)?.titleSource, 'haiku');
+  }
+});

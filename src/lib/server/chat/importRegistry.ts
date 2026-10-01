@@ -26,9 +26,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { createChat, hasChatRecord, setImportedAt } from './chatStore';
+import type { CreateChatInput } from './chatStore';
+import { createChats, hasChatRecord } from './chatStore';
 import { fallbackTitle, queueTitle } from './titles';
-import { inferTier, readHistory, transcriptPath } from './transcripts';
+import { firstUserMessage, inferTier, transcriptPath } from './transcripts';
 
 /** Same path `samuiSessions.ts` persists to. Resolved on every call (not
  *  cached), the same reasoning every other store path in this codebase
@@ -51,18 +52,6 @@ function registryIds(): string[] {
     // No registry yet, or it is unreadable — nothing to import.
   }
   return [];
-}
-
-/** The chat's first user message, as plain text — same recipe
- *  `chatActions.ts`'s `firstUserMessage` and `startTurn.ts`'s `firstUserText`
- *  use, for the fallback title. */
-function firstUserMessage(id: string): string {
-  const first = readHistory(id).find((m) => m.role === 'user');
-  if (!first) return '';
-  return first.blocks
-    .map((b) => (b.kind === 'text' ? b.text : ''))
-    .join('\n')
-    .trim();
 }
 
 /** Raw shape of one transcript line, only as much as this file needs. */
@@ -107,8 +96,16 @@ function transcriptTimestamps(filePath: string): { createdAt: string; lastActive
  * restored, or even deleted) is left exactly as it is. Always records
  * `importedAt`, even when the registry is empty or missing, so a caller that
  * only checks "has this ever run" (`chatActions.ts`) never re-runs it.
+ *
+ * Builds every chat's `CreateChatInput` first and writes them — and
+ * `importedAt` — in one `createChats` call, rather than the one-`persist()`-
+ * per-chat `createChat` used to cost (review finding 10): 178 imports used to
+ * mean 178 full-store rewrites, each blocking the event loop for the request
+ * that triggered the import (the first `GET /api/chats` after deploy).
  */
 export function importRegistryChats(): void {
+  const inputs: CreateChatInput[] = [];
+
   for (const id of registryIds()) {
     if (hasChatRecord(id)) continue;
 
@@ -121,7 +118,7 @@ export function importRegistryChats(): void {
     const firstMessage = firstUserMessage(id);
     const { createdAt, lastActiveAt } = transcriptTimestamps(location.path);
 
-    const chat = createChat({
+    inputs.push({
       id,
       tier: inferred.tier,
       account: inferred.account,
@@ -133,11 +130,17 @@ export function importRegistryChats(): void {
       archived: true,
       imported: true,
     });
-
-    // Fire-and-forget, one at a time (titles.ts's own queue) — 178 imports
-    // must never block this loop, or each other, on a Haiku call.
-    void queueTitle(chat.id);
   }
 
-  setImportedAt(new Date().toISOString());
+  const created = createChats(inputs, { importedAt: new Date().toISOString() });
+
+  // Fire-and-forget, one at a time (titles.ts's own queue), and marked
+  // `background` so a live chat's own title call — queued later, the moment
+  // its first turn ends — jumps ahead of whatever import backlog is still
+  // waiting (review finding 10): without that priority, a chat Colin starts
+  // right after deploy kept its fallback title until all 178 imports' title
+  // calls had drained, one Haiku call at a time.
+  for (const chat of created) {
+    void queueTitle(chat.id, { background: true });
+  }
 }

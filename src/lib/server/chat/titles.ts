@@ -226,12 +226,47 @@ function textOf(message: ChatMessage | undefined): string {
     .trim();
 }
 
-/** Serialises every `queueTitle` call into a single in-process queue, one
- *  Haiku call at a time — a burst of turns finishing together, or T8's
- *  178-chat registry import, must never spawn a pile of CLI processes at
- *  once. Each attempt below swallows its own error, so this chain never
- *  rejects and never stalls on one bad chat. */
-let queueTail: Promise<void> = Promise.resolve();
+/**
+ * Runs at most one Haiku call at a time — a burst of turns finishing
+ * together, or T8's 178-chat registry import, must never spawn a pile of CLI
+ * processes at once. Two FIFO lanes rather than one (review finding 10):
+ * `live` always drains fully before `background` gets a turn, so a chat
+ * Colin starts right after deploy gets its title the moment its own turn
+ * ends, rather than queued behind however much of the one-time import's
+ * backlog is still waiting. Checked fresh after every attempt (not decided
+ * once up front), so a live call queued WHILE a background one is already
+ * running still jumps the rest of the background lane the moment that one
+ * attempt finishes.
+ */
+interface QueuedTitle {
+  chatId: string;
+  run: () => Promise<void>;
+}
+
+const liveQueue: QueuedTitle[] = [];
+const backgroundQueue: QueuedTitle[] = [];
+let draining = false;
+
+function drainQueues(): void {
+  if (draining) return;
+  draining = true;
+  void (async () => {
+    try {
+      let next: QueuedTitle | undefined;
+      while ((next = liveQueue.shift() ?? backgroundQueue.shift())) {
+        await next.run();
+      }
+    } finally {
+      draining = false;
+    }
+  })();
+}
+
+export interface QueueTitleOptions {
+  /** True for T8's registry import: queued behind every `live` (default)
+   *  call, including ones queued after it. */
+  background?: boolean;
+}
 
 /**
  * Queue a title attempt for `chatId`, run once its turn in the queue comes
@@ -241,14 +276,16 @@ let queueTail: Promise<void> = Promise.resolve();
  * (`recordTitleTryFailure`) and leaves the current title — the fallback, or
  * an earlier Haiku title — exactly as it was.
  *
- * Returns the promise for this call's own attempt (useful for tests); it
+ * Returns a promise for this call's own attempt (useful for tests); it
  * always resolves, never rejects, once `generateTitle`'s own promise settles
  * either way.
  */
-export function queueTitle(chatId: string): Promise<void> {
-  const run = queueTail.then(() => attemptTitle(chatId));
-  queueTail = run;
-  return run;
+export function queueTitle(chatId: string, options: QueueTitleOptions = {}): Promise<void> {
+  return new Promise((resolve) => {
+    const task = { chatId, run: () => attemptTitle(chatId).finally(resolve) };
+    (options.background ? backgroundQueue : liveQueue).push(task);
+    drainQueues();
+  });
 }
 
 async function attemptTitle(chatId: string): Promise<void> {

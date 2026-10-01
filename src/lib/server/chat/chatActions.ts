@@ -16,6 +16,7 @@
  * flag uses.
  */
 
+import { getJobManager } from '@/lib/server/jobs/manager';
 import type { ChatAccount, ChatMessage, ChatRecord, ChatSummary, ChatTier } from '@/types/chat';
 
 import { importRegistryChats } from './importRegistry';
@@ -33,18 +34,17 @@ import {
   setRunningJob,
 } from './chatStore';
 import { fallbackTitle } from './titles';
-import { inferTier, readHistory, transcriptPath } from './transcripts';
+import { firstUserMessage, inferTier, readHistory, transcriptPath, turnStartTimestamps } from './transcripts';
 
-/** The chat's first user message, as plain text — used for `adopt`'s
- *  fallback title, the same way `startTurn.ts`'s pre-upgrade bridge builds
- *  one from `readHistory`. */
-function firstUserMessage(id: string): string {
-  const first = readHistory(id).find((m) => m.role === 'user');
-  if (!first) return '';
-  return first.blocks
-    .map((b) => (b.kind === 'text' ? b.text : ''))
-    .join('\n')
-    .trim();
+/** Pulls the human-readable text back out of a turn's job label
+ *  (`sam-agent (<tier label>) — <text>`, set by `startTurn.ts`), for showing
+ *  the in-flight prompt above its still-streaming answer on reattach (review
+ *  finding 7). Falls back to the whole label on a shape it doesn't
+ *  recognise — an internal (handoff memo) turn's label, say — rather than
+ *  showing nothing. */
+function promptFromJobLabel(label: string): string {
+  const match = /^sam-agent \([^)]*\) — ([\s\S]*)$/.exec(label);
+  return match ? match[1] : label;
 }
 
 /* ========================================================================== */
@@ -95,20 +95,27 @@ export interface OpenChatResult {
   chat: ChatRecord;
   messages: ChatMessage[];
   runningJobId: string | null;
+  /** The in-flight turn's prompt text, set whenever a turn is running
+   *  (`runningJobId` is non-null) and its job is still found live — lets the
+   *  client show the question above the streaming placeholder instead of
+   *  just the placeholder alone (review finding 7). */
+  pendingPrompt?: string;
 }
 
 /**
  * `null` for an unknown or deleted chat — the route turns that into a 404.
  *
- * While a turn is running, the transcript's last turn is the in-flight one:
- * the CLI writes the user prompt entry to the session file the moment a turn
- * starts, well before any reply exists, so the last user/assistant pair on
- * disk is always the turn that has not finished yet. The client replays that
- * exact turn live from the job stream (`runningJobId`), so serving it here
- * too would show it twice — once frozen mid-build, once live. Dropping it is
- * safe because `readHistory` always returns turns in pairs (T4's
- * `buildAssistantMessage` emits an assistant message for a turn even with no
- * entries yet), so the last two entries are exactly one turn.
+ * While a turn is running, the transcript MAY already hold the in-flight
+ * turn's prompt (the CLI writes it the moment a turn starts, well before any
+ * reply exists) — but only once it has actually been written: a chat opened
+ * in the first second or so after spawn still shows only its previous,
+ * finished turns. The trailing pair is dropped here only when its own prompt
+ * entry timestamp is at or after the running job's `startedAt`, i.e. it
+ * really is this turn and not an earlier finished one (review finding 7 —
+ * blindly dropping the last two messages used to hide the wrong turn in that
+ * window). Dropping the right pair is still necessary: the client replays
+ * that exact turn live from the job stream (`runningJobId`), so serving it
+ * here too would show it twice — once frozen mid-build, once live.
  */
 export function openChat(id: string): OpenChatResult | null {
   let chat = getChat(id);
@@ -127,11 +134,29 @@ export function openChat(id: string): OpenChatResult | null {
   }
 
   let messages = readHistory(id);
-  if (chat.runningJobId && messages.length >= 2) {
-    messages = messages.slice(0, -2);
+  let pendingPrompt: string | undefined;
+
+  if (chat.runningJobId) {
+    const job = getJobManager().liveRecord(chat.runningJobId);
+    const startedAtMs = job?.startedAt ? Date.parse(job.startedAt) : null;
+    const starts = turnStartTimestamps(id);
+    const lastStart = starts.length > 0 ? starts[starts.length - 1] : undefined;
+    const lastStartMs = lastStart !== undefined ? Date.parse(lastStart) : null;
+
+    // The trailing pair is the in-flight turn only when its prompt landed at
+    // or after the job's own start. A job we can no longer find live should
+    // not happen while the lock is held, but falls back to the old blunt
+    // rule rather than risk showing a duplicate turn.
+    const lastIsInFlight =
+      startedAtMs !== null && lastStartMs !== null ? lastStartMs >= startedAtMs : job === null;
+
+    if (lastIsInFlight && messages.length >= 2) {
+      messages = messages.slice(0, -2);
+    }
+    if (job) pendingPrompt = promptFromJobLabel(job.command);
   }
 
-  return { chat, messages, runningJobId: chat.runningJobId };
+  return { chat, messages, runningJobId: chat.runningJobId, pendingPrompt };
 }
 
 /* ========================================================================== */
@@ -186,17 +211,20 @@ export function remove(id: string): ChatActionOutcome {
 /* ========================================================================== */
 
 /**
- * T14's migration of a device's current chat into the store, and T8's use
- * after restoring an imported chat. Allowed only for an id SAM_ui itself
- * created (`isSamuiSession`) that still has a transcript on disk — the same
- * rule `startTurn.ts`'s pre-upgrade bridge uses, so an id nothing here ever
- * heard of is never resumed or listed. Creates the store record if one does
- * not exist yet (tier and account from `inferTier`, fallback title from the
- * first user message); if a record already exists, it is only ever
- * restored, never recreated. Either way the chat always ends up unarchived —
- * that is the point of adopting it. A deleted chat (a record exists, but
- * `getChat` hides it) is not resurrected by adopt, same as it is not by a
- * resumed turn.
+ * T14's migration of a device's current chat into the store, T8's use after
+ * restoring an imported chat, and (review finding 14) `startTurn.ts`'s
+ * pre-upgrade bridge — a resume whose id has no store record yet calls this
+ * directly rather than keeping its own copy of the same "is this an id
+ * SAM_ui owns, with a transcript still on disk?" logic. Allowed only for an
+ * id SAM_ui itself created (`isSamuiSession`) that still has a transcript on
+ * disk, so an id nothing here ever heard of is never resumed or listed.
+ * Creates the store record if one does not exist yet (tier and account from
+ * `inferTier`, fallback title from the first user message); if a record
+ * already exists, it is only ever restored, never recreated — harmless when
+ * called from a path (like startTurn's) that already knows no record exists.
+ * Either way the chat always ends up unarchived — that is the point of
+ * adopting it. A deleted chat (a record exists, but `getChat` hides it) is
+ * not resurrected by adopt, same as it is not by a resumed turn.
  */
 export function adopt(id: string): ChatActionOutcome {
   if (!isSamuiSession(id)) return actionFail(404, 'Chat not found.');

@@ -6,6 +6,11 @@
  * client side); this module just remembers the latest report per device and
  * answers "is this chat on screen anywhere?" for `turnPing.ts`.
  *
+ * Keyed by whatever string the route hands in — `device:tabId` since review
+ * finding 9, so two tabs or windows on one device each get their own entry
+ * instead of overwriting each other's; this module itself does not care what
+ * shape the key is, only that each live reporter uses a distinct one.
+ *
  * A device that closes the tab, backgrounds it, or loses connectivity stops
  * reporting — there is no explicit "goodbye" — so a report is only trusted
  * for a short TTL rather than forever. 45s comfortably covers the poll/ping

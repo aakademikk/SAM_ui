@@ -96,3 +96,27 @@ test('readNotifications: respects the limit, still newest first', () => {
   const result = notifications.readNotifications(2);
   assert.deepEqual(result.map((e) => e.id), ['n_5', 'n_4']);
 });
+
+test('finding 13: findNotification finds an id older than readNotifications\' default newest-200 page', () => {
+  // 250 entries: readNotifications()'s default limit (200) keeps only the
+  // newest 200, so the oldest 50 — including n_1, this ping's own link
+  // target — have already aged off that page.
+  const lines = Array.from({ length: 250 }, (_, i) => JSON.stringify(entry({ id: `n_${i + 1}`, ts: i + 1 })));
+  fs.writeFileSync(logFile, lines.join('\n') + '\n');
+
+  const page = notifications.readNotifications();
+  assert.equal(page.length, 200);
+  assert.equal(page.some((e) => e.id === 'n_1'), false, 'n_1 must already be off the default page');
+
+  // Before this fix there was no way to reach an entry past that page at
+  // all — findNotification scans the whole log, not just the page.
+  const found = notifications.findNotification('n_1');
+  assert.ok(found);
+  assert.equal(found?.id, 'n_1');
+  assert.equal(found?.ts, 1);
+});
+
+test('finding 13: findNotification returns null for an id truly not in the log', () => {
+  fs.writeFileSync(logFile, JSON.stringify(entry({ id: 'n_1' })) + '\n');
+  assert.equal(notifications.findNotification('n_does_not_exist'), null);
+});

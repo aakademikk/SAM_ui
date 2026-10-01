@@ -27,8 +27,12 @@ import path from 'node:path';
  *    result line, or exits 1 when `FAKE_TITLE_FAIL=1`;
  *  - otherwise acts as a turn: sleeps `$FAKE_CLAUDE_DELAY_MS` (default 0),
  *    appends a user + assistant entry to the transcript file a real CLI
- *    would write, prints system/init, assistant and result stream-json
- *    lines, and exits 0;
+ *    would write, then — if `$FAKE_CLAUDE_POST_WRITE_DELAY_MS` is set —
+ *    sleeps again before printing anything, holding the job "running" with
+ *    the transcript entries already on disk (review finding 7's reattach
+ *    window: a real CLI writes the user entry well before any reply exists,
+ *    which this second delay lets a test catch), then prints system/init,
+ *    assistant and result stream-json lines, and exits 0;
  *  - when the prompt contains a line "Write the memo to: <path>", also
  *    writes a short Markdown memo to that path, unless `FAKE_SKIP_MEMO=1`
  *    (a memo turn that ran but wrote nothing, as when a seat is at its
@@ -143,6 +147,11 @@ async function main() {
 
   fs.appendFileSync(transcriptPath, JSON.stringify(userEntry) + '\\n');
   fs.appendFileSync(transcriptPath, JSON.stringify(assistantEntry) + '\\n');
+
+  const postWriteDelayMs = Number(process.env.FAKE_CLAUDE_POST_WRITE_DELAY_MS || '0');
+  if (postWriteDelayMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, postWriteDelayMs));
+  }
 
   const memoMatch = /^Write the memo to: (.+)$/m.exec(parsed.prompt);
   if (memoMatch && process.env.FAKE_SKIP_MEMO !== '1') {

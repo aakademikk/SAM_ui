@@ -25,7 +25,7 @@
  *   ?resume=1  — skip meta, only send new output (for reconnect)
  */
 
-import { getJobManager, type OutputFrame } from '@/lib/server/jobs/manager';
+import { getJobManager, isSamJobJobRecord, type OutputFrame } from '@/lib/server/jobs/manager';
 import { requireSession } from '@/lib/server/auth/guard';
 import { onShutdown } from '@/lib/server/shutdown';
 import { failure } from '@/lib/server/respond';
@@ -70,11 +70,20 @@ export async function GET(
     return failure('Job not found.', 404);
   }
 
+  // A sam-job job is never tracked in this process's own job map — sam-job
+  // spawns it through its own `systemd-run`, not through JobManager — so
+  // `isLive` is always false for one even while it is genuinely still
+  // running. Without this exclusion, a still-running sam-job job was closed
+  // as "killed" the instant anyone opened its output page (review finding
+  // 11); the orphan rule below is only meaningful for a JobManager-spawned
+  // job restarted mid-turn.
+  const isSamJob = isSamJobJobRecord(job);
+
   // A record claiming 'running' with no live process behind it is an orphan
   // left by a service restart. Polling it would loop forever on a frozen
   // sequence number, so treat it as killed: the client finalises the turn
   // instead of hanging until the stuck watchdog fires.
-  const orphaned = job.status === 'running' && !manager.isLive(id);
+  const orphaned = job.status === 'running' && !isSamJob && !manager.isLive(id);
 
   const url = new URL(request.url);
   const resumeParam = url.searchParams.get('resume');
@@ -141,6 +150,11 @@ export async function GET(
       request.signal.addEventListener('abort', finish, { once: true });
 
       let lastSeq = fromSeq;
+      // sam-job's on-disk record never carries `lastSeq` (see
+      // isSamJobJobRecord), so `current.lastSeq > lastSeq` below can never
+      // fire for one — new output is detected by the log file's size
+      // growing instead (review finding 11). Unused for a JobManager job.
+      let lastOutputSize = 0;
       // Last time the stream's internal queue drained (desiredSize >= 0). A
       // long deficit means the client has stopped consuming — close the stream
       // rather than buffer without bound; the client reconnects and replays.
@@ -250,6 +264,10 @@ export async function GET(
         // output file not readable yet — fine, proceed to live
       }
 
+      // 2a. Where the file size starts from for the size-based poll below
+      // (sam-job jobs only — see lastOutputSize's own comment).
+      if (isSamJob) lastOutputSize = await manager.outputSize(id);
+
       // 2b. State the phase the replay settled on, on every connect. A
       // reconnect used to get no phase event at all, so the client kept
       // whatever label it last saw — the frozen "Booting SAM" sitting over a
@@ -290,8 +308,9 @@ export async function GET(
           }
 
           // Orphan re-check: the record claims running but the process is gone
-          // (external kill). Close instead of polling a corpse forever.
-          if (current.status === 'running' && !manager.isLive(id)) {
+          // (external kill). Close instead of polling a corpse forever. Never
+          // for a sam-job job (review finding 11) — see isSamJob's comment.
+          if (current.status === 'running' && !isSamJob && !manager.isLive(id)) {
             enqueue(`event: closed\n`);
             enqueue(`data: ${JSON.stringify({ status: 'killed', exitCode: null })}\n\n`);
             finish();
@@ -314,8 +333,14 @@ export async function GET(
             }
           }
 
-          // Check for new output
-          if (current.lastSeq > lastSeq) {
+          // Check for new output. sam-job's on-disk record never carries
+          // `lastSeq` (always undefined), so that comparison can never fire
+          // for one — its log is polled by file size growing instead
+          // (review finding 11).
+          const hasNewOutput = isSamJob
+            ? (await manager.outputSize(id)) > lastOutputSize
+            : current.lastSeq > lastSeq;
+          if (hasNewOutput) {
             const newFrames = await manager.getOutput(id, lastSeq);
             for (const frame of newFrames) {
               const text = frame.data.toString('utf-8');
@@ -323,6 +348,7 @@ export async function GET(
               scanFrame(text);
               lastSeq = Math.max(lastSeq, frame.seq);
             }
+            if (isSamJob) lastOutputSize = await manager.outputSize(id);
           }
 
           // Heartbeat for as long as the job is running, so the client can

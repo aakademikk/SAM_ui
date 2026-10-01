@@ -244,6 +244,43 @@ test('check 7b: handoff to max2 writes one memo and opens a linked chat on max2'
   assert.equal(pingedChats().filter((id) => id === oldId).length, 1);
 });
 
+test('finding 6: a new handoff clears the PREVIOUS attempt\'s handoffError and handedOffTo before its own chain finishes', async () => {
+  const oldId = await finishedChat('a chat retrying its handoff');
+  exits.delete(oldId);
+
+  // Stand in for a previous attempt's leftover result — a failed first try
+  // (handoffError) and, separately, an already-linked handoff (handedOffTo)
+  // for the "handing off a second time" case the review also names. Both can
+  // never legitimately be set at once in real use, but setting both here
+  // proves startHandoff clears whichever is present.
+  store.setHandoffError(oldId, 'STALE: the memo was not written');
+  store.markHandedOff(oldId, '11111111-2222-3333-4444-555555555555');
+  assert.equal(store.getChat(oldId)?.handoffError, 'STALE: the memo was not written');
+  assert.equal(store.getChat(oldId)?.handedOffTo, '11111111-2222-3333-4444-555555555555');
+
+  const r = await ho.startHandoff(oldId, 'max2', 'phone');
+  assert.equal(r.ok, true, r.ok ? '' : `startHandoff failed: ${r.status} ${r.error}`);
+  if (!r.ok) return;
+
+  // The whole point: cleared the moment the handoff starts, not once its own
+  // chain finishes — a client polling chatInfo in this exact window must not
+  // see the OLD attempt's result and mistake it for this attempt's outcome.
+  const duringChain = store.getChat(oldId);
+  assert.equal(duringChain?.handoffError, undefined, 'the stale error must already be gone');
+  assert.equal(duringChain?.handedOffTo, undefined, 'the stale link must already be gone');
+
+  await waitExit(r.memoJobId);
+  // The real new link lands once the chain actually finishes.
+  const after = store.getChat(oldId);
+  assert.ok(after?.handedOffTo, 'the real handoff still completes');
+  assert.notEqual(after?.handedOffTo, '11111111-2222-3333-4444-555555555555');
+
+  // Wait out the new chat's own turn too, so no background activity from
+  // this test's handoff chain is still in flight once the test returns (the
+  // same reason check 7b above waits for `newId`, not just the memo job).
+  await waitExit(after!.handedOffTo!);
+});
+
 test('handoff is refused with 409 while a turn runs, and 404 for unknown or deleted chats', async () => {
   const id = await finishedChat('a chat that is busy');
   exits.delete(id);

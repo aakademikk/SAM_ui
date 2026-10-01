@@ -302,6 +302,77 @@ test('finding 3: a runningJobId left over from a restart (no lock held) does not
   assert.equal(store.getChat(id)?.runningJobId, null, 'the stale field is cleared in the store too');
 });
 
+test('finding 7: reattaching before the new turn\'s prompt is even on disk does not hide the previous finished turn', async () => {
+  const id = await (async () => {
+    const started = await st.startTurn({ message: 'first turn', tier: 'max', device: 'pc' });
+    assertOk(started);
+    await waitExit(started.jobId);
+    return started.chatId;
+  })();
+
+  // FAKE_CLAUDE_DELAY_MS is 1200 for this whole file — the fake sleeps that
+  // long BEFORE writing anything to the transcript, so calling openChat
+  // immediately after startTurn resolves lands well inside the window where
+  // the new turn has no entry on disk at all yet.
+  const started = await st.startTurn({ message: 'second turn', tier: 'max', chatId: id, device: 'pc' });
+  assertOk(started);
+
+  const opened = actions.openChat(id);
+  assert.ok(opened);
+  assert.equal(opened.runningJobId, started.jobId);
+  // Before the fix: slice(0,-2) blindly dropped the trailing pair, which at
+  // this instant IS the only (previous, finished) turn on disk — it
+  // vanished even though nothing about it is in flight.
+  assert.equal(opened.messages.length, 2, 'the previous finished turn must still be shown');
+  assert.equal(opened.messages[0].role, 'user');
+  assert.equal(opened.messages[1].role, 'assistant');
+  // The in-flight question is still surfaced separately, for the client to
+  // show above its streaming placeholder.
+  assert.ok(opened.pendingPrompt?.includes('second turn'), `expected pendingPrompt to mention the new message, got: ${opened.pendingPrompt}`);
+
+  await waitExit(started.jobId);
+  const finished = actions.openChat(id);
+  assert.equal(finished?.messages.length, 4, 'once it lands, the new turn is there too');
+});
+
+test('finding 7: once the new turn\'s prompt is actually on disk, reattach hides that turn and still returns its prompt text', async () => {
+  const id = await (async () => {
+    const started = await st.startTurn({ message: 'first turn b', tier: 'max', device: 'pc' });
+    assertOk(started);
+    await waitExit(started.jobId);
+    return started.chatId;
+  })();
+
+  // Holds the job "running" with the transcript entries already written —
+  // the normal, long middle of any real turn (a real CLI writes the prompt
+  // entry well before any reply exists).
+  process.env.FAKE_CLAUDE_POST_WRITE_DELAY_MS = '1500';
+  try {
+    const started = await st.startTurn({ message: 'second turn b', tier: 'max', chatId: id, device: 'pc' });
+    assertOk(started);
+
+    // FAKE_CLAUDE_DELAY_MS (1200) elapses, entries get written, then the
+    // fake sleeps another 1500ms before exiting — 1800ms lands comfortably
+    // inside that second window.
+    await new Promise((resolve) => setTimeout(resolve, 1800));
+
+    const opened = actions.openChat(id);
+    assert.ok(opened);
+    assert.equal(opened.runningJobId, started.jobId);
+    // The in-flight pair IS on disk now, and must be hidden (the client
+    // replays it live from the job stream instead).
+    assert.equal(opened.messages.length, 2, 'only the previous, already-finished turn is shown');
+    assert.ok(
+      opened.pendingPrompt?.includes('second turn b'),
+      `expected pendingPrompt to mention the in-flight message, got: ${opened.pendingPrompt}`,
+    );
+
+    await waitExit(started.jobId);
+  } finally {
+    delete process.env.FAKE_CLAUDE_POST_WRITE_DELAY_MS;
+  }
+});
+
 test('adopt: refuses an unknown id, adopts a pre-upgrade chat unarchived, and stays idempotent', async () => {
   const unknown = actions.adopt('11111111-2222-3333-4444-555555555555');
   assert.equal(unknown.ok, false);

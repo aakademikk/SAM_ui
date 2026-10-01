@@ -32,20 +32,13 @@ import { MAX_ATTACHMENTS, attachmentBlock, resolveAttachment } from '@/lib/serve
 import type { ChatRecord, TierId, TierInfo } from '@/types/chat';
 import type { JobRecord } from '@/types/jobs';
 
+import { adopt } from './chatActions';
 import { agentCwd } from './agentCwd';
-import {
-  createChat,
-  deleteChat,
-  getChat,
-  hasChatRecord,
-  setRunningJob,
-  touchChat,
-} from './chatStore';
-import { isSamuiSession, registerSamuiSession } from './samuiSessions';
+import { createChat, deleteChat, getChat, setRunningJob, touchChat } from './chatStore';
+import { registerSamuiSession } from './samuiSessions';
 import { acquireSessionLock, holdSessionLock, releaseSessionLock } from './sessionLock';
 import { deepseekTierAvailable, geminiTierAvailable, tierEnv, tierInfo } from './tiers';
 import { fallbackTitle, queueTitle } from './titles';
-import { inferTier, readHistory, transcriptPath } from './transcripts';
 import { pingOffScreenChat } from './turnPing';
 
 export const MAX_MESSAGE_CHARS = 8000;
@@ -127,43 +120,25 @@ export function validSessionId(value: unknown): value is string {
   );
 }
 
-function firstUserText(id: string): string {
-  const first = readHistory(id).find((m) => m.role === 'user');
-  if (!first) return '';
-  return first.blocks
-    .map((b) => (b.kind === 'text' ? b.text : ''))
-    .join('\n')
-    .trim();
-}
-
 /**
  * Pre-upgrade chat adoption (bridge until T14 + T6's `adopt` land).
  *
  * Before multi-chat, a device's one conversation lived only in localStorage
  * (`sam-agent-session`) plus the session registry — it has no chat-store
  * record. The page sends that id as `chatId`, so without this every existing
- * device chat would 404 until T14 adopts it. The rule mirrors T6's `adopt`:
- * the id must be one SAM_ui created (`isSamuiSession`) AND have a transcript
- * on disk. Then its record is created here (tier and account from
- * `inferTier`, fallback title from its first user message) and the turn
- * proceeds. Anything else stays a 404 — no unknown id is ever resumed — and a
- * chat that was deleted is never resurrected (`hasChatRecord`).
+ * device chat would 404 until T14 adopts it. Review finding 14: this used to
+ * be its own copy of "is this an id SAM_ui owns, with a transcript still on
+ * disk?" plus the same `createChat` call `chatActions.ts`'s `adopt` already
+ * makes; it now just calls `adopt` directly. Safe to call unconditionally
+ * here (the caller below only reaches this once `getChat(id)` has already
+ * returned null) — `adopt`'s "restore an existing record" branch can never
+ * trigger for an id with no record yet, so the result is identical to the
+ * old bespoke version. Anything `adopt` 404s on stays a 404 here too — no
+ * unknown id is ever resumed, and a deleted chat is never resurrected.
  */
 function adoptPreUpgradeChat(id: string): ChatRecord | null {
-  if (hasChatRecord(id)) return null; // deleted (getChat already said null)
-  if (!isSamuiSession(id)) return null;
-  if (!transcriptPath(id)) return null;
-  const inferred = inferTier(id);
-  if (!inferred) return null;
-  const first = firstUserText(id);
-  return createChat({
-    id,
-    tier: inferred.tier,
-    account: inferred.account,
-    firstMessage: first,
-    title: fallbackTitle(first),
-    titleSource: 'fallback',
-  });
+  const result = adopt(id);
+  return result.ok ? result.chat : null;
 }
 
 /* ========================================================================== */

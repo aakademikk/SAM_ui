@@ -60,6 +60,8 @@ import {
   setCurrentChatId,
   startDraft,
 } from '@/lib/chatLocal';
+import { clearedHandoffFields } from '@/lib/chatHandoff';
+import { tabId } from '@/lib/tabId';
 import { handleChatLink, mountOpenTarget } from '@/lib/chatOpen';
 import { holdPendingMessage, recoverPendingMessage, supersedePendingMessage } from '@/lib/pendingSend';
 import {
@@ -268,6 +270,15 @@ function ChatPageInner() {
       an effect — an effect lands a render late, which is exactly the window
       a fast-resolving stream event could land in. */
   const currentIdRef = useRef(currentId);
+  // A per-tab id for the focus heartbeat (review finding 9) — lazy-initialised
+  // so the `sessionStorage` read never runs during the server prerender.
+  // Stable for this tab's whole life: a reload keeps it, a new tab mints its
+  // own, which is exactly what lets the server tell two tabs on one device
+  // apart instead of their reports overwriting each other.
+  const tabIdRef = useRef<string | null>(null);
+  if (tabIdRef.current === null) {
+    tabIdRef.current = typeof window === 'undefined' ? '' : tabId(sessionStorage);
+  }
   const [input, setInput] = useState('');
   const [running, setRunning] = useState(false);
 
@@ -562,7 +573,7 @@ function ChatPageInner() {
     const focusId = currentId === 'draft' ? null : currentId;
 
     const report = () => {
-      if (document.visibilityState === 'visible') sendFocus(focusId);
+      if (document.visibilityState === 'visible') sendFocus(focusId, tabIdRef.current ?? '');
     };
     report();
     const interval = setInterval(report, 20_000);
@@ -579,16 +590,16 @@ function ChatPageInner() {
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         const focusId = currentIdRef.current === 'draft' ? null : currentIdRef.current;
-        sendFocus(focusId);
+        sendFocus(focusId, tabIdRef.current ?? '');
       } else {
-        sendFocus(null);
+        sendFocus(null, tabIdRef.current ?? '');
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      sendFocus(null);
+      sendFocus(null, tabIdRef.current ?? '');
     };
   }, []);
 
@@ -995,6 +1006,17 @@ function ChatPageInner() {
       let history = result.messages;
       if (result.runningJobId) {
         const assistantId = `a_${Date.now()}`;
+        // The server dropped the in-flight turn's own pair once it confirmed
+        // that turn is still running (chatActions.ts's openChat); without
+        // showing its prompt back here, reattaching used to leave Colin
+        // looking at an answer streaming in with no question above it
+        // (review finding 7).
+        if (result.pendingPrompt) {
+          history = [
+            ...history,
+            { id: `u_${Date.now()}`, role: 'user', blocks: [{ kind: 'text', text: result.pendingPrompt }], done: true },
+          ];
+        }
         history = [...history, { id: assistantId, role: 'assistant', blocks: [], done: false }];
         setMessages(history);
         saveChatMessages(localStorage, id, history);
@@ -1669,8 +1691,14 @@ function ChatPageInner() {
       await handoffChat(id, pickedTier);
       // The memo turn is now running in the old chat; the effect above
       // follows it via the next chatInfo refresh (openChatById's own poll,
-      // or the 5s list poll) and opens handedOffTo once it lands.
+      // or the 5s list poll) and opens handedOffTo once it lands. Clear this
+      // tab's own copy of the PREVIOUS attempt's handoff fields the moment
+      // that effect starts watching — otherwise it reads the old
+      // handoffError/handedOffTo and acts on them as this attempt's result
+      // (review finding 6; the server clears its copy the same way).
       setHandoffPickerOpen(false);
+      setChatInfo((prev) => (prev ? clearedHandoffFields(prev) : prev));
+      if (chatInfoRef.current) chatInfoRef.current = clearedHandoffFields(chatInfoRef.current);
       setHandoffWaitingFor(id);
     } catch (err) {
       setHandoffCallError(

@@ -23,6 +23,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { filterChatTitles as filterByTitle } from '@/lib/chatListFilter';
 import type { ChatAccount, ChatRecord, ChatTier } from '@/types/chat';
 
 function storeFile(): string {
@@ -136,10 +137,9 @@ export interface CreateChatInput {
   imported?: boolean;
 }
 
-export function createChat(input: CreateChatInput): ChatRecord {
-  const store = load();
+function buildChatRecord(input: CreateChatInput): ChatRecord {
   const createdAt = input.createdAt ?? new Date().toISOString();
-  const record: ChatRecord = {
+  return {
     id: input.id,
     title: input.title && input.title.trim() ? input.title : 'New chat',
     titleSource: input.titleSource ?? 'fallback',
@@ -155,9 +155,38 @@ export function createChat(input: CreateChatInput): ChatRecord {
     imported: input.imported ?? false,
     runningJobId: null,
   };
+}
+
+export function createChat(input: CreateChatInput): ChatRecord {
+  const store = load();
+  const record = buildChatRecord(input);
   store.chats[record.id] = record;
   persist(store);
   return { ...record };
+}
+
+/**
+ * Creates many chats in a single disk write. T8's registry import (178 chats
+ * on 2026-09-30) used to call `createChat` once per chat, which rewrites the
+ * whole store from scratch every time — review finding 10. `importedAt` can
+ * be set in the same write (the import's own closing step), so the entire
+ * one-time import costs exactly one `persist()` regardless of how many ids it
+ * finds, including zero.
+ */
+export function createChats(
+  inputs: CreateChatInput[],
+  options: { importedAt?: string } = {},
+): ChatRecord[] {
+  if (inputs.length === 0 && options.importedAt === undefined) return [];
+  const store = load();
+  const records = inputs.map((input) => {
+    const record = buildChatRecord(input);
+    store.chats[record.id] = record;
+    return record;
+  });
+  if (options.importedAt !== undefined) store.importedAt = options.importedAt;
+  persist(store);
+  return records.map((record) => ({ ...record }));
 }
 
 /** Null for an unknown id, and for a deleted chat — the flag stays on disk
@@ -168,7 +197,13 @@ export function createChat(input: CreateChatInput): ChatRecord {
  *  live reference would let a later `touchChat`/`setTitle`/etc. silently
  *  rewrite a record a caller is still holding from an earlier `getChat`. */
 export function getChat(id: string): ChatRecord | null {
-  const record = load().chats[id];
+  const chats = load().chats;
+  // `chats[id]` alone resolves `__proto__`, `constructor`, `toString`… to
+  // Object.prototype's own members, which look like a (bogus) live record —
+  // review finding 8. The own-property check is what `hasChatRecord` already
+  // uses; this mirrors it rather than calling it, to read `chats` once.
+  if (!Object.prototype.hasOwnProperty.call(chats, id)) return null;
+  const record = chats[id];
   if (!record || record.deleted) return null;
   return { ...record };
 }
@@ -199,19 +234,23 @@ export function listChats(options: ListChatsOptions = {}): ChatRecord[] {
   return filtered.sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
 }
 
-/** Case-insensitive substring match on `title` only — never `firstMessage`
- *  or any other field. Pure: takes and returns records, touches no store. */
-export function filterByTitle<T extends { title: string }>(chats: T[], q: string): T[] {
-  const needle = q.toLowerCase();
-  return chats.filter((chat) => chat.title.toLowerCase().includes(needle));
-}
+// `filterByTitle` is `@/lib/chatListFilter`'s `filterChatTitles`, imported
+// above and re-exported under its server-side name — the client's
+// `ChatList` component needs the identical case-insensitive, title-only rule
+// but cannot import this file (it pulls in `node:fs`/`node:os`), so review
+// finding 14 keeps one implementation in that dependency-free module and has
+// both sides call it, rather than two copies that can drift.
+export { filterByTitle };
 
 /** Mutates the store's own record in place, persists, and returns a copy
  *  (never the live object — see the note on `getChat`). */
 function update(id: string, mutate: (record: ChatRecord) => void): ChatRecord | null {
   const store = load();
+  // Same `__proto__`/`constructor` guard as getChat (review finding 8) — a
+  // mutator reaching Object.prototype would pollute every object in the
+  // process, surviving until restart.
+  if (!Object.prototype.hasOwnProperty.call(store.chats, id)) return null;
   const record = store.chats[id];
-  if (!record) return null;
   mutate(record);
   persist(store);
   return { ...record };
@@ -290,5 +329,18 @@ export function markHandedOff(oldId: string, newId: string): void {
 export function setHandoffError(id: string, error: string): ChatRecord | null {
   return update(id, (record) => {
     record.handoffError = error;
+  });
+}
+
+/** Clears both handoff fields. Called the moment a new handoff is accepted
+ *  (review finding 6) — without this, a retry after a failed attempt, or a
+ *  second handoff on a chat already handed off once, finds the PREVIOUS
+ *  attempt's `handoffError`/`handedOffTo` still in place and acts on it
+ *  before the new attempt has gone anywhere near setting either field for
+ *  real. */
+export function clearHandoffState(id: string): ChatRecord | null {
+  return update(id, (record) => {
+    delete record.handoffError;
+    delete record.handedOffTo;
   });
 }

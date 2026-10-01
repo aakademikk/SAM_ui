@@ -205,6 +205,20 @@ function buildAssistantMessage(chatId: string, turn: number, entries: Transcript
  * check `transcriptPath(id)` first (T6/T8 already do, to decide whether a
  * registry id is importable at all).
  */
+/** The chat's first user message, as plain text — falls back to `''` for a
+ *  chat with no transcript, or whose first entry is not a real prompt.
+ *  Review finding 14: this one implementation replaces identical copies that
+ *  used to live in `startTurn.ts`, `chatActions.ts` and `importRegistry.ts`
+ *  (the fallback title's source, in all three places it is needed). */
+export function firstUserMessage(id: string): string {
+  const first = readHistory(id).find((m) => m.role === 'user');
+  if (!first) return '';
+  return first.blocks
+    .map((b) => (b.kind === 'text' ? b.text : ''))
+    .join('\n')
+    .trim();
+}
+
 export function readHistory(id: string): ChatMessage[] {
   const found = transcriptPath(id);
   if (!found) return [];
@@ -237,6 +251,28 @@ export function readHistory(id: string): ChatMessage[] {
   flush();
 
   return messages;
+}
+
+/**
+ * The user prompt entry's own `timestamp` for each turn `readHistory`
+ * returns, in the same order — `undefined` for a turn whose prompt entry
+ * carries no timestamp. Used by `chatActions.ts`'s `openChat` (review finding
+ * 7) to tell whether the last turn on disk is the chat's in-flight one: only
+ * a prompt that landed at or after the running job's own `startedAt` is that
+ * turn, rather than always assuming the last pair on disk is it.
+ */
+export function turnStartTimestamps(id: string): (string | undefined)[] {
+  const found = transcriptPath(id);
+  if (!found) return [];
+
+  const entries = relevantEntries(readEntries(found.path));
+  const starts: (string | undefined)[] = [];
+  for (const entry of entries) {
+    if (entry.type === 'user' && isPromptContent(entry.message?.content)) {
+      starts.push(typeof entry.timestamp === 'string' ? entry.timestamp : undefined);
+    }
+  }
+  return starts;
 }
 
 /* -------------------------------------------------------------------------- */

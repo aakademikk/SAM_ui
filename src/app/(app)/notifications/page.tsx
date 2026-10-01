@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
 
+import { notificationTarget } from '@/lib/notificationTarget';
 import { cn } from '@/lib/utils';
 
 /** Mirrors `NotificationEntry` in `src/lib/server/push/notifications.ts` —
@@ -35,12 +36,6 @@ interface NotificationEntry {
   jobId: string | null;
 }
 
-function targetFor(entry: NotificationEntry): string {
-  if (entry.chatId) return `/chat?c=${entry.chatId}`;
-  if (entry.jobId) return `/jobs/${entry.jobId}`;
-  return `/notifications?n=${entry.id}`;
-}
-
 export default function NotificationsPage() {
   const [entries, setEntries] = useState<NotificationEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +46,12 @@ export default function NotificationsPage() {
     let alive = true;
     (async () => {
       try {
-        const res = await fetch('/api/notifications', { cache: 'no-store' });
+        // `n` rides along so the server can stitch in an entry that has aged
+        // out of the default newest-200 page (review finding 13) — without
+        // it, a ping's own link to an old entry would highlight nothing.
+        const n = new URLSearchParams(window.location.search).get('n');
+        const url = n ? `/api/notifications?n=${encodeURIComponent(n)}` : '/api/notifications';
+        const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) throw new Error(`notifications fetch failed (${res.status})`);
         const json = (await res.json()) as { data: NotificationEntry[] };
         if (alive) setEntries(json.data);
@@ -111,7 +111,7 @@ export default function NotificationsPage() {
               )}
             >
               <a
-                href={targetFor(entry)}
+                href={notificationTarget(entry)}
                 className="flex flex-col gap-0.5 px-4 py-3 bg-void-900/60 hover:bg-void-900"
               >
                 <div className="flex items-center justify-between gap-3">

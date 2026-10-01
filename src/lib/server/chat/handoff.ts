@@ -33,7 +33,7 @@ import path from 'node:path';
 
 import type { TierId } from '@/types/chat';
 
-import { getChat, markHandedOff, setHandoffError } from './chatStore';
+import { clearHandoffState, getChat, markHandedOff, setHandoffError } from './chatStore';
 import { isSessionLocked } from './sessionLock';
 import { onTurnExit, startTurn, type TurnExitEvent } from './startTurn';
 
@@ -139,6 +139,15 @@ export async function startHandoff(
   if (isSessionLocked(chatId)) {
     return { ok: false, status: 409, error: 'A turn is running in this chat.' };
   }
+
+  // Clears the PREVIOUS attempt's outcome before this one does anything else
+  // (review finding 6). Without this, a retry after a failed attempt — or a
+  // second handoff on a chat already handed off once — lets a client that
+  // starts watching `handoffWaitingFor` the moment this call resolves read
+  // the old `handoffError`/`handedOffTo` and act on it as if it were this
+  // attempt's result, before the new chain has gone anywhere near setting
+  // either field for real.
+  clearHandoffState(chatId);
 
   // Marked pending before the turn starts, so the path is reserved and a
   // second press is refused even before the lock is taken.

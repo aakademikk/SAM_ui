@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 
 let chatStore: typeof import('./chatStore.js');
 const ready = (async () => {
@@ -234,6 +234,108 @@ test('setTitle, setRunningJob, touchChat and markHandedOff update the record in 
 
   chatStore.setHandoffError('y', 'seat at its limit');
   assert.equal(chatStore.getChat('y')?.handoffError, 'seat at its limit');
+});
+
+test('finding 8: getChat and update guard __proto__ / constructor — no Object.prototype pollution', async () => {
+  await ready;
+  freshHome();
+
+  // Before the fix, `load().chats[id]` for id='__proto__' resolved
+  // Object.prototype itself, which getChat treated as a live (empty) record.
+  assert.equal(chatStore.getChat('__proto__'), null);
+  assert.equal(chatStore.getChat('constructor'), null);
+
+  // The real exploit this guards: PATCH {action:'archive'} on id='__proto__'
+  // used to run `record.archived = true` on Object.prototype directly,
+  // polluting every plain object in the process until restart.
+  assert.equal(chatStore.archiveChat('__proto__'), null);
+  assert.equal(chatStore.deleteChat('__proto__'), null);
+  assert.equal(chatStore.setHandoffError('__proto__', 'x'), null);
+
+  assert.equal(
+    (Object.prototype as Record<string, unknown>).archived,
+    undefined,
+    'Object.prototype must come out untouched',
+  );
+  assert.equal((Object.prototype as Record<string, unknown>).deleted, undefined);
+  assert.equal((Object.prototype as Record<string, unknown>).handoffError, undefined);
+
+  // A real chat with an ordinary id is unaffected by the guard.
+  chatStore.createChat({ id: 'real-chat', tier: 'max', account: 'main', firstMessage: 'm', title: 'Real' });
+  assert.ok(chatStore.getChat('real-chat'));
+  assert.ok(chatStore.archiveChat('real-chat'));
+});
+
+test('finding 10: createChats writes every input in one disk write, and can set importedAt in the same write', async () => {
+  await ready;
+  freshHome();
+
+  const inputs = Array.from({ length: 5 }, (_, i) => ({
+    id: `imported-${i}`,
+    tier: 'max' as const,
+    account: 'main' as const,
+    firstMessage: `message ${i}`,
+    title: `Chat ${i}`,
+  }));
+
+  const created = chatStore.createChats(inputs, { importedAt: '2026-10-01T00:00:00.000Z' });
+  assert.equal(created.length, 5);
+  assert.deepEqual(created.map((c) => c.id).sort(), inputs.map((i) => i.id).sort());
+
+  for (const input of inputs) {
+    const chat = chatStore.getChat(input.id);
+    assert.ok(chat, `${input.id} was persisted`);
+    assert.equal(chat?.title, input.title);
+  }
+  assert.equal(chatStore.getImportedAt(), '2026-10-01T00:00:00.000Z');
+
+  // Genuinely on disk in one write, not just cached: reset and re-read.
+  chatStore.__resetChatStoreForTests();
+  assert.equal(chatStore.getChat('imported-3')?.firstMessage, 'message 3');
+  assert.equal(chatStore.getImportedAt(), '2026-10-01T00:00:00.000Z');
+});
+
+test('finding 10: createChats does ONE disk write for N chats, where the old createChat-per-chat loop did N+1', async () => {
+  await ready;
+  freshHome();
+
+  const inputs = Array.from({ length: 6 }, (_, i) => ({
+    id: `old-way-${i}`,
+    tier: 'max' as const,
+    account: 'main' as const,
+    firstMessage: `message ${i}`,
+    title: `Chat ${i}`,
+  }));
+
+  // The OLD shape importRegistryChats() used: createChat() once per chat
+  // (each call does its own persist()), then setImportedAt() once more —
+  // still exactly what a caller CAN do (createChat/setImportedAt are both
+  // still exported, unchanged), just not what the one-time import does any
+  // more. This is the "before" behaviour, measured directly rather than by
+  // reverting the fix.
+  const renameOldWay = mock.method(fs, 'renameSync');
+  try {
+    for (const input of inputs) chatStore.createChat(input);
+    chatStore.setImportedAt('2026-10-01T00:00:00.000Z');
+  } finally {
+    renameOldWay.mock.restore();
+  }
+  assert.equal(
+    renameOldWay.mock.calls.length,
+    inputs.length + 1,
+    'the old per-chat loop does one disk write per chat plus one for setImportedAt',
+  );
+
+  // The NEW shape: same 6 chats, in one createChats call with importedAt
+  // folded in — review finding 10's actual fix.
+  freshHome();
+  const renameNewWay = mock.method(fs, 'renameSync');
+  try {
+    chatStore.createChats(inputs, { importedAt: '2026-10-01T00:00:00.000Z' });
+  } finally {
+    renameNewWay.mock.restore();
+  }
+  assert.equal(renameNewWay.mock.calls.length, 1, 'createChats must persist exactly once, however many chats');
 });
 
 test('getImportedAt / setImportedAt round-trip at the store level', async () => {

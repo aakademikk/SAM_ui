@@ -379,16 +379,34 @@ export interface OutputFrame {
  * JobManager-created record is the reverse. Detection reads that fingerprint
  * off disk rather than trying to sniff the bytes.
  */
+function isSamJobShape(raw: Record<string, unknown>): boolean {
+  return typeof raw.unit === 'string' && raw.lastSeq === undefined;
+}
+
 async function isSamJobRecord(jobId: string): Promise<boolean> {
   try {
     const raw = JSON.parse(await fsp.readFile(metaPath(jobId), 'utf-8')) as Record<
       string,
       unknown
     >;
-    return typeof raw.unit === 'string' && raw.lastSeq === undefined;
+    return isSamJobShape(raw);
   } catch {
     return false;
   }
+}
+
+/**
+ * Same fingerprint as `isSamJobRecord`, for a `JobRecord` already in hand
+ * (the stream route's own `manager.get(id)` result) rather than reading
+ * meta.json a second time. Exported for the stream route's orphan check
+ * (review finding 11): a sam-job job is never tracked in this process's own
+ * `this.jobs` map — sam-job spawns it through its own `systemd-run`, not
+ * through `JobManager.create`/`createArgs` — so `isLive(id)` is always false
+ * for one, which must not be read as "the process died" the way it is for a
+ * JobManager-spawned job.
+ */
+export function isSamJobJobRecord(record: JobRecord): boolean {
+  return isSamJobShape(record as unknown as Record<string, unknown>);
 }
 
 /** Chunk size for a plain-text (sam-job) log. Arbitrary but bounded, so a huge log still streams in pieces rather than one giant SSE frame. */
@@ -657,6 +675,31 @@ class JobManager {
   /** True if the job has a live process in this process's memory. */
   isLive(id: string): boolean {
     return this.jobs.has(id);
+  }
+
+  /** The record for a job this process is actively running, read from
+   *  memory only — never disk. `null` once the job has exited (even though
+   *  its meta file still exists) or for a job this process never spawned.
+   *  Review finding 7: `chatActions.ts`'s `openChat` needs an authoritative
+   *  `startedAt` for a turn it already knows (via the session lock) is still
+   *  running, synchronously, without the async disk read `get()` would need. */
+  liveRecord(id: string): JobRecord | null {
+    const running = this.jobs.get(id);
+    return running ? { ...running.record } : null;
+  }
+
+  /** Current size in bytes of a job's stdout log, or 0 if it does not exist
+   *  yet. A sam-job record's on-disk JSON never carries `lastSeq` (see
+   *  `isSamJobShape`), so the stream route cannot poll "is there new output"
+   *  the way it does for a JobManager-spawned job (`lastSeq` advancing) —
+   *  review finding 11 polls the log file's size instead. */
+  async outputSize(id: string): Promise<number> {
+    try {
+      const stat = await fsp.stat(stdoutPath(id));
+      return stat.size;
+    } catch {
+      return 0;
+    }
   }
 
   /** Create and start a new job from a raw shell command string. */
