@@ -122,3 +122,15 @@ export function releaseSessionLock(sessionId: string): void {
   if (lock?.timer) clearInterval(lock.timer);
   locks.delete(sessionId);
 }
+
+/**
+ * True while a live (non-stale) lock is held on `sessionId` — i.e. a turn is
+ * running in that chat. Answers "is this chat running?" for the chat list
+ * (T6) and for refusing archive/delete/handoff mid-turn. A lock whose
+ * heartbeat has lapsed reads as not held, the same rule `acquireSessionLock`
+ * uses to decide it can be taken.
+ */
+export function isSessionLocked(sessionId: string): boolean {
+  const lock = locks.get(sessionId);
+  return Boolean(lock && lock.expiresAt > Date.now());
+}

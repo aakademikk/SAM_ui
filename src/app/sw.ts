@@ -134,9 +134,11 @@ self.addEventListener('notificationclick', (event) => {
         includeUncontrolled: true,
       })) as WindowClient[];
 
-      // Prefer a window already sat on the target path — just focus it.
+      // Prefer a window already sat on the exact target (path + query) —
+      // just focus it. Comparing pathname alone would wrongly treat
+      // /chat?c=A and /chat?c=B as the same destination.
       for (const win of wins) {
-        if (win.url && new URL(win.url).pathname === url.pathname) {
+        if (win.url && new URL(win.url).pathname + new URL(win.url).search === url.pathname + url.search) {
           await win.focus();
           return;
         }
@@ -145,7 +147,7 @@ self.addEventListener('notificationclick', (event) => {
       // Otherwise take the first window and drive it there.
       for (const win of wins) {
         await win.focus();
-        if (win.url && new URL(win.url).pathname !== url.pathname) {
+        if (win.url && new URL(win.url).pathname + new URL(win.url).search !== url.pathname + url.search) {
           await win.navigate(url);
         }
         return;

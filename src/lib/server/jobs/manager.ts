@@ -369,7 +369,95 @@ export interface OutputFrame {
   data: Buffer;
 }
 
-/** Parse binary-framed stdout.log. Returns frames with seq > fromSeq. */
+/**
+ * sam-job's worker (run.sh) pipes a job's stdout/stderr straight into
+ * stdout.log with plain shell redirection (`> stdout.log 2>&1`) — no framing
+ * at all, because that script has never heard of OutputWriter. Its meta.json
+ * (written by /home/col/.local/bin/sam-job) is what tells the two formats
+ * apart: it always has a `unit` (the systemd transient-unit name) and never a
+ * `lastSeq` (a field only JobManager's own records carry), where a
+ * JobManager-created record is the reverse. Detection reads that fingerprint
+ * off disk rather than trying to sniff the bytes.
+ */
+async function isSamJobRecord(jobId: string): Promise<boolean> {
+  try {
+    const raw = JSON.parse(await fsp.readFile(metaPath(jobId), 'utf-8')) as Record<
+      string,
+      unknown
+    >;
+    return typeof raw.unit === 'string' && raw.lastSeq === undefined;
+  } catch {
+    return false;
+  }
+}
+
+/** Chunk size for a plain-text (sam-job) log. Arbitrary but bounded, so a huge log still streams in pieces rather than one giant SSE frame. */
+const SAM_JOB_CHUNK_BYTES = 64 * 1024;
+
+/**
+ * If `end` lands inside a multi-byte UTF-8 sequence, back it off to the start
+ * of that sequence instead.
+ *
+ * Each chunk is later decoded independently — formatFrame() and scanFrame()
+ * in the stream route both call `.toString('utf-8')` per frame, not on the
+ * whole file — so a split mid-character would turn one real character into a
+ * `�` in one chunk and stray continuation bytes in the next. Walking
+ * back over up to 3 trailing continuation bytes (0b10xxxxxx) to find the lead
+ * byte, then checking whether that lead byte's declared sequence length fits
+ * before `end`, catches every case: an ASCII boundary (no continuation byte
+ * right before `end`) is returned unchanged.
+ */
+function safeUtf8Boundary(raw: Buffer, start: number, end: number): number {
+  if (end >= raw.length) return end;
+
+  let cut = end;
+  let back = 0;
+  while (back < 3 && cut > start && (raw[cut - 1] & 0xc0) === 0x80) {
+    cut--;
+    back++;
+  }
+  if (cut === end) return end; // byte right before `end` isn't a continuation byte — clean cut
+
+  const lead = raw[cut];
+  let seqLen: number;
+  if ((lead & 0xe0) === 0xc0) seqLen = 2;
+  else if ((lead & 0xf0) === 0xe0) seqLen = 3;
+  else if ((lead & 0xf8) === 0xf0) seqLen = 4;
+  else return end; // not a recognised lead byte (invalid UTF-8 already) — leave it
+
+  // Sequence starting at `cut` doesn't fully fit before `end`: move the whole
+  // character into the next chunk. If `cut` had to fall back to `start`
+  // itself there is nowhere left to retreat to, so just take the byte as-is
+  // rather than emit an empty chunk.
+  return cut + seqLen > end && cut > start ? cut : end;
+}
+
+/** Split a plain-text log into <=64KB chunks, numbered seq 1..n. */
+function chunkPlainText(raw: Buffer, fromSeq: number): OutputFrame[] {
+  const frames: OutputFrame[] = [];
+  let pos = 0;
+  let seq = 0;
+
+  while (pos < raw.length) {
+    const end = safeUtf8Boundary(raw, pos, Math.min(pos + SAM_JOB_CHUNK_BYTES, raw.length));
+    seq++;
+    if (seq > fromSeq) {
+      frames.push({ seq, data: raw.subarray(pos, end) });
+    }
+    pos = end;
+  }
+
+  return frames;
+}
+
+/**
+ * Read a job's output as a list of frames with seq > fromSeq.
+ *
+ * Two on-disk shapes are understood: JobManager's own binary-framed format
+ * (4-byte seq, 4-byte length, data — see OutputWriter above), and sam-job's
+ * plain-text log, chunked into frames here rather than at write time since
+ * run.sh writes it directly with shell redirection. See isSamJobRecord().
+ */
 export async function readFrames(
   jobId: string,
   fromSeq: number = 0,
@@ -381,6 +469,10 @@ export async function readFrames(
     raw = await fsp.readFile(filePath);
   } catch {
     return [];
+  }
+
+  if (await isSamJobRecord(jobId)) {
+    return chunkPlainText(raw, fromSeq);
   }
 
   const frames: OutputFrame[] = [];

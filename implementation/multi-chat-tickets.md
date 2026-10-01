@@ -16,7 +16,7 @@ Written: 2026-09-30, from a read of the code at `1e0e7cc`.
 ---
 
 ## T1: `@/` imports and a fake Claude CLI for tests
-Status: TODO
+Status: DONE 2026-09-30 (npm test 21 pass 0 fail incl. fakeClaude.test, @/ alias resolves tierInfo; typecheck clean, lint no errors)
 Spec: foundation for check 14 (and every automated check below)
 Depends on: none
 Blocked by: none
@@ -36,7 +36,7 @@ Do not touch: `tsconfig.json`, `next.config.*`, the existing tests `serialTick.t
 Proof: `npm test` passes, the output lists the two existing tests plus `fakeClaude.test`, and the `@/` import resolves. `npm run typecheck` and `npm run lint` pass.
 
 ## T2: Job page shows the output of `sam-job` jobs (failing test first)
-Status: TODO
+Status: DONE 2026-09-30 (readFrames.test case 1 FAILS on old manager.ts (verified by swap), npm test 23 pass after; typecheck clean, lint no errors)
 Spec: must-do 20, check 13
 Depends on: T1
 Blocked by: none
@@ -52,7 +52,7 @@ Do not touch: the binary frame writer (`OutputWriter`), trimming, `reconcileOrph
 Proof: the step-2 run fails on the first case; after the fix, `npm test` passes, including both cases.
 
 ## T3: Server chat store
-Status: TODO
+Status: DONE 2026-09-30 (npm test 30 pass incl. chatStore.test (7 cases, Parkfords-in-message matches nothing); typecheck clean, lint no errors)
 Spec: must-do 2, 9a, 10, 11 (data layer); checks 7a and 8 (store part)
 Depends on: T1
 Blocked by: none
@@ -68,7 +68,7 @@ Do not touch: `samuiSessions.ts` (it stays the resume allowlist), any file under
 Proof: `npm test` passes, including `chatStore.test`.
 
 ## T4: Transcript reader: find, parse and infer tier
-Status: TODO
+Status: DONE 2026-09-30 (npm test 38 pass incl. transcripts.test (8 cases: 2-turn tool chat reads as 4 msgs, 3 tier cases, missing id null); typecheck clean, lint no errors)
 Spec: must-do 4, 5, 14a (history from the server); feeds checks 3 and 10a
 Depends on: T1
 Blocked by: none
@@ -84,7 +84,7 @@ Do not touch: `AgentStreamParser` behaviour (the live chat depends on it), trans
 Proof: `npm test` passes, including `transcripts.test`.
 
 ## T5: Chat-aware turns: every turn locked, tier fixed, chat id passed to the CLI
-Status: TODO
+Status: DONE 2026-09-30 (npm test 44 pass incl. startTurn.test (check 4 two chats no 409, check 7 tier 409, SAM_CHAT_ID + --resume, Max 2 CLAUDE_CONFIG_DIR) via real systemd-run scope; typecheck exit 0, lint no errors)
 Spec: must-do 6, 9, 13 (server), 14a (resume on the right account); checks 4 and 7 (server part)
 Depends on: T3, T4
 Blocked by: none
@@ -109,7 +109,7 @@ Do not touch: the attachment validation (`resolveAttachment`), the tier availabi
 Proof: `npm test` passes, including `startTurn.test` (checks 4 and 7, server side). `npm run typecheck` passes. The chat page still sends and resumes a turn when exercised by T20's build.
 
 ## T6: Chats API: list, open, archive, restore, delete, adopt
-Status: TODO
+Status: DONE 2026-09-30 (npm test 49 pass incl. chatActions.test (check 3 two-device deep-equal, check 8 archive/restore/delete + transcript kept + 409 while running, check 7a title-only q); typecheck exit 0, lint 0 errors)
 Spec: must-do 4, 5, 10, 11, 12, 13, 14; checks 3, 8 and 7a (API part)
 Depends on: T5
 Blocked by: none
@@ -132,7 +132,7 @@ Do not touch: `/api/chat/agent` behaviour beyond what T5 did, and the auth guard
 Proof: `npm test` passes, including `chatActions.test` (checks 3, 8 and the API half of 7a).
 
 ## T7: Haiku titles with a first-message fallback
-Status: TODO
+Status: DONE 2026-09-30 (npm test 57 pass incl. titles.test (haiku title <=8 words, 20-word cut to 8, FAKE_TITLE_FAIL keeps fallback + titleTries++); typecheck exit 0, lint 0 errors. Scope note: foreman made startTurn.test.ts readLog() count turn spawns only (excludes --no-session-persistence title calls), since T7's background title call otherwise lands in T5's raw spawn count; chatActions.ts now imports fallbackTitle)
 Spec: must-do 2a; check 1a
 Depends on: T5
 Blocked by: none
@@ -148,7 +148,7 @@ Do not touch: `tierEnv` and the chat turn's own args.
 Proof: `npm test` passes, including `titles.test` (check 1a).
 
 ## T8: Import the registry's chats into Archived
-Status: TODO
+Status: DONE 2026-09-30 (npm test 63 pass incl. importRegistry.test (3 of 4 ids archived, none in main; max2 and unknown/main tiers; adopt returns one to main; restore+startTurn resumes with right CLAUDE_CONFIG_DIR; second import adds nothing); typecheck exit 0, lint 0 errors)
 Spec: must-do 14a; check 10a
 Depends on: T6, T7
 Blocked by: none
@@ -168,7 +168,7 @@ Do not touch: the registry file (read only here) and the transcripts.
 Proof: `npm test` passes, including `importRegistry.test` (check 10a).
 
 ## T9: `sam-push` logs every ping and links it to its chat or its entry (staged)
-Status: TODO
+Status: DONE 2026-09-30 (npm test 69 pass incl. samPush.test (6 cases: chat link, /notifications?n=<own id>, --url kept, one line per call); live send.mjs sha256 unchanged, symlink unchanged; daily note line written (Session 7); typecheck exit 0, lint 0 errors)
 Spec: must-do 15, 17, 19; checks 11 and 12 (link part)
 Depends on: T1
 Blocked by: none
@@ -193,7 +193,7 @@ Do not touch: the live `send.mjs`, the symlink, `~/.sam/push-subs.json`, `~/.sam
 Proof: `npm test` passes, including `samPush.test`. `ls -l /home/col/.local/bin/sam-push` still points at `send.mjs`, and `sha256sum /home/col/.sam/sam-push/send.mjs` is the same before and after the ticket.
 
 ## T10: Ping when an off-screen chat finishes a turn
-Status: TODO
+Status: DONE 2026-09-30 (npm test 71 pass incl. turnPing.test (check 5a: A focused by pc, B not; push log holds exactly one entry /chat?c=<B>; internal turn never pings); typecheck exit 0, lint 0 errors)
 Spec: must-do 7a, 15; check 5a
 Depends on: T5, T9
 Blocked by: none
@@ -208,7 +208,7 @@ Do not touch: `sam-push` itself (T9), the service worker.
 Proof: `npm test` passes, including `turnPing.test` (check 5a).
 
 ## T11: A job dispatched from a chat pings that chat (staged)
-Status: TODO
+Status: DONE 2026-09-30 (npm test 72 pass incl. dispatchPing.test (check 11: real Haiku job via sam-dispatch.next, meta.chatId = uuid, one ping /chat?c=<uuid> with jobId, temp store/subs/log); guard sed-range diff empty; 4 live sha256 unchanged; 3 daily note lines written; typecheck exit 0, lint 0 errors)
 Spec: must-do 16; check 11
 Depends on: T9
 Blocked by: none
@@ -229,7 +229,7 @@ Do not touch: the live `sam-job`, `run.sh`, `sam-dispatch`, `digest.py`, the tie
 Proof: `npm test` passes, including `dispatchPing.test` (check 11). `diff <(sed -n '/Model routing guard/,/^fi$/p' /home/col/.local/bin/sam-job) <(sed -n '/Model routing guard/,/^fi$/p' /home/col/.local/bin/sam-job.next)` prints nothing. The live files' `sha256sum` values are unchanged.
 
 ## T12: A notification tap opens the exact link, query included
-Status: TODO
+Status: DONE 2026-09-30 (sw.ts notificationclick now compares pathname+search for focus and navigate (diff read, only that handler); npm test 72 pass, typecheck exit 0, lint 0 errors; browser check deferred to T21)
 Spec: must-do 15, 16, 18, 19 (so that `/chat?c=` and `/notifications?n=` land); check 12 (browser part, run in T21)
 Depends on: none
 Blocked by: none
@@ -242,7 +242,7 @@ Do not touch: the `push` handler, the caching rules, `PushNotifications.tsx`, `/
 Proof: `npm run typecheck`, `npm run lint` and `npm test` pass. The behaviour is checked in the browser in T21 (check 12).
 
 ## T13: Notifications section
-Status: TODO
+Status: DONE 2026-09-30 (npm test 78 pass incl. notifications.test (3 target cases, newest first, corrupt line skipped); nav entries added in Sidebar and TabBar (Pings), TabBar tabs now flex-1 px-1 to fit 9 tabs at 390px (to confirm in browser, T21); typecheck exit 0, lint 0 errors)
 Spec: must-do 17, 18, 19; check 12
 Depends on: T9
 Blocked by: none
@@ -259,7 +259,7 @@ Do not touch: `sam-push`, `sw.ts` (T12), existing nav entries and their order.
 Proof: `npm test` passes, including `notifications.test` (check 12, automated part). The browser half runs in T21.
 
 ## T14: Chats kept per id on the device; New never wipes; pre-upgrade chat adopted (failing test first)
-Status: TODO
+Status: DONE 2026-10-01 (check 2 FAILED on lifted-out old New (saved run), npm test 82 pass incl. chatLocal.test (check 2, migration, reload-after-New no re-migrate); retry 1 removed page writes of sam-agent-session that re-triggered migrate+adopt on every reload; typecheck exit 0, lint exit 0)
 Spec: must-do 3, 14; check 2 (and it makes check 10 possible)
 Depends on: T6
 Blocked by: none
@@ -280,7 +280,7 @@ Do not touch: `TIER_KEY` (T19 replaces the tier behaviour), the attach/reconnect
 Proof: the step-2 run fails; after the fix `npm test` passes, including `chatLocal.test` (check 2). `npm run typecheck` and `npm run lint` pass.
 
 ## T15: Chat list (drawer on the phone, sidebar on desktop), opening from the server, `/chat?c=`
-Status: TODO
+Status: DONE 2026-10-01 (ChatList.tsx sidebar md+/drawer phone, 5 s poll + focus, openChatById server history + reattach, ?c= handled once then stripped from URL (retry 1 fixed snap-back to X and a stale-open race); typecheck exit 0, lint exit 0, npm test 82 pass; browser checks 1, 9 in T21)
 Spec: must-do 1, 2, 4, 5, 13; checks 1, 3 (UI) and 9 (browser checks in T21)
 Depends on: T14
 Blocked by: none
@@ -296,7 +296,7 @@ Do not touch: the work panel, `MessageBlocks`, the composer and uploads, and the
 Proof: `npm run typecheck`, `npm run lint` and `npm test` pass. Checks 1 and 9 (browser) run in T21.
 
 ## T16: Title search, Archived view, and archive, restore and delete in the list
-Status: TODO
+Status: DONE 2026-10-01 (npm test 85 pass incl. chatListFilter.test (3 cases: title part in main and Archived, message-only word matches nothing); ChatList search + Main/Archived + per-row Archive/Restore/Delete with confirm, disabled while running, 409 shown inline; page wiring onChanged/onCurrentRemoved (2 props, outside Files, reported); typecheck exit 0, lint exit 0)
 Spec: must-do 9a, 10, 11, 12; checks 7a and 8 (UI)
 Depends on: T15
 Blocked by: none
@@ -312,7 +312,7 @@ Do not touch: server rules (T6), the Notifications section.
 Proof: `npm test` passes, including `chatListFilter.test` (check 7a, UI rule). Check 8 is already covered on the server by T6. `npm run lint` passes.
 
 ## T17: Switching chats: running turns keep going, speech stops, voice goes to the chat on screen
-Status: TODO
+Status: DONE 2026-10-01 (diff read: switch (open and New) stops speech first, clears reconnect timer; finalise/stream/drain guarded by run.chatId vs currentIdRef; send reads currentIdRef and never yanks the screen after a switch; focus heartbeat id on open + 20 s, null only on hide/unmount (retry 1 fixed a null-then-id race); typecheck exit 0, lint exit 0, npm test 85 pass; browser checks 5, 6 in T21)
 Spec: must-do 6, 7, 8, 7a (client half); checks 5 and 6 (browser checks in T21)
 Depends on: T15, T10
 Blocked by: none
@@ -332,7 +332,7 @@ Do not touch: `STUCK_WARN_MS`/`STUCK_KILL_MS` and the watchdog, the ack phrases,
 Proof: `npm run typecheck`, `npm run lint` and `npm test` pass. Checks 5 and 6 run in the browser in T21.
 
 ## T18: Handoff on the server
-Status: TODO
+Status: DONE 2026-10-01 (npm test 88 pass incl. handoff.test (check 7b: one memo in temp 06 - Handoffs, new chat tier max2 with memo path, Max 2 CLAUDE_CONFIG_DIR, handedOffTo set, memo turn never pings; 409 while running/pending, 404 unknown/deleted; missing memo sets handoffError, no new chat); fakeClaude.ts gained FAKE_SKIP_MEMO=1 (allowed); typecheck exit 0, lint exit 0)
 Spec: must-do 9b; check 7b
 Depends on: T5, T6
 Blocked by: none
@@ -351,7 +351,7 @@ Do not touch: `06 - Handoffs.md` (the folder's index note), `02 - Atwood Systems
 Proof: `npm test` passes, including `handoff.test` (check 7b, server).
 
 ## T19: Tier fixed after the first message; Handoff button
-Status: TODO
+Status: DONE 2026-10-01 (npm test 93 pass incl. chatTier.test (5 cases: draft unlocked, first message locks, Unknown for unknown tier); diff read: tier button disabled={tierLocked} with the fixed-tier title, send uses the chat's own tier, Handoff picker (5 tiers) + memo wait + opens handedOffTo + handoffError shown, ChatList handed-off and back links; typecheck exit 0, lint 0 errors (no warnings in touched files); finished a partial run left by the dead session)
 Spec: must-do 9, 9b (UI); checks 7 and 7b (UI part)
 Depends on: T17, T18
 Blocked by: none
@@ -368,7 +368,7 @@ Do not touch: the tier colours and icons, the tier availability errors from the 
 Proof: `npm test` passes, including `chatTier.test` (check 7, UI rule; T5 covers the server refusal). `npm run lint` passes.
 
 ## T20: Full gates and a production build off the live tree
-Status: TODO
+Status: DONE 2026-10-01 (npx -y npm@10 ci --include=dev exit 0 (lockfile unchanged; plain npm install drops dev deps under NODE_ENV=production), typecheck exit 0, lint exit 0, npm test 93 pass 0 fail with all 16 new test files compiled and run, npx next build exit 0 in the worktree (/chat and /notifications static). Retry 1: first build FAILED prerendering /chat (localStorage is not defined): T14's loadMessages and the currentId initialiser read localStorage at render; fixed with typeof window guards in page.tsx (fix-up to T14's code))
 Spec: check 14
 Depends on: T1–T19
 Blocked by: none

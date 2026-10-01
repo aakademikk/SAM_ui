@@ -16,6 +16,7 @@ import {
   Radio,
   Activity,
   Users,
+  Bell,
 } from 'lucide-react';
 import { InstallButton } from './InstallButton';
 import { LoginButton } from '@/components/auth/LoginButton';
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { id: 'fleet', label: 'Fleet', href: '/fleet', icon: Bot },
   { id: 'status', label: 'Status', href: '/status', icon: Activity },
   { id: 'operations', label: 'Operations', href: '/operations', icon: Radio },
+  { id: 'notifications', label: 'Notifications', href: '/notifications', icon: Bell },
   { id: 'settings', label: 'Settings', href: '/settings', icon: Settings },
 ] as const;
 

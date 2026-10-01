@@ -16,15 +16,18 @@
 
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Gem, Lock, Square, Wrench, Paperclip, X as XIcon } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Gem, Lock, Square, Wrench, Paperclip, Menu, X as XIcon, ArrowRightLeft } from 'lucide-react';
 
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { HandsFreeMic } from '@/components/voice/HandsFreeMic';
 import { desktopWakeSeq } from '@/lib/desktopBridge';
 import { splitBlocks, AnswerBlocks } from '@/components/chat/MessageBlocks';
 import { WorkPanel } from '@/components/chat/WorkPanel';
+import { ChatList } from '@/components/chat/ChatList';
+import { displayTier, tierLocked, type TierDisplayChat, type TierLockChat } from '@/lib/chatTier';
 import { readMessage as readCrossTab } from '@/lib/crossTab';
 import { jobsService } from '@/lib/jobsService';
 import { ApiError } from '@/lib/dashboardService';
@@ -32,17 +35,59 @@ import { authService } from '@/lib/authService';
 import { startAgentTurn, StepUpRequiredError } from '@/lib/chatAgentService';
 import { AgentStreamParser, type AgentPhase } from '@/lib/agentStream';
 import { computeCost, formatCost, formatTokens } from '@/lib/costing';
-import { spokenText, type ChatBlock, type ChatMessage, type TierId, type TierInfo } from '@/types/chat';
+import {
+  spokenText,
+  type ChatAccount,
+  type ChatBlock,
+  type ChatMessage,
+  type ChatSummary,
+  type ChatTier,
+  type TierId,
+  type TierInfo,
+} from '@/types/chat';
 import { speakChunked, primeSpeech, isSpeechBlocked, stopAllSpeech, type SpeechHandle } from '@/lib/speech';
 import { setSamActivity, clearSamActivity } from '@/lib/samActivity';
 import { configureOsBridge } from '@/lib/osBridge';
 import { tryOsIntent } from '@/lib/osIntentRunner';
+import {
+  clearActiveRun,
+  getCurrentChatId,
+  loadActiveRun,
+  loadChatMessages,
+  migrateLegacy,
+  saveActiveRun,
+  saveChatMessages,
+  setCurrentChatId,
+  startDraft,
+} from '@/lib/chatLocal';
+import { handleChatLink, mountOpenTarget } from '@/lib/chatOpen';
+import { holdPendingMessage, recoverPendingMessage, supersedePendingMessage } from '@/lib/pendingSend';
+import {
+  adopt as adoptChat,
+  handoff as handoffChat,
+  listChats as listChatsOnServer,
+  openChat as openChatOnServer,
+  sendFocus,
+} from '@/lib/chatsService';
 
-const MESSAGES_KEY = 'sam-agent-messages';
-const SESSION_KEY = 'sam-agent-session';
+// MESSAGES_KEY, ACTIVE_KEY, SESSION_KEY and PENDING_KEY were the old
+// single-conversation globals; T14 replaced the first three with per-chat
+// storage (chatLocal.ts) — a chat id IS its CLI session id, already known
+// from startAgentTurn's returned chatId (run.chatId), so nothing here writes
+// sam-agent-session again; it is only ever read, once, by migrateLegacy.
+// PENDING_KEY's per-chat replacement is pendingSend.ts (review finding 4).
 const TIER_KEY = 'sam-agent-tier';
-const ACTIVE_KEY = 'sam-agent-active';
-const PENDING_KEY = 'sam-agent-pending';
+
+/** A chat's tier is fixed after its first message (spec must-do 9); TIER_KEY
+ *  only ever remembers the free-choice tier for the next draft. Read on mount
+ *  and whenever New points the screen back at a draft — never when opening an
+ *  existing chat, whose own tier comes from its server record instead. */
+function readStoredTier(storage: Storage): TierId | null {
+  const stored = storage.getItem(TIER_KEY);
+  return stored === 'fast' || stored === 'pro' || stored === 'max' || stored === 'max2' || stored === 'gemini'
+    ? stored
+    : null;
+}
 
 /** What POST /api/uploads hands back for one saved file. */
 interface StagedFile {
@@ -64,7 +109,6 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
-const MAX_STORED = 40;
 /** Dropped connections are retried before a turn is declared lost. */
 const MAX_RECONNECTS = 5;
 /** A turn stuck in pure thinking (no text/tool output) for this long is a runaway. */
@@ -117,15 +161,44 @@ interface ActiveRun {
   jobId: string;
   assistantId: string;
   tier: TierInfo;
+  /** The chat this run belongs to — lets finalise() and the reattach effects
+      clear/find the right per-chat `sam-chat-active:<id>` slot (T14). */
+  chatId: string;
 }
 
-function loadMessages(): ChatMessage[] {
-  try {
-    const raw = localStorage.getItem(MESSAGES_KEY);
-    if (raw) return JSON.parse(raw) as ChatMessage[];
-  } catch { /* corrupted */ }
-  return [];
+/** The on-screen chat's own tier, turn count and handoff fields (spec
+ *  must-do 9, 9b; T19) — a subset of `ChatRecord`/`ChatSummary`, both of
+ *  which carry exactly these fields plus others this page doesn't need. */
+interface ChatInfo {
+  tier: ChatTier;
+  turns: number;
+  handedOffTo?: string;
+  handedOffFrom?: string;
+  handoffError?: string;
 }
+
+/** The on-screen chat's own history, or [] for a draft or before the current
+    chat id is known (e.g. the instant before migrateLegacy/adopt runs).
+    Also [] during the server prerender, which has no localStorage — the old
+    flat-key loadMessages caught the resulting ReferenceError incidentally via
+    its try/catch; this guard is the explicit equivalent. */
+function loadMessages(): ChatMessage[] {
+  if (typeof window === 'undefined') return [];
+  const id = getCurrentChatId(localStorage);
+  if (!id || id === 'draft') return [];
+  return loadChatMessages(localStorage, id);
+}
+
+/** Display names for the Handoff tier picker — all five tiers, same tier
+ *  allowed (spec must-do 9b). Labels only; "Do not touch: the tier colours
+ *  and icons" is about the tier button itself, not this plain list. */
+const TIER_PICKER_LABEL: Record<TierId, string> = {
+  fast: 'Fast',
+  pro: 'Pro',
+  max: 'Max',
+  max2: 'Max 2',
+  gemini: 'Gemini',
+};
 
 const PHASE_LABEL: Record<AgentPhase, string> = {
   starting: 'Starting session',
@@ -149,8 +222,52 @@ const SERVER_PHASE_LABEL: Record<string, string> = {
     fresh turn auto-opens it, and only on a screen that has room for both. */
 const isNarrowScreen = () => window.matchMedia('(max-width: 767px)').matches;
 
-export default function ChatPage() {
+const REATTACH_TIER_LABEL: Record<TierId, string> = {
+  fast: 'Fast',
+  pro: 'Pro',
+  max: 'Max',
+  max2: 'Max 2',
+  gemini: 'Gemini',
+};
+
+/**
+ * A minimal `TierInfo` for reattaching to a run opened from the chat list
+ * rather than started by this tab — `startAgentTurn`'s response is what
+ * normally supplies the real one (model id, rates), but a reattach never
+ * calls that endpoint. `unknown` resolves the same way startTurn.ts resolves
+ * it server-side: tierEnv('max') on the main account, tierEnv('max2') on
+ * max2. No `rates` means computeCost trusts the CLI's own reported figure —
+ * exactly what happens for max/max2 already, since neither tier ships rates.
+ */
+function reattachTierInfo(tier: ChatTier, account: ChatAccount): TierInfo {
+  const id: TierId = tier === 'unknown' ? (account === 'max2' ? 'max2' : 'max') : tier;
+  return {
+    id,
+    label: REATTACH_TIER_LABEL[id],
+    model: '',
+    thirdParty: id === 'fast' || id === 'pro' || id === 'gemini',
+  };
+}
+
+function ChatPageInner() {
   const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
+  /** The chat on screen: a real chat id, or `'draft'` before the first
+      message of a new chat is sent. The lazy initialiser mirrors loadMessages
+      so the two never disagree on the very first render; the migrate/adopt
+      mount effect below corrects both for a pre-upgrade device (T14). Guarded
+      the same way loadMessages is — there is no localStorage during the
+      server prerender, which must fall back to 'draft' rather than throw. */
+  const [currentId, setCurrentId] = useState<string>(
+    () => (typeof window === 'undefined' ? 'draft' : getCurrentChatId(localStorage) ?? 'draft'),
+  );
+  /** Mirrors currentId for code that cannot trust a render closure — async
+      work (send's startAgentTurn call, a late stream event) reads this at
+      the moment it resolves rather than whatever chat was on screen when it
+      started, so it never acts on a chat Colin has since switched away from
+      (T17). Written synchronously at every setCurrentId call site, not via
+      an effect — an effect lands a render late, which is exactly the window
+      a fast-resolving stream event could land in. */
+  const currentIdRef = useRef(currentId);
   const [input, setInput] = useState('');
   const [running, setRunning] = useState(false);
 
@@ -173,6 +290,33 @@ export default function ChatPage() {
   const [stuck, setStuck] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsStepUp, setNeedsStepUp] = useState(false);
+  /** The chat list — polled from the server (T15), never written to directly;
+      every mutation (new, open) comes back around through the next poll. */
+  const [chats, setChats] = useState<ChatSummary[]>([]);
+  /** The phone drawer. Ignored by the desktop sidebar, which is always shown. */
+  const [listOpen, setListOpen] = useState(false);
+  /** The on-screen chat's own tier, turn count and handoff fields — seeded by
+      openChatById's own fetch and kept fresh by the 5s list poll below. Null
+      for a draft, which has no server record. Drives the tier lock (spec
+      must-do 9) and the Handoff control (9b, T19). */
+  const [chatInfo, setChatInfo] = useState<ChatInfo | null>(null);
+  // send() needs this at call time, not from a render closure — a hands-free
+  // or wake transcript sent right after a switch must use the chat now on
+  // screen's own tier, same reasoning as currentIdRef.
+  const chatInfoRef = useRef<ChatInfo | null>(null);
+  /** The Handoff tier picker. */
+  const [handoffPickerOpen, setHandoffPickerOpen] = useState(false);
+  /** Set the moment a handoff's POST resolves, cleared once its memo turn's
+      `handedOffTo`/`handoffError` is seen — or the instant Colin switches away
+      from the chat it belongs to (the effect below stops waiting then). */
+  const [handoffWaitingFor, setHandoffWaitingFor] = useState<string | null>(null);
+  /** True only for the POST round trip itself — attachToRun's own `running`
+      covers the memo turn that follows. */
+  const [handoffBusy, setHandoffBusy] = useState(false);
+  /** A handoff call that failed outright (409 while running, 404, a network
+      error) — distinct from chatInfo.handoffError, which the server sets on
+      the chat record when the memo turn ran but produced no file. */
+  const [handoffCallError, setHandoffCallError] = useState<string | null>(null);
   /** Opened by the Android wake word rather than by tapping the icon. */
   const [wokenByVoice, setWokenByVoice] = useState(false);
   /**
@@ -283,13 +427,71 @@ export default function ChatPage() {
       away again when the turn lands, so the answer is readable. */
   const autoOpenedRef = useRef(false);
 
+  /** Tears down the current stream and its parser state, exactly what New
+      does before pointing the screen at a draft — switching chats closes the
+      same door (spec must-do 6: the old chat's job itself keeps running
+      server-side, only this tab's view of it is detached). */
+  const resetStreamRefs = useCallback(() => {
+    streamRef.current?.close();
+    parserRef.current = null;
+    lastSeqRef.current = 0;
+    drainTriesRef.current = 0;
+    truncatedRef.current = false;
+    // A reconnect scheduled for the chat being left must not fire later and
+    // reattach its run under whatever chat is on screen by then (T17) — the
+    // chat-id guards in attachToRun's finalise/stream callback cover events
+    // already in flight, but a timer that hasn't fired yet needs cancelling
+    // outright.
+    if (reconnectRef.current) {
+      clearTimeout(reconnectRef.current);
+      reconnectRef.current = null;
+    }
+  }, []);
+
+  /** Speech must stop within 0.5s of switching (spec must-do 7) — called
+      first and synchronously, before anything else about the switch.
+      stopAllSpeech() reaches the spoken ack too, exactly as the mute button
+      already relies on; the explicit reset below is belt and braces in case
+      a handle's onState somehow didn't fire. */
+  const stopSpeechForSwitch = useCallback(() => {
+    stopAllSpeech();
+    speechRef.current = null;
+    setSpeaking(null);
+    speakingCountRef.current = 0;
+    setSamActivity('speech', null);
+  }, []);
+
   /* ── Persistence ─────────────────────────────────────────────────────── */
 
   useEffect(() => {
-    const stored = localStorage.getItem(TIER_KEY);
-    if (stored === 'fast' || stored === 'pro' || stored === 'max' || stored === 'max2' || stored === 'gemini') {
-      setTier(stored);
+    const stored = readStoredTier(localStorage);
+    if (stored) setTier(stored);
+  }, []);
+
+  // A pre-upgrade device has its one chat under the old flat keys. Migrate it
+  // into per-chat storage once, point the screen at it, and tell the server
+  // (chatsService.adopt, T6 — session-level since review finding 2) so it
+  // shows up there too. Adoption is best-effort: the migrated history is
+  // already on the device and showing, regardless of whether the server call
+  // lands — spec must-do 14.
+  //
+  // Then, migration or not, force-fetch whatever chat is on screen from the
+  // server (review finding 5): without this, `chatInfo` stayed null until the
+  // 5s list poll happened to find this id, which it never does for an
+  // archived chat — and with `chatInfo` null, a send fell back to tier `max`
+  // and a non-Max chat got a 409.
+  useEffect(() => {
+    const migratedId = migrateLegacy(localStorage);
+    if (migratedId) {
+      setCurrentId(migratedId);
+      currentIdRef.current = migratedId;
+      setMessages(loadChatMessages(localStorage, migratedId));
+      void adoptChat(migratedId).catch(() => { /* local history already stands on its own */ });
     }
+    const target = mountOpenTarget(localStorage);
+    if (target) void openChatById(target, { force: true });
+    // Mount only — this is a one-time upgrade/restore step, not a per-render effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -300,12 +502,104 @@ export default function ChatPage() {
     return () => mq.removeEventListener('change', update);
   }, []);
 
+  // The chat list: polled every 5s while this tab is visible, and once more
+  // on focus — the running marker and a title that just landed (Haiku, T7)
+  // are both things another device or a background turn can change without
+  // this tab doing anything. A failed poll keeps the last good list rather
+  // than blanking it. Also called right after a new chat is minted (send(),
+  // below) so New's own chat shows up without waiting out the interval.
+  const refreshChats = useCallback(() => {
+    void listChatsOnServer()
+      .then((list) => {
+        setChats(list);
+        // Keeps the on-screen chat's tier lock and handoff fields current
+        // without a second poll (spec must-do 9, 9b) — a `ChatSummary` row
+        // carries exactly the fields `ChatInfo` needs. Reads the ref, not
+        // `currentId`, so this effect-free callback never goes stale.
+        const activeId = currentIdRef.current;
+        if (activeId === 'draft') return;
+        const match = list.find((c) => c.id === activeId);
+        if (!match) return;
+        const info: ChatInfo = {
+          tier: match.tier,
+          turns: match.turns,
+          handedOffTo: match.handedOffTo,
+          handedOffFrom: match.handedOffFrom,
+          handoffError: match.handoffError,
+        };
+        setChatInfo(info);
+        chatInfoRef.current = info;
+      })
+      .catch(() => { /* keep the last good list */ });
+  }, []);
+
   useEffect(() => {
-    if (messages.length === 0) return;
+    refreshChats();
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') refreshChats();
+    }, 5_000);
+    window.addEventListener('focus', refreshChats);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', refreshChats);
+    };
+  }, [refreshChats]);
+
+  // Focus heartbeat (T10, T17): tells the server which chat this device has
+  // on screen, so a turn finishing in a chat nobody is looking at gets a
+  // ping and one finishing here doesn't. Reports immediately whenever the
+  // chat on screen changes — "when a chat opens" per spec — then repeats
+  // every 20s while the page stays visible. A draft has no chat id yet, so
+  // it reports null too.
+  //
+  // This effect's cleanup must never send a null report: on a switch it
+  // would race the next run's immediate report of the new id — sendFocus(null)
+  // goes by sendBeacon, the id by fetch, and the two can land in either
+  // order — leaving the server thinking nothing is on screen for up to 20s.
+  // Only the mount-only effect below sends null, and only when the page is
+  // actually hidden or gone.
+  useEffect(() => {
+    const focusId = currentId === 'draft' ? null : currentId;
+
+    const report = () => {
+      if (document.visibilityState === 'visible') sendFocus(focusId);
+    };
+    report();
+    const interval = setInterval(report, 20_000);
+
+    return () => clearInterval(interval);
+  }, [currentId]);
+
+  // Owns the "nothing is on screen" side of the heartbeat: mount-only, so a
+  // chat switch never triggers it. Reports null the instant the page is
+  // hidden or this page goes away, and reports the current chat again (read
+  // from currentIdRef, since this effect doesn't re-run per switch) when the
+  // page becomes visible again.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const focusId = currentIdRef.current === 'draft' ? null : currentIdRef.current;
+        sendFocus(focusId);
+      } else {
+        sendFocus(null);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      sendFocus(null);
+    };
+  }, []);
+
+  useEffect(() => {
+    // A draft has no id yet to save under — its messages exist only until the
+    // first send resolves one (see send(), below).
+    if (messages.length === 0 || currentId === 'draft') return;
     try {
-      localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages.slice(-MAX_STORED)));
+      saveChatMessages(localStorage, currentId, messages);
     } catch { /* quota */ }
-  }, [messages]);
+  }, [messages, currentId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -473,6 +767,11 @@ export default function ChatPage() {
       exitCode: number | null,
       status: 'exited' | 'killed' | 'lost',
     ) => {
+      // A finalise for a chat Colin has since switched away from must not
+      // patch the chat now on screen, speak over it, or steal its running
+      // state — the job keeps going server-side regardless; its own active
+      // run stays in storage for a later open to pick up (T17).
+      if (run.chatId !== currentIdRef.current) return;
       const lost = status === 'lost';
       // A stop we asked for (stop button or the stuck watchdog) has a
       // meaningless exit code — blaming it produces the confusing "exited with
@@ -481,8 +780,7 @@ export default function ChatPage() {
       const state = parser.finish(exitCode, { suppressExitError: lost || selfStopped });
       const cost = computeCost(run.tier, state.usage, state.reportedCostUsd);
 
-      if (state.sessionId) localStorage.setItem(SESSION_KEY, state.sessionId);
-      localStorage.removeItem(ACTIVE_KEY);
+      clearActiveRun(localStorage, run.chatId);
       if (cost) setSessionCost((c) => c + cost.usd);
       // A 'killed' close we didn't initiate means the service restarted under
       // this run. The job is gone; don't reconnect and don't auto-speak a
@@ -529,6 +827,9 @@ export default function ChatPage() {
     };
 
     streamRef.current = jobsService.stream(run.jobId, (event) => {
+      // Same guard as finalise — a drop from switching away must not patch
+      // the chat now on screen with this run's output (T17).
+      if (run.chatId !== currentIdRef.current) return;
       if (event.type === 'phase') {
         // Server-named pre-output gap (spawn/context) — the parser has
         // nothing to say until the first byte, so trust the ping for the
@@ -556,9 +857,6 @@ export default function ChatPage() {
           lastProgressRef.current = Date.now();
         }
         setPhase(state.phase);
-        // Persist the session id the moment it appears, not at the end — a
-        // turn interrupted mid-flight must still be resumable next time.
-        if (state.sessionId) localStorage.setItem(SESSION_KEY, state.sessionId);
         patch((m) => ({ ...m, blocks: withTruncationNotice(state.blocks) }));
       } else if (event.type === 'closed') {
         // 'lost' means the connection dropped, not that the job ended — which
@@ -582,6 +880,11 @@ export default function ChatPage() {
           void jobsService
             .get(run.jobId)
             .then((job) => {
+              // Re-checked here, not just at the top of this callback — this
+              // resolves well after that check ran, and a switch in the
+              // meantime must not schedule a reconnect or finalise against
+              // the chat now on screen (T17).
+              if (run.chatId !== currentIdRef.current) return;
               if (job?.status === 'running') {
                 retriesRef.current = 0;
                 reconnectRef.current = setTimeout(
@@ -604,7 +907,10 @@ export default function ChatPage() {
                 0,
               );
             })
-            .catch(() => finalise(event.exitCode, event.status));
+            .catch(() => {
+              if (run.chatId !== currentIdRef.current) return;
+              finalise(event.exitCode, event.status);
+            });
           return;
         }
         finalise(event.exitCode, event.status);
@@ -614,6 +920,172 @@ export default function ChatPage() {
 
   // Lets the stream callback re-enter attachToRun without a circular dep.
   attachRef.current = attachToRun;
+
+  /* ── Open a chat from the list, `?c=`, or an adopted link ─────────────── */
+
+  /**
+   * Switches the screen to another chat. The local cache paints first (if
+   * this device has one) so the switch feels instant, then the server's copy
+   * — the source of truth, spec must-do 4, 5 — overwrites it. A chat with a
+   * turn still running has that turn's unfinished pair dropped from the
+   * server's history (chatActions.ts' openChat), so a placeholder assistant
+   * message is added here for attachToRun to stream into, full replay from 0,
+   * same as a turn this tab started itself.
+   *
+   * `force` bypasses the "already on screen" short-circuit below — the mount
+   * restore (review finding 5) needs the server read to run even though
+   * `currentId` already names this chat, because nothing has fetched its
+   * record from the server yet. Returns whether the open succeeded, so a
+   * caller such as the `?c=` link handler (review finding 1) can decide
+   * whether it is safe to consume.
+   */
+  const openChatById = useCallback(async (id: string, opts: { force?: boolean } = {}): Promise<boolean> => {
+    if (id === currentId && !opts.force) {
+      if (isNarrow) setListOpen(false);
+      return true;
+    }
+
+    stopSpeechForSwitch();
+
+    resetStreamRefs();
+    setRunning(false);
+    setPhase('done');
+    setServerPhase(null);
+    setStuck(false);
+    setError(null);
+    setNeedsStepUp(false);
+    setSessionCost(0);
+    setWorkOpen(false);
+    setWorkMessageId(null);
+    workDismissedRef.current = false;
+    activeWorkIdRef.current = null;
+    autoOpenedRef.current = false;
+    // The old chat's tier lock, handoff state and picker belong to the
+    // screen leaving, not the one arriving (spec must-do 9, 9b).
+    setChatInfo(null);
+    chatInfoRef.current = null;
+    setHandoffPickerOpen(false);
+    setHandoffWaitingFor(null);
+    setHandoffBusy(false);
+    setHandoffCallError(null);
+
+    setCurrentChatId(localStorage, id);
+    setCurrentId(id);
+    currentIdRef.current = id;
+    // Paint whatever this device already has for it while the server read
+    // below is in flight — phone and PC still end up showing the identical
+    // history once it lands (spec must-do 5).
+    setMessages(loadChatMessages(localStorage, id));
+
+    try {
+      const result = await openChatOnServer(id);
+      // Colin may have already opened a different chat while this request was
+      // in flight (e.g. open A, then B before A's response lands) — A's late
+      // response must not paint over B's screen.
+      if (getCurrentChatId(localStorage) !== id) return true;
+      const info: ChatInfo = {
+        tier: result.chat.tier,
+        turns: result.chat.turns,
+        handedOffTo: result.chat.handedOffTo,
+        handedOffFrom: result.chat.handedOffFrom,
+        handoffError: result.chat.handoffError,
+      };
+      setChatInfo(info);
+      chatInfoRef.current = info;
+      let history = result.messages;
+      if (result.runningJobId) {
+        const assistantId = `a_${Date.now()}`;
+        history = [...history, { id: assistantId, role: 'assistant', blocks: [], done: false }];
+        setMessages(history);
+        saveChatMessages(localStorage, id, history);
+        const run: ActiveRun = {
+          jobId: result.runningJobId,
+          assistantId,
+          tier: reattachTierInfo(result.chat.tier, result.chat.account),
+          chatId: id,
+        };
+        saveActiveRun(localStorage, id, run);
+        attachToRun(run);
+      } else {
+        setMessages(history);
+        saveChatMessages(localStorage, id, history);
+      }
+    } catch (err) {
+      if (getCurrentChatId(localStorage) !== id) return false;
+      if (err instanceof StepUpRequiredError) {
+        setNeedsStepUp(true);
+        setError('Biometric unlock required before SAM can run anything.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Could not open that chat.');
+      }
+      if (isNarrow) setListOpen(false);
+      return false;
+    }
+
+    if (isNarrow) setListOpen(false);
+    return true;
+  }, [currentId, isNarrow, resetStreamRefs, attachToRun, stopSpeechForSwitch]);
+
+  /* ── Handoff: follow the old chat to its new one (spec must-do 9b) ────── */
+
+  // `handoffWaitingFor` is only ever this chat's own id (set right after its
+  // own POST resolves, cleared on switch), so this only fires while Colin is
+  // still looking at the chat that was handed off — chatInfo is kept fresh
+  // for whatever's on screen by openChatById and the 5s poll above.
+  useEffect(() => {
+    if (!handoffWaitingFor || currentId !== handoffWaitingFor) return;
+    if (chatInfo?.handedOffTo) {
+      const target = chatInfo.handedOffTo;
+      setHandoffWaitingFor(null);
+      void openChatById(target);
+    } else if (chatInfo?.handoffError) {
+      setHandoffWaitingFor(null);
+    }
+  }, [handoffWaitingFor, currentId, chatInfo, openChatById]);
+
+  /* ── `/chat?c=<id>` — open that chat once, when it arrives ───────────── */
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const cParam = searchParams.get('c');
+  // Which `c` value this effect has already acted on. Without this, opening
+  // Y from the list (or pressing New) changes currentId while the URL still
+  // says `?c=X` — the old `cParam !== currentId` guard would then see a
+  // mismatch again and pull the screen back to X. Tracking "handled" instead
+  // of "matches currentId" means each value is only ever opened once. The
+  // ref is cleared whenever cParam goes back to empty (right after we strip
+  // it below), so a later `?c=X` — e.g. a ping's deep link, or the service
+  // worker's navigate — is treated as a fresh arrival and opened again.
+  const handledCParamRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!cParam) {
+      handledCParamRef.current = null;
+      return;
+    }
+    if (handledCParamRef.current === cParam) return;
+    handledCParamRef.current = cParam;
+
+    // Drop `c` from the URL once it's been handled, keeping every other
+    // param intact, so it can't re-fire this effect on a later unrelated
+    // re-render and so Colin can navigate away without snapping back.
+    const stripCParam = () => {
+      const next = new URLSearchParams(Array.from(searchParams.entries()));
+      next.delete('c');
+      const qs = next.toString();
+      router.replace(qs ? `/chat?${qs}` : '/chat', { scroll: false });
+    };
+
+    // Session-only GET, never adopt (review finding 1): adopt needs step-up,
+    // which a phone's 10-minute window has usually lost by the time a ping
+    // is tapped, and it un-archives the chat as a side effect that a mere
+    // deep-link open must never cause. `handleChatLink` reports whether the
+    // open succeeded, so the link is consumed only then — on any failure `c`
+    // stays in the URL and a reload or a second tap retries it.
+    void handleChatLink(cParam, { open: (id) => openChatById(id, { force: true }) }).then((ok) => {
+      if (ok) stripCParam();
+    });
+  }, [cParam, openChatById, router, searchParams]);
 
   /* ── Reconnect when the app comes back to the foreground ─────────────── */
 
@@ -627,20 +1099,20 @@ export default function ChatPage() {
       // also resets it; this makes the reset independent of finding a run.
       lastProgressRef.current = Date.now();
 
-      const raw = localStorage.getItem(ACTIVE_KEY);
-      if (!raw) return;
+      // The on-screen chat's own active run, not a device-wide global — read
+      // fresh from storage rather than from the currentId closure, since this
+      // listener outlives any one render (T14).
+      const id = getCurrentChatId(localStorage);
+      if (!id || id === 'draft') return;
+      const run = loadActiveRun<ActiveRun>(localStorage, id);
+      if (!run) return;
 
-      try {
-        const run = JSON.parse(raw) as ActiveRun;
-        const pending = loadMessages().find((m) => m.id === run.assistantId);
-        if (!pending || pending.done) return;
-        retriesRef.current = 0;
-        // Resume rather than replay: if the parser already holds this turn's
-        // blocks (tab backgrounded mid-stream), pick up from the last frame.
-        attachRef.current?.(run, { reconnect: parserRef.current !== null });
-      } catch {
-        localStorage.removeItem(ACTIVE_KEY);
-      }
+      const pending = loadMessages().find((m) => m.id === run.assistantId);
+      if (!pending || pending.done) return;
+      retriesRef.current = 0;
+      // Resume rather than replay: if the parser already holds this turn's
+      // blocks (tab backgrounded mid-stream), pick up from the last frame.
+      attachRef.current?.(run, { reconnect: parserRef.current !== null });
     };
 
     document.addEventListener('visibilitychange', onVisible);
@@ -650,21 +1122,15 @@ export default function ChatPage() {
   /* ── Reattach after the tab was left ─────────────────────────────────── */
 
   useEffect(() => {
-    const raw = localStorage.getItem(ACTIVE_KEY);
-    if (!raw) return;
-
-    let run: ActiveRun;
-    try {
-      run = JSON.parse(raw) as ActiveRun;
-    } catch {
-      localStorage.removeItem(ACTIVE_KEY);
-      return;
-    }
+    const id = getCurrentChatId(localStorage);
+    if (!id || id === 'draft') return;
+    const run = loadActiveRun<ActiveRun>(localStorage, id);
+    if (!run) return;
 
     // Only reattach if that message is still unfinished.
     const pending = loadMessages().find((m) => m.id === run.assistantId);
     if (!run.jobId || !pending || pending.done) {
-      localStorage.removeItem(ACTIVE_KEY);
+      clearActiveRun(localStorage, id);
       return;
     }
 
@@ -678,20 +1144,26 @@ export default function ChatPage() {
 
   /* ── Recover a message that failed on biometric unlock ────────────────── */
 
+  // Per-chat (review finding 4): only ever recovers the message held for the
+  // chat on screen right now (`currentId`, at mount). A message written in a
+  // different chat and still held for it is left exactly where it is —
+  // resending it here would fire it into whatever chat this device happens
+  // to be showing, not the one it was typed into.
   useEffect(() => {
-    const pending = localStorage.getItem(PENDING_KEY);
+    const pending = recoverPendingMessage(localStorage, currentId);
     if (!pending) return;
     void authService.checkSession().then((s) => {
       if (!s.authenticated) {
-        localStorage.removeItem(PENDING_KEY);
         return;
       }
       if (s.stepUp) {
         // A biometric happened elsewhere since the failure — the message can
         // go out now without another prompt.
-        localStorage.removeItem(PENDING_KEY);
         void send(pending);
       } else {
+        // Not recovered yet — hold it again under this chat so the Unlock
+        // button (or the next mount) can still find it.
+        holdPendingMessage(localStorage, currentId, pending);
         setNeedsStepUp(true);
         setError('Biometric unlock required before SAM can run anything.');
       }
@@ -776,8 +1248,10 @@ export default function ChatPage() {
     // The wake prompt has served its purpose once he's said something.
     setWokenByVoice(false);
 
-    // A fresh send supersedes any message waiting on a biometric unlock.
-    localStorage.removeItem(PENDING_KEY);
+    // A fresh send to this chat supersedes any message it was still holding
+    // from an earlier failed send — another chat's held message is untouched
+    // (review finding 4).
+    supersedePendingMessage(localStorage, currentIdRef.current);
 
     // Unlock audio while we still have user activation. By the time the
     // answer lands, seconds later, the gesture has expired and the browser
@@ -817,10 +1291,28 @@ export default function ChatPage() {
       // bubble falls back to naming what was sent.
       const shown = message || `${files.length} file${files.length === 1 ? '' : 's'}`;
 
+      // Read from the ref, not the currentId closure — a hands-free or wake
+      // transcript can arrive after Colin has already switched chats, and
+      // must start its turn on the chat/draft it was actually said to (T17).
+      const startedFrom = currentIdRef.current;
+      // A chat's tier is fixed by its first message (spec must-do 9) — an
+      // existing chat always sends its own tier, read from the ref so a
+      // hands-free send right after a switch uses the chat now on screen's
+      // tier rather than a stale render's. Only a draft is free to choose
+      // (`tier`, the button's own state). An imported chat with no single
+      // tier ('unknown') runs on `max` until a handoff gives it a real one —
+      // same fallback the server itself applies (startTurn.ts).
+      const sendTier: TierId =
+        startedFrom === 'draft'
+          ? tier
+          : chatInfoRef.current && chatInfoRef.current.tier !== 'unknown'
+            ? chatInfoRef.current.tier
+            : 'max';
+
       setMessages((prev) => [
         ...prev,
         { id: `u_${stamp}`, role: 'user', blocks: [{ kind: 'text', text: shown }], done: true },
-        { id: assistantId, role: 'assistant', blocks: [], done: false, tier },
+        { id: assistantId, role: 'assistant', blocks: [], done: false, tier: sendTier },
       ]);
       // The files are already on disk, so clearing the composer now costs a
       // re-pick at worst if the turn fails.
@@ -837,50 +1329,82 @@ export default function ChatPage() {
         // whole context (that's the "starting session / rereads everything"
         // behaviour). Runaway turns are the watchdog's job; the old token gate
         // existed only to fit under the removed budget cap.
-        const resumeSessionId = localStorage.getItem(SESSION_KEY) ?? undefined;
+        // undefined for a draft (no chat yet) — the server mints one and
+        // hands its id back below (T14).
+        const chatId = startedFrom === 'draft' ? undefined : startedFrom;
         const started = await startAgentTurn({
           message,
-          tier,
-          resumeSessionId,
+          tier: sendTier,
+          chatId,
           attachments: files.map((f) => ({ path: f.path, name: f.name })),
         });
+
+        // Colin may have switched away from the chat/draft this send began
+        // on while the request was in flight. The run still has to be
+        // reachable later, but a late response must not yank the screen to
+        // it, speak over whatever is now on screen, or steal its running
+        // state (T17).
+        const stillOnThisChat = currentIdRef.current === startedFrom;
+
+        if (stillOnThisChat) {
+          // A draft's first send only now learns its id — switch the screen
+          // over to it so history, the active run and later sends all land
+          // under the same per-chat keys.
+          setCurrentId(started.chatId);
+          currentIdRef.current = started.chatId;
+          setCurrentChatId(localStorage, started.chatId);
+        }
+        // A brand-new chat won't be in the store's list until this turn's
+        // startTurn.ts call creates it — refresh now rather than waiting out
+        // the 5s poll, so New's own chat shows up straight away (spec 3).
+        // Safe regardless of stillOnThisChat — it only ever refreshes the list.
+        refreshChats();
 
         const run: ActiveRun = {
           jobId: started.jobId,
           assistantId,
           tier: started.tier,
+          chatId: started.chatId,
         };
-        // Recorded before streaming starts, so a tab switch a second later can
-        // still find its way back to this run.
-        localStorage.setItem(ACTIVE_KEY, JSON.stringify(run));
+        // Recorded before streaming starts (or even when we never attach
+        // below), so a later open of this chat finds its way back to this run.
+        saveActiveRun(localStorage, started.chatId, run);
 
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, jobId: started.jobId } : m)),
-        );
+        if (stillOnThisChat) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantId ? { ...m, jobId: started.jobId } : m)),
+          );
 
-        // The turn is definitely running — speak the ack before the agent
-        // boots, so the boot/context/thinking gap isn't dead air.
-        speakAck();
+          // The turn is definitely running — speak the ack before the agent
+          // boots, so the boot/context/thinking gap isn't dead air.
+          speakAck();
 
-        attachToRun(run);
+          attachToRun(run);
+        }
       } catch (err) {
+        const stillOnThisChat = currentIdRef.current === startedFrom;
         if (err instanceof StepUpRequiredError) {
-          // Hold the message so a successful unlock can resend it without a retype.
-          localStorage.setItem(PENDING_KEY, message);
+          // Hold the message against the chat it was written in — startedFrom,
+          // not whichever chat is on screen by the time Colin unlocks (review
+          // finding 4). The step-up gate itself is app-wide, not per-chat, so
+          // it still applies regardless of which chat is now on screen.
+          holdPendingMessage(localStorage, startedFrom, message);
           setNeedsStepUp(true);
-          setError('Biometric unlock required before SAM can run anything.');
-        } else {
+          if (stillOnThisChat) setError('Biometric unlock required before SAM can run anything.');
+        } else if (stillOnThisChat) {
           setError(err instanceof Error ? err.message : 'Chat failed');
         }
-        setMessages((prev) => prev.filter((m) => m.id !== assistantId));
-        setRunning(false);
+        if (stillOnThisChat) {
+          setMessages((prev) => prev.filter((m) => m.id !== assistantId));
+          setRunning(false);
+        }
       }
       // muted/speak are here for the OS-intent reply above; attachToRun already
       // depends on both, so this adds no extra churn.
     } finally {
       sendLockRef.current = false;
     }
-  }, [running, tier, attachToRun, muted, speak, speakAck, setStagedBoth]);
+  }, [running, tier, attachToRun, muted, speak, speakAck, setStagedBoth, refreshChats]);
 
   /* ── Hands-free loop wiring ──────────────────────────────────────────── */
 
@@ -1101,24 +1625,64 @@ export default function ChatPage() {
   };
 
   const newConversation = () => {
-    streamRef.current?.close();
-    parserRef.current = null;
-    lastSeqRef.current = 0;
-    drainTriesRef.current = 0;
-    truncatedRef.current = false;
-    localStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem(MESSAGES_KEY);
-    localStorage.removeItem(ACTIVE_KEY);
-    localStorage.removeItem(PENDING_KEY);
+    // New is a switch too (T17) — the chat leaving the screen may still have
+    // a turn running and/or audio playing; both must be let go of exactly as
+    // opening a different chat would.
+    stopSpeechForSwitch();
+
+    resetStreamRefs();
+    // Points the screen at a fresh, unsaved chat. The chat leaving the
+    // screen stays exactly as it was, still listed — New never wipes,
+    // deletes or overwrites anything (spec must-do 3, 14; check 2).
+    startDraft(localStorage);
+    setCurrentId('draft');
+    currentIdRef.current = 'draft';
     setMessages([]);
     setSessionCost(0);
     setError(null);
     setRunning(false);
+    setPhase('done');
+    setServerPhase(null);
     setWorkOpen(false);
     setWorkMessageId(null);
     workDismissedRef.current = false;
     activeWorkIdRef.current = null;
     autoOpenedRef.current = false;
+    // A draft has no server record, and carries over no other chat's handoff
+    // state — it picks its own tier freely (spec must-do 9).
+    setChatInfo(null);
+    chatInfoRef.current = null;
+    setHandoffPickerOpen(false);
+    setHandoffWaitingFor(null);
+    setHandoffBusy(false);
+    setHandoffCallError(null);
+  };
+
+  /* ── Handoff: move this chat to a new one on another tier (9b) ────────── */
+
+  const startHandoff = async (pickedTier: TierId) => {
+    if (currentId === 'draft') return;
+    const id = currentId;
+    setHandoffBusy(true);
+    setHandoffCallError(null);
+    try {
+      await handoffChat(id, pickedTier);
+      // The memo turn is now running in the old chat; the effect above
+      // follows it via the next chatInfo refresh (openChatById's own poll,
+      // or the 5s list poll) and opens handedOffTo once it lands.
+      setHandoffPickerOpen(false);
+      setHandoffWaitingFor(id);
+    } catch (err) {
+      setHandoffCallError(
+        err instanceof StepUpRequiredError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Could not start handoff.',
+      );
+    } finally {
+      setHandoffBusy(false);
+    }
   };
 
   /* ── Work panel helpers ──────────────────────────────────────────────── */
@@ -1159,6 +1723,17 @@ export default function ChatPage() {
 
   /* ── Render ──────────────────────────────────────────────────────────── */
 
+  // A chat's tier is fixed by its first message (spec must-do 9) — `current`
+  // is the on-screen chat/draft in the shape chatTier.ts needs. `chatInfo` is
+  // null for both a draft and the brief gap before an existing chat's own
+  // fetch lands; `tierLocked` only needs the id for that gap (a chat id that
+  // isn't 'draft' is already locked by construction — see chatTier.ts).
+  const currentTierLockChat: TierLockChat = { id: currentId, turns: chatInfo?.turns };
+  const tierIsLocked = tierLocked(currentTierLockChat);
+  const currentTierDisplayChat: TierDisplayChat | null =
+    currentId === 'draft' ? null : { id: currentId, tier: chatInfo?.tier ?? 'unknown' };
+  const shownTier = displayTier(currentTierDisplayChat, tier);
+
   // Prefer the server's phase name while the parser is still in a pre-output
   // gap (starting/thinking); it names the delay truthfully and carries ms
   // since process start. Once content flows, the parser's label wins.
@@ -1185,6 +1760,19 @@ export default function ChatPage() {
 
   return (
     <div ref={rootRef} className="sam-chat-root flex flex-col md:flex-row">
+      {/* Chat list — sidebar on desktop (in-flow, left of the chat column),
+          drawer on the phone (overlay, opened by the list button below). */}
+      <ChatList
+        chats={chats}
+        currentId={currentId}
+        onOpen={openChatById}
+        onNew={newConversation}
+        open={listOpen}
+        onClose={() => setListOpen(false)}
+        onChanged={refreshChats}
+        onCurrentRemoved={newConversation}
+      />
+
       {/* Chat column — answers only. Work streams into the panel below.
           min-h-0 lets the message list scroll inside the fixed-height root
           instead of the whole page — without it a long thread carries the
@@ -1195,43 +1783,96 @@ export default function ChatPage() {
       <div className="sticky top-0 z-20 flex items-center gap-2 px-3 py-1.5 border-b border-void-800 bg-void-900/85 backdrop-blur-md shrink-0">
         <button
           type="button"
+          onClick={() => setListOpen(true)}
+          aria-label="Open chat list"
+          title="Chats"
+          className="md:hidden p-1.5 -ml-1 text-dim-300 hover:text-dim-100 rounded transition-colors shrink-0"
+        >
+          <Menu size={16} />
+        </button>
+
+        <button
+          type="button"
           onClick={toggleTier}
-          disabled={running}
+          disabled={tierIsLocked}
           className={`flex items-center justify-center gap-1.5 w-20 shrink-0 text-xs px-2 py-1 rounded border
                       transition-colors disabled:opacity-40 ${
-            tier === 'fast'
-              ? 'text-accent bg-accent/10 border-accent/30'
-              : tier === 'pro'
-                ? 'text-sky-300 bg-sky-900/20 border-sky-700/40'
-                : tier === 'gemini'
-                  ? 'text-violet-300 bg-violet-900/20 border-violet-700/40'
-                  : tier === 'max2'
-                    ? 'text-emerald-300 bg-emerald-900/20 border-emerald-700/40'
-                    : 'text-amber-300 bg-amber-900/20 border-amber-700/40'
+            shownTier === 'Unknown'
+              ? 'text-dim-400 bg-void-800/40 border-void-700'
+              : shownTier === 'fast'
+                ? 'text-accent bg-accent/10 border-accent/30'
+                : shownTier === 'pro'
+                  ? 'text-sky-300 bg-sky-900/20 border-sky-700/40'
+                  : shownTier === 'gemini'
+                    ? 'text-violet-300 bg-violet-900/20 border-violet-700/40'
+                    : shownTier === 'max2'
+                      ? 'text-emerald-300 bg-emerald-900/20 border-emerald-700/40'
+                      : 'text-amber-300 bg-amber-900/20 border-amber-700/40'
           }`}
           title={
-            tier === 'fast'
-              ? 'Fast tier — DeepSeek flash, cheap, separate quota. Tap for Pro.'
-              : tier === 'pro'
-                ? 'Pro tier — DeepSeek pro, stronger, ~3x the cost of Fast. Tap for Max.'
-                : tier === 'gemini'
-                  ? 'Gemini tier — Google Flash via local proxy, fastest first token. Tap for Fast.'
-                  : tier === 'max2'
-                    ? 'Max 2 tier — Claude account 2, separate Pro quota. Tap for Gemini.'
-                    : 'Max tier — Claude, uses your main subscription quota. Tap for Max 2.'
+            tierIsLocked
+              ? 'Tier is fixed for this chat. Use Handoff to move.'
+              : tier === 'fast'
+                ? 'Fast tier — DeepSeek flash, cheap, separate quota. Tap for Pro.'
+                : tier === 'pro'
+                  ? 'Pro tier — DeepSeek pro, stronger, ~3x the cost of Fast. Tap for Max.'
+                  : tier === 'gemini'
+                    ? 'Gemini tier — Google Flash via local proxy, fastest first token. Tap for Fast.'
+                    : tier === 'max2'
+                      ? 'Max 2 tier — Claude account 2, separate Pro quota. Tap for Gemini.'
+                      : 'Max tier — Claude, uses your main subscription quota. Tap for Max 2.'
           }
         >
-          {tier === 'fast' ? (
+          {shownTier === 'Unknown' ? (
+            <Lock size={12} />
+          ) : shownTier === 'fast' ? (
             <Zap size={12} />
-          ) : tier === 'pro' ? (
+          ) : shownTier === 'pro' ? (
             <Cpu size={12} />
-          ) : tier === 'gemini' ? (
+          ) : shownTier === 'gemini' ? (
             <Gem size={12} />
           ) : (
             <Sparkles size={12} />
           )}
-          {tier === 'fast' ? 'Fast' : tier === 'pro' ? 'Pro' : tier === 'gemini' ? 'Gemini' : tier === 'max2' ? 'Max 2' : 'Max'}
+          {shownTier === 'Unknown'
+            ? 'Unknown'
+            : shownTier === 'fast'
+              ? 'Fast'
+              : shownTier === 'pro'
+                ? 'Pro'
+                : shownTier === 'gemini'
+                  ? 'Gemini'
+                  : shownTier === 'max2'
+                    ? 'Max 2'
+                    : 'Max'}
         </button>
+
+        {currentId !== 'draft' && (
+          <button
+            type="button"
+            onClick={() => {
+              setHandoffCallError(null);
+              setHandoffPickerOpen(true);
+            }}
+            disabled={running || handoffBusy || handoffWaitingFor !== null}
+            className="flex items-center gap-1 text-[11px] text-dim-300 hover:text-dim-100 disabled:opacity-40
+                       disabled:cursor-not-allowed transition-colors px-1.5 py-1 rounded shrink-0"
+            title="Hand off to a new chat on another tier."
+          >
+            <ArrowRightLeft size={12} />
+            Handoff
+          </button>
+        )}
+
+        {handoffWaitingFor === currentId && (
+          <span className="text-[11px] text-dim-400 italic">Writing handoff memo…</span>
+        )}
+
+        {chatInfo?.handoffError && handoffWaitingFor === null && (
+          <span className="text-[11px] text-red-400" title={chatInfo.handoffError}>
+            Handoff failed
+          </span>
+        )}
 
         {sessionCost > 0 && (
           <span className="text-[11px] text-dim-400 font-mono" title="Session spend">
@@ -1280,6 +1921,52 @@ export default function ChatPage() {
           {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
         </button>
       </div>
+
+      {/* Handoff tier picker — same modal styling as ChatList's delete
+          confirm, so this stays in the app's existing look. */}
+      {handoffPickerOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
+            <div
+              className="absolute inset-0 bg-black/60"
+              onClick={() => setHandoffPickerOpen(false)}
+              aria-hidden="true"
+            />
+            <div className="relative w-full max-w-sm rounded-md border border-void-700 bg-void-900 p-4 shadow-xl">
+              <p className="text-sm text-dim-100 mb-3">
+                Hand off to a new chat on:
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.keys(TIER_PICKER_LABEL) as TierId[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    disabled={handoffBusy}
+                    onClick={() => void startHandoff(t)}
+                    className="px-2 py-2 text-xs rounded border border-void-700 text-dim-200
+                               hover:border-accent/60 hover:text-accent transition-colors
+                               disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {TIER_PICKER_LABEL[t]}
+                  </button>
+                ))}
+              </div>
+              {handoffCallError && (
+                <p className="mt-3 text-xs text-red-400">{handoffCallError}</p>
+              )}
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setHandoffPickerOpen(false)}
+                  className="px-3 py-1.5 text-xs text-dim-300 hover:text-dim-100 rounded transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* Messages */}
       <div ref={messagesRef} className="chat-messages flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-4">
@@ -1404,8 +2091,9 @@ export default function ChatPage() {
                     await authService.stepUp();
                     setNeedsStepUp(false);
                     setError(null);
-                    const pending = localStorage.getItem(PENDING_KEY);
-                    localStorage.removeItem(PENDING_KEY);
+                    // Only the chat on screen right now (review finding 4) —
+                    // a message held for a different chat stays held for it.
+                    const pending = recoverPendingMessage(localStorage, currentIdRef.current);
                     if (pending) void send(pending);
                   } catch { /* cancelled */ }
                 }}
@@ -1606,5 +2294,19 @@ export default function ChatPage() {
           document.body,
         )}
     </div>
+  );
+}
+
+/**
+ * `useSearchParams` (for `?c=`) requires a Suspense boundary around whatever
+ * calls it — Next bails the whole route to client-only rendering otherwise.
+ * Everything else in `ChatPageInner` already behaves on a fresh mount with no
+ * `c` param, so the fallback is never actually visible in practice.
+ */
+export default function ChatPage() {
+  return (
+    <Suspense fallback={null}>
+      <ChatPageInner />
+    </Suspense>
   );
 }

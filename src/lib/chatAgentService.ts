@@ -10,6 +10,8 @@ import type { TierId, TierInfo } from '@/types/chat';
 
 export interface StartTurnResult {
   jobId: string;
+  /** The chat this turn ran in — the new chat's id when none was passed. */
+  chatId: string;
   tier: TierInfo;
 }
 
@@ -23,7 +25,8 @@ export class StepUpRequiredError extends Error {
 export async function startAgentTurn(params: {
   message: string;
   tier: TierId;
-  resumeSessionId?: string;
+  /** The chat to continue; omit to start a new chat. */
+  chatId?: string;
   /**
    * Uploaded files: the absolute path returned by POST /api/uploads plus the
    * name to show for it. The name rides along so the agent sees what Colin
@@ -41,7 +44,7 @@ export async function startAgentTurn(params: {
     body: JSON.stringify({
       message: params.message,
       tier: params.tier,
-      resumeSessionId: params.resumeSessionId,
+      chatId: params.chatId,
       attachments: params.attachments,
     }),
   });

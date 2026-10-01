@@ -15,6 +15,7 @@ import {
   Radio,
   Activity,
   Users,
+  Bell,
 } from 'lucide-react';
 
 const TABS = [
@@ -25,6 +26,7 @@ const TABS = [
   { id: 'fleet', label: 'Fleet', href: '/fleet', icon: Bot },
   { id: 'status', label: 'Status', href: '/status', icon: Activity },
   { id: 'operations', label: 'Ops', href: '/operations', icon: Radio },
+  { id: 'notifications', label: 'Pings', href: '/notifications', icon: Bell },
   { id: 'settings', label: 'Prefs', href: '/settings', icon: Settings },
 ] as const;
 
@@ -46,7 +48,7 @@ export function TabBar() {
           <Link
             key={tab.id}
             href={tab.href}
-            className={`flex flex-col items-center justify-center gap-0.5 min-w-0 px-2 py-1
+            className={`flex flex-1 flex-col items-center justify-center gap-0.5 min-w-0 px-1 py-1
               ${active
                 ? 'text-accent'
                 : 'text-void-100'

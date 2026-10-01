@@ -13,9 +13,11 @@
   // typechecks with, so using it to emit the tests adds nothing new to install
   // and cannot drift from the compiler that validates the source.
   //
-  // Every import in the current test graph is relative, so emitted requires
-  // resolve as-is. If a test ever needs an "@/..." import, add a resolver step
-  // here rather than reaching for a bundler.
+  // "@/..." imports resolve via scripts/test-alias.cjs, a
+  // Module._resolveFilename hook loaded with `node --require` in the `test`
+  // script (package.json). It maps a request starting "@/" to
+  // "<repo>/.test-build/<rest>", mirroring this file's own rootDir/outDir, so
+  // emitted `require("@/lib/x")` calls resolve without a bundler.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
@@ -27,7 +29,14 @@
     "jsx": "react-jsx",
     "incremental": false,
     "isolatedModules": false,
-    "verbatimModuleSyntax": false
+    "verbatimModuleSyntax": false,
+    // "jose" is ESM-only; see scripts/jose-cjs.d.ts (review finding 2's
+    // route test needs the real session-signing chain). "@/*" is restated
+    // because "paths" replaces, not merges with, the base config's.
+    "paths": {
+      "@/*": ["./src/*"],
+      "jose": ["./scripts/jose-cjs.d.ts"]
+    }
   },
   "include": ["src/**/*.test.ts"],
   "exclude": ["node_modules", ".next", ".test-build"]

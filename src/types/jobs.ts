@@ -6,7 +6,16 @@
  * numbers so a reconnecting client resumes from Last-Event-ID.
  */
 
-export type JobStatus = 'queued' | 'running' | 'exited' | 'killed';
+/**
+ * 'failed' and 'stopped' are sam-job's own terminal statuses (run.sh writes
+ * 'failed' when its command exits non-zero or cmd.sh is missing; a job
+ * stopped some other way — e.g. mid-way through a restart — can land as
+ * 'stopped'). JobManager's own jobs never produce them; it only ever writes
+ * 'queued' | 'running' | 'exited' | 'killed'. Both are listed here because
+ * this type also describes what a job's meta.json on disk can say, and a
+ * sam-job job's meta.json is read through the same JobRecord shape.
+ */
+export type JobStatus = 'queued' | 'running' | 'exited' | 'killed' | 'failed' | 'stopped';
 
 export interface JobRecord {
   id: string;

@@ -30,8 +30,20 @@ import { requireSession } from '@/lib/server/auth/guard';
 import { onShutdown } from '@/lib/server/shutdown';
 import { failure } from '@/lib/server/respond';
 import { serialTick } from '@/lib/server/serialTick';
+import type { JobStatus } from '@/types/jobs';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * True once a job can never produce more output. 'running' and 'queued' are
+ * the only non-terminal statuses JobManager or sam-job ever write, so
+ * checking those two (inverted) covers every terminal status by construction
+ * — including sam-job's 'failed' and 'stopped', which this route used to
+ * miss because it only matched 'exited' | 'killed' by name.
+ */
+function isFinishedStatus(status: JobStatus): boolean {
+  return status !== 'running' && status !== 'queued';
+}
 
 /**
  * A client that isn't consuming the stream (phone locked, tab backgrounded)
@@ -245,8 +257,12 @@ export async function GET(
       // always describes the real current phase, never the one it was born in.
       if (live.phase !== 'done') emitPhase();
 
-      // 3. If job is already done (or orphaned), send closed and stop
-      if (job.status === 'exited' || job.status === 'killed' || orphaned) {
+      // 3. If job is already done (or orphaned), send closed and stop.
+      // Any status other than 'running' or 'queued' is finished — covers
+      // JobManager's 'exited' | 'killed' and sam-job's 'failed' | 'stopped'
+      // alike, rather than naming each terminal status and missing the next
+      // one a worker script introduces.
+      if (isFinishedStatus(job.status) || orphaned) {
         if (live.phase !== 'done') {
           live.phase = 'done';
           emitPhase();
@@ -320,7 +336,7 @@ export async function GET(
           }
 
           // Job finished
-          if (current.status === 'exited' || current.status === 'killed') {
+          if (isFinishedStatus(current.status)) {
             if (live.phase !== 'done') {
               live.phase = 'done';
               emitPhase();
