@@ -15,11 +15,22 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Archive, ArchiveRestore, ArrowRightLeft, MoreVertical, Plus, Trash2, X as XIcon } from 'lucide-react';
+import {
+  Archive,
+  ArchiveRestore,
+  ArrowRightLeft,
+  MoreVertical,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Trash2,
+  X as XIcon,
+} from 'lucide-react';
 
 import type { ChatSummary, ChatTier } from '@/types/chat';
 import { formatRelative } from '@/lib/utils';
 import { filterChatTitles } from '@/lib/chatListFilter';
+import { readListCollapsed, writeListCollapsed } from '@/lib/chatListCollapse';
 import {
   StepUpRequiredError,
   archiveChat,
@@ -34,7 +45,7 @@ export interface ChatListProps {
   onOpen: (id: string) => void;
   onNew: () => void;
   /** Drawer visibility on the phone — ignored by the desktop sidebar, which
-   *  is always shown. */
+   *  is always shown (expanded, or collapsed to a rail). */
   open: boolean;
   onClose: () => void;
   /** Called after archive, restore or delete succeeds, so the page can
@@ -297,6 +308,21 @@ export function ChatList({ chats, currentId, onOpen, onNew, open, onClose, onCha
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
+  /** Desktop only: the sidebar folds down to a slim rail. Starts expanded and
+      reads the stored choice after mount — the server prerender has no
+      localStorage, and an initialiser that disagreed with it would mismatch
+      on hydration. */
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    if (readListCollapsed(localStorage)) setCollapsed(true);
+  }, []);
+  const toggleCollapsed = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    writeListCollapsed(localStorage, next);
+    setOpenMenuId(null);
+  };
+
   // Archived is fetched on demand, not polled — nothing else in the app
   // needs it, and Colin only looks at it occasionally.
   const refreshArchived = () => {
@@ -401,31 +427,69 @@ export function ChatList({ chats, currentId, onOpen, onNew, open, onClose, onCha
 
   return (
     <>
-      {/* Desktop — in-flow sidebar, left of the chat column. */}
-      <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-void-700 h-full bg-void-900/60">
-        <div className="flex items-center justify-between px-3 py-2.5 border-b border-void-800 shrink-0">
-          <span className="text-xs font-semibold text-dim-300 uppercase tracking-wide">Chats</span>
+      {/* Desktop — in-flow sidebar, left of the chat column. Collapsed, it is
+          a slim rail holding only expand and New. */}
+      {collapsed ? (
+        <aside
+          data-chatlist-rail
+          className="hidden md:flex w-11 shrink-0 flex-col items-center gap-1 py-2 border-r border-void-700 h-full bg-void-900/60"
+        >
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label="Expand chat list"
+            title="Show chats"
+            className="p-1.5 text-dim-400 hover:text-dim-100 hover:bg-void-800 rounded transition-colors"
+          >
+            <PanelLeftOpen size={15} />
+          </button>
           <button
             type="button"
             onClick={onNew}
-            className="flex items-center gap-1 text-[11px] text-dim-300 hover:text-accent transition-colors px-1.5 py-1 rounded"
+            aria-label="New chat"
+            title="New chat"
+            className="p-1.5 text-dim-400 hover:text-accent hover:bg-void-800 rounded transition-colors"
           >
-            <Plus size={12} /> New
+            <Plus size={15} />
           </button>
-        </div>
-        <ListControls mode={mode} onModeChange={setMode} query={query} onQueryChange={setQuery} />
-        <ul className="flex-1 overflow-y-auto">
-          <ListRows
-            chats={visible}
-            currentId={currentId}
-            mode={mode}
-            actions={actions}
-            onOpen={onOpen}
-            archivedLoading={archivedLoading}
-            archivedError={archivedError}
-          />
-        </ul>
-      </aside>
+        </aside>
+      ) : (
+        <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-void-700 h-full bg-void-900/60">
+          <div className="flex items-center justify-between px-3 py-2.5 border-b border-void-800 shrink-0">
+            <span className="text-xs font-semibold text-dim-300 uppercase tracking-wide">Chats</span>
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={onNew}
+                className="flex items-center gap-1 text-[11px] text-dim-300 hover:text-accent transition-colors px-1.5 py-1 rounded"
+              >
+                <Plus size={12} /> New
+              </button>
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                aria-label="Collapse chat list"
+                title="Hide chats"
+                className="p-1 text-dim-400 hover:text-dim-100 hover:bg-void-800 rounded transition-colors"
+              >
+                <PanelLeftClose size={14} />
+              </button>
+            </div>
+          </div>
+          <ListControls mode={mode} onModeChange={setMode} query={query} onQueryChange={setQuery} />
+          <ul className="flex-1 overflow-y-auto">
+            <ListRows
+              chats={visible}
+              currentId={currentId}
+              mode={mode}
+              actions={actions}
+              onOpen={onOpen}
+              archivedLoading={archivedLoading}
+              archivedError={archivedError}
+            />
+          </ul>
+        </aside>
+      )}
 
       {/* Phone — overlay drawer, closed by a tap outside or Escape. Portaled
           to <body> for the same reason the mobile work panel is: it has to
