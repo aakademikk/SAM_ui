@@ -185,3 +185,17 @@ test('the staged send.next.mjs creates push-log.jsonl mode 0600, not the default
   const mode = fs.statSync(freshLog).mode & 0o777;
   assert.equal(mode.toString(8), '600', `expected push-log.jsonl mode 0600, got 0${mode.toString(8)}`);
 });
+
+test('a --url of "/" is not a destination: the ping keeps its own link (T21 check 12, 2026-10-02)', { skip: SKIP }, () => {
+  // The nightly improve and daily fold scripts passed --url "/", which sent
+  // their pings to the Dashboard instead of their Notifications entry.
+  const plain = runPush(['--title', 'Improve patches applied', '--body', 'x', '--url', '/']);
+  assert.equal(plain.status, NO_VAPID_EXIT_CODE, plain.stderr);
+  const noChat = readLog().at(-1)!;
+  assert.equal(noChat.url, '/notifications?n=' + noChat.id);
+
+  const chatId = '22222222-3333-4444-5555-666666666666';
+  const withChat = runPush(['--title', 'Job done', '--body', 'x', '--url', '/'], { SAM_CHAT_ID: chatId });
+  assert.equal(withChat.status, NO_VAPID_EXIT_CODE, withChat.stderr);
+  assert.equal(readLog().at(-1)!.url, '/chat?c=' + chatId);
+});
