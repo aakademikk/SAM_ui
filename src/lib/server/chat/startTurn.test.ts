@@ -125,6 +125,14 @@ before(async () => {
   process.env.FAKE_CLAUDE_LOG = logPath;
   process.env.FAKE_CLAUDE_DELAY_MS = '1500';
   delete process.env.FAKE_CLAUDE_REPLY;
+  // Keep each chat's fallback title (its first message). The turn-exit hook
+  // fires a background Haiku title call through the same fake CLI, which
+  // otherwise succeeds instantly with "Fake Title" and renames the chat before
+  // the title assertions below read it. Same guard handoff.test.ts uses.
+  // readLog() already filters title calls out (their argv carries
+  // --no-session-persistence), so the spawn counts this file asserts on are
+  // unaffected.
+  process.env.FAKE_TITLE_FAIL = '1';
   // Never let an inherited value point the ledger reporter anywhere real (the
   // max tiers never report anyway).
   process.env.FLEET_COST_URL = 'http://127.0.0.1:9/none';
