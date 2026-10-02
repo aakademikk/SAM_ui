@@ -48,16 +48,25 @@ Stage-event design agreed by Colin 2026-10-01 (Open question 2):
 16b. `sam-job` appends `dispatched`, `started` and `ended` (with exit code) to a new `events.jsonl` in the job's folder by itself.
 16c. A new helper, `sam-stage start <stage>` / `sam-stage done <stage>`, lets the worker append stage events to the same file as it goes. It refuses a stage that isn't in the job's planned list.
 16d. Each event line carries a timestamp, so the view can show when each stage started and ended.
+16e. `sam-job` records where each job came from: `chat` (launched from a chat), `schedule` (launched by a systemd timer or cron) or `manual`. The view reads this field; it never patches the wording in.
 17. A job with no General or no stage events (older jobs, or anything not launched through `sam-dispatch`) still appears, under SAM, with its start, running and end states only, and is never shown with invented stages.
 
 Demo mode
 18. A demo mode switch replays the mockup's three demo jobs on a loop, with no live data.
-19. In demo mode, System Health, Daily Tasks and Money In show demo data or are hidden, and no real client name, personal note, chat text, file path or cost from the live system appears anywhere on screen.
+19. In demo mode, System Health, Daily Tasks and Money In show demo data or are hidden, the clock ring and Schedule panel show the mockup's made-up schedule (several real timer names carry client names), and no real client name, personal note, chat text, file path or cost from the live system appears anywhere on screen.
 20. Demo mode is clearly marked on screen, so Colin can't mistake it for the live fleet.
 
 Everything else
 21. The other existing pages (Chat, Fleet, Status, Operations, Notifications and the rest) keep working as they do today.
 22. The old Dashboard stays reachable at `/classic`, unchanged, until Colin signs off the new one; it is then deleted in a follow-up change (Colin, 2026-10-01). It is not in the nav.
+
+Scheduled jobs: the clock ring (Colin passed the mockup 2026-10-02; design source `shots/e-ring-*.png` and the README part "Scheduled jobs ring")
+23. A 24-hour clock ring around Zeus's tier, as in the mockup, with one tick per systemd user timer and per crontab entry, placed at its next run time, and a faint "now" hand.
+24. When a scheduled job runs, its tick glows and a light runs round the ring; the tick stays lit while the job runs and settles when it ends.
+25. A timer whose last run failed shows a red tick until its next successful run. Cron keeps no run record, so a cron entry shows its next run only, with last run "not recorded", never a guessed result.
+26. Clicking (or tapping) the ring opens the Schedule panel: each job's name, its schedule in plain words, last run, last result and next run, sorted by next run. It opens where the General detail opens (the drawer's Schedule tab on a small laptop, the bottom sheet on the phone). Esc or Back closes it.
+27. A scheduled job that launches a fleet job shows on the ring as the trigger only; the fleet job appears on the floor like any other, marked as coming from the schedule (Must 16e).
+28. Ring changes show within 5 seconds, like the floor (Must 13).
 
 ## 3. Won't do
 
@@ -113,6 +122,11 @@ Everything else
 24. (Must 3d) With the theme set to Plasma, then Ember, the Dashboard passes the purple/violet pixel check (check 14) and shows the same emerald as with the default theme; another page (for example Status) does change theme.
 25. (Must 22) After deploy, `/classic` loads the old Dashboard with its four widgets and no console errors, and no nav item links to it.
 26. (Must 3a, 3e) On the Dashboard, the widget shows the most recent chat's history; a message sent from it appears in that chat on the Chat page; picking another chat switches the widget; a "Hey Sam" with the Dashboard on screen lands in the widget's chat (checked on the A16).
+27. (Must 23, 24, 25, 28) Against a test fixture of timers and cron entries: the tick count equals timers plus cron entries; a test timer fired by hand lights its tick within 5 s; a test timer whose service exits non-zero turns red and back to green after a good run; a cron entry shows "not recorded".
+28. (Must 26) A real click on the ring at 1920x1080 and 1280x650, and a tap at 412x915, opens the Schedule panel listing every job in next-run order; Esc and Back close it.
+29. (Must 27, 16e) A test timer that runs `sam-dispatch` fires its tick, and the job appears on the floor under its General with origin `schedule`; the ring draws no worker for it.
+30. (Must 19) The demo-mode scan in check 13 covers the ring and Schedule panel: 0 real timer or cron names.
+31. (Must 23) The ring keeps the mockup's fit and frame-rate results: no recorded 1920 box moves more than 2 px, and fps at 1440x900 and 1280x650 stays within 5 of the floor without the ring.
 
 ## 6. Open questions
 
@@ -125,4 +139,4 @@ Everything else
 3c. ANSWERED 2026-10-01 (Colin: "y"): old Dashboard kept at `/classic` until sign-off, then deleted (Must 22).
 4. ANSWERED 2026-10-01 (Colin): a real chat widget (Must 3a), on the most recent chat with a picker, "Hey Sam" goes to it (Must 3e).
 5. ANSWERED 2026-10-01 (Colin): one worker figure per running job (Must 7).
-6. OPEN: Scheduled jobs (Colin, 2026-10-01). A 24-hour clock ring around Zeus's tier, one tick per systemd timer or cron entry, glowing and pulsing when it fires, red after a failed run, opening a Schedule panel; demo mode uses made-up names. Colin approved the design for a mockup first: `job_sam-ui-schedule-ring_20261001-223621` adds it to mockup E. It joins the Must-do list only after Colin's laptop and phone look. Reading timers and cron for real is new data for SAM_ui.
+6. ANSWERED 2026-10-02 (Colin looked at the ring mockup on his devices: "its good"). Now Must 16e and 23 to 28, checks 27 to 31. SAM's proof check of the mockup job: own re-run of `node src/audit.js e` PASS (ring checks failed 12 times on the pre-ring build), A to D checksums unchanged, shots viewed. Known limits carried from the mockup README: the ring is small and frequent jobs merge near the hand; it has no numerals; weekly jobs are not set apart on the dial.
