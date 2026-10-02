@@ -13,7 +13,7 @@
 #     because the process name carries no port.
 #
 # Usage:
-#   ./deploy.sh           build, restart, wait for health (exit non-zero on failure)
+#   ./deploy.sh           test, build, restart, wait for health (exit non-zero on failure)
 #   ./deploy.sh --force   on health failure, kill whatever holds :3000 by port
 #                         (systemd Restart=always brings the service back), retry
 #
@@ -69,6 +69,15 @@ wait_healthy() {
   done
   return 1
 }
+
+# The full suite runs BEFORE the build, on purpose, and a failure aborts the
+# deploy (set -e above). Ten of these tests are box-only: they spawn the real
+# scripts under ~/.local/bin and ~/.sam and drive systemd-run --user units,
+# so CI cannot run them honestly and reports them skipped. That makes this
+# the gate for them. Added 2026-10-02, after CI had sat red for a day on
+# those ten and nothing else ran them at all.
+echo "==> test"
+npm test
 
 echo "==> build"
 npm run build

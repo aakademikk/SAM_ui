@@ -67,6 +67,24 @@ function buildTranscript(chatId: string, firstMessage: string): void {
   assert.equal(made.status, 0, made.stderr);
 }
 
+/** Polls `logPath` until it holds `count` fake-CLI log lines, or throws.
+ *  The fake CLI appends its line at start, BEFORE its delay, so a line is
+ *  proof that call has already begun — the deterministic signal the ordering
+ *  test below needs, in place of a sleep that merely guessed at it. */
+async function waitForLogLines(logPath: string, count: number, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const lines = fs.existsSync(logPath)
+      ? fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean).length
+      : 0;
+    if (lines >= count) return;
+    if (Date.now() > deadline) {
+      throw new Error(`fake CLI log never reached ${count} line(s) (has ${lines})`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 /* ========================================================================== */
 /* fallbackTitle                                                             */
 /* ========================================================================== */
@@ -207,10 +225,15 @@ test('finding 10: a live (default) queueTitle call jumps ahead of an already-que
   process.env.FAKE_CLAUDE_LOG = logPath;
   process.env.FAKE_TITLE = 'Shared Title';
   delete process.env.FAKE_TITLE_FAIL;
-  // Each title call sleeps a bit, so the live call queued after them has
-  // something to actually jump ahead of, rather than the whole backlog
-  // having already finished before it is even queued.
-  process.env.FAKE_CLAUDE_DELAY_MS = '150';
+  // Each title call sleeps, so the live call queued while bg1 is still
+  // running has something to jump ahead of. Deliberately long (1 s): the
+  // test now waits for bg1 to actually start (below), so the only way this
+  // window can be missed is a >1 s stall of the event loop between noticing
+  // that start and queueing the live call. It replaces a fixed 60 ms sleep —
+  // on a loaded 2-core CI runner that sleep could overshoot the whole
+  // backlog and leave the live call queued dead last, which is the failure
+  // that made CI red from 2026-10-01.
+  process.env.FAKE_CLAUDE_DELAY_MS = '1000';
 
   try {
     const pending = [
@@ -218,10 +241,11 @@ test('finding 10: a live (default) queueTitle call jumps ahead of an already-que
       titles.queueTitle(ids.bg2, { background: true }),
       titles.queueTitle(ids.bg3, { background: true }),
     ];
-    // Give bg1 time to actually start (it is already dequeued and spawned)
-    // before the live call is queued — otherwise there is nothing yet for
-    // the live call to jump ahead of.
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    // Deterministic, not timed: wait until bg1 is provably running. One log
+    // line means bg1 has been dequeued and spawned, so bg2/bg3 are still
+    // queued behind it and the live call queued now must run immediately
+    // after bg1 — 2nd at worst, never 4th.
+    await waitForLogLines(logPath, 1);
     const live = titles.queueTitle(ids.live);
 
     await Promise.all([...pending, live]);

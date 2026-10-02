@@ -28,9 +28,19 @@ import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
 
+import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
+
 const STAGED = '/home/col/.sam/sam-push/send.next.mjs';
 const LIVE = '/home/col/.local/bin/sam-push';
 const SCRIPT = fs.existsSync(STAGED) ? STAGED : LIVE;
+
+/* false on the box (SCRIPT resolves to a real file); a reason string on a
+ * GitHub-hosted runner, where neither path exists and every test below would
+ * fail on a missing binary rather than on the code under test. See
+ * boxOnly.ts. When the staged copy is deleted ON THE BOX this still does not
+ * skip — SCRIPT falls back to the live symlink — so the final test's
+ * "send.next.mjs must exist" assertion keeps failing loudly, as intended. */
+const SKIP = boxOnlySkip('the real sam-push (staged send.next.mjs, else the live symlink)', [SCRIPT]);
 
 /* A temp HOME with no ~/.sam/push-vapid.json: send.mjs's VAPID load always
  * fails under it, so every call below exits 2. That is exactly the exit
@@ -80,7 +90,7 @@ function runPush(args: string[], extraEnv: { SAM_CHAT_ID?: string } = {}) {
   return spawnSync(SCRIPT, args, { env, encoding: 'utf8', timeout: 10_000 });
 }
 
-test('a ping with SAM_CHAT_ID and no --url logs a /chat?c=<uuid> link', () => {
+test('a ping with SAM_CHAT_ID and no --url logs a /chat?c=<uuid> link', { skip: SKIP }, () => {
   const linesBefore = readLog().length;
   const chatId = '11111111-2222-3333-4444-555555555555';
   const r = runPush(['--title', 'SAM replied', '--body', 'hello', '--tag', 'chat-' + chatId], {
@@ -97,7 +107,7 @@ test('a ping with SAM_CHAT_ID and no --url logs a /chat?c=<uuid> link', () => {
   assert.equal(entry.title, 'SAM replied');
 });
 
-test('a ping with no chat and no --url logs a /notifications?n=<its own id> link', () => {
+test('a ping with no chat and no --url logs a /notifications?n=<its own id> link', { skip: SKIP }, () => {
   const linesBefore = readLog().length;
   const r = runPush(['--title', 'Delegation check', '--body', 'fleet idle', '--tag', 'fleet']);
   assert.equal(r.status, NO_VAPID_EXIT_CODE, r.stderr);
@@ -109,7 +119,7 @@ test('a ping with no chat and no --url logs a /notifications?n=<its own id> link
   assert.equal(entry.url, '/notifications?n=' + entry.id);
 });
 
-test('an explicit --url wins even when SAM_CHAT_ID is set', () => {
+test('an explicit --url wins even when SAM_CHAT_ID is set', { skip: SKIP }, () => {
   const linesBefore = readLog().length;
   const chatId = '99999999-8888-7777-6666-555555555555';
   const r = runPush(['--title', 'Job done', '--body', 'see output', '--url', '/jobs/x'], {
@@ -125,7 +135,7 @@ test('an explicit --url wins even when SAM_CHAT_ID is set', () => {
   assert.equal(entry.chatId, chatId);
 });
 
-test('a --job id with no chat is recorded and still gets a Notifications link', () => {
+test('a --job id with no chat is recorded and still gets a Notifications link', { skip: SKIP }, () => {
   const linesBefore = readLog().length;
   const r = runPush(['--title', 'Job pinged', '--body', 'output ready', '--job', 'job-42']);
   assert.equal(r.status, NO_VAPID_EXIT_CODE, r.stderr);
@@ -138,7 +148,7 @@ test('a --job id with no chat is recorded and still gets a Notifications link', 
   assert.equal(entry.url, '/notifications?n=' + entry.id);
 });
 
-test('a non-UUID SAM_CHAT_ID is ignored: no chat link', () => {
+test('a non-UUID SAM_CHAT_ID is ignored: no chat link', { skip: SKIP }, () => {
   const linesBefore = readLog().length;
   const r = runPush(['--title', 'Bad chat id', '--body', 'x'], { SAM_CHAT_ID: 'not-a-uuid' });
   assert.equal(r.status, NO_VAPID_EXIT_CODE, r.stderr);
@@ -150,14 +160,14 @@ test('a non-UUID SAM_CHAT_ID is ignored: no chat link', () => {
   assert.equal(entry.url, '/notifications?n=' + entry.id);
 });
 
-test('one line is logged per call: five calls so far logged exactly five lines', () => {
+test('one line is logged per call: five calls so far logged exactly five lines', { skip: SKIP }, () => {
   // The preceding five tests each asserted their own call added exactly one
   // line; this checks the running total lines up with every call made in
   // this file, i.e. no call ever logs zero or more than one line.
   assert.equal(readLog().length, 5);
 });
 
-test('the staged send.next.mjs creates push-log.jsonl mode 0600, not the default umask (code review, 2026-10-01)', () => {
+test('the staged send.next.mjs creates push-log.jsonl mode 0600, not the default umask (code review, 2026-10-01)', { skip: SKIP }, () => {
   // This fix only exists in the staged copy (the live send.mjs must never be
   // edited directly), so unlike every other test in this file, this one does
   // NOT fall back to the live script — if the staged copy is ever removed,

@@ -9,7 +9,14 @@
  *
  * This runs the STAGED copies (`sam-dispatch.next`, `sam-job.next`,
  * `run.next.sh`, `send.next.mjs`) when they exist, else the live files, so it
- * still holds once T21 installs them. It never touches live state:
+ * still holds once T21 installs them.
+ *
+ * BOX-ONLY: all four of those live under `/home/col`, so on a GitHub-hosted
+ * runner there is nothing to run and the test reports SKIPPED with its reason
+ * (see boxOnly.ts). It runs in full on the box, where ./deploy.sh gates on
+ * the suite.
+ *
+ * It never touches live state:
  *   - `SAM_JOB_STORE` is a temp dir, so the job's files never land in
  *     `~/.sam/jobs`;
  *   - `SAM_PUSH_SUBS` is a temp file holding `[]` and `SAM_PUSH_LOG` a temp
@@ -31,6 +38,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
+import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
+
 function stagedOrLive(staged: string, live: string): string {
   return fs.existsSync(staged) ? staged : live;
 }
@@ -42,6 +51,16 @@ const DISPATCH_BIN = stagedOrLive(
 const JOB_BIN = stagedOrLive('/home/col/.local/bin/sam-job.next', '/home/col/.local/bin/sam-job');
 const RUN_SH = stagedOrLive('/home/col/.sam/sam-job/run.next.sh', '/home/col/.sam/sam-job/run.sh');
 const PUSH_BIN = stagedOrLive('/home/col/.sam/sam-push/send.next.mjs', '/home/col/.local/bin/sam-push');
+
+/* false on the box; a reason string on a hosted runner, where none of the
+ * four resolved paths exist and the spawn at the top of the test would fail
+ * with `status: null` rather than reaching any assertion. See boxOnly.ts. */
+const SKIP = boxOnlySkip('the real sam-dispatch, sam-job, run.sh and sam-push', [
+  DISPATCH_BIN,
+  JOB_BIN,
+  RUN_SH,
+  PUSH_BIN,
+]);
 
 const TIMEOUT_MS = 180_000;
 const CHAT_ID = '3f2a9c1e-7b4d-4e8a-9c6f-0d1e2f3a4b5c';
@@ -65,7 +84,7 @@ function sleep(ms: number): Promise<void> {
 
 test(
   'a job dispatched from chat X ends with a ping linked to /chat?c=X',
-  { timeout: TIMEOUT_MS + 20_000 },
+  { skip: SKIP, timeout: TIMEOUT_MS + 20_000 },
   async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-ping-'));
     const store = path.join(tmp, 'jobs');

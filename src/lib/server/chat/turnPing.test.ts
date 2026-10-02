@@ -5,8 +5,13 @@
  * (`systemd-run --user --scope`) against the fake CLI from T1, the same
  * setup `startTurn.test.ts` uses — the ping needs a real job's stream-json
  * output to read the answer back out of (`readFrames` + a fresh
- * `AgentStreamParser`), not a hand-written transcript. If `systemd-run
- * --user` is unavailable this file fails loudly — it never skips.
+ * `AgentStreamParser`), not a hand-written transcript.
+ *
+ * BOX-ONLY: this needs both the real `sam-push` and `systemd-run --user`, so
+ * on a GitHub-hosted runner it reports SKIPPED with its reason rather than
+ * failing on a missing binary (see boxOnly.ts). On the box it runs in full,
+ * and there a broken `systemd-run --user` still fails the file loudly rather
+ * than skipping — that is a real fault on the machine that has it.
  *
  * `sam-push` itself is exercised the same way T9's `samPush.test.ts` does:
  * the STAGED copy (`send.next.mjs`) if it exists, else the LIVE symlink,
@@ -26,6 +31,7 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 
 import { writeFakeClaude } from '@/lib/server/testing/fakeClaude';
+import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
 
 type StartTurnModule = typeof import('./startTurn.js');
 type SessionLockModule = typeof import('./sessionLock.js');
@@ -36,6 +42,12 @@ type TurnExitEvent = import('./startTurn.js').TurnExitEvent;
 const STAGED_PUSH = '/home/col/.sam/sam-push/send.next.mjs';
 const LIVE_PUSH = '/home/col/.local/bin/sam-push';
 const PUSH_BIN = fs.existsSync(STAGED_PUSH) ? STAGED_PUSH : LIVE_PUSH;
+
+/* false on the box; a reason string on a hosted runner. Every test below
+ * needs the real sam-push, so the whole file skips together — including
+ * `before`, which would otherwise throw on `systemd-run --user` before any
+ * test could report itself skipped. See boxOnly.ts. */
+const SKIP = boxOnlySkip('the real sam-push (staged send.next.mjs, else the live symlink)', [PUSH_BIN]);
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'turn-ping-'));
 const home = path.join(tmp, 'home');
@@ -111,7 +123,14 @@ async function waitForPushLog(count: number, timeoutMs = 10_000): Promise<Logged
 }
 
 before(async () => {
-  // Fail loudly, never skip: the whole point is the real spawn path.
+  // Hosted runner: no sam-push, so nothing here can run. Return before the
+  // probe — otherwise this hook throws and the file fails instead of
+  // reporting its two tests skipped.
+  if (SKIP) return;
+
+  // On the box, fail loudly rather than skip: the whole point is the real
+  // spawn path, and a broken systemd-run --user is a genuine fault in the
+  // machine that is supposed to have it.
   const probe = spawnSync('systemd-run', ['--user', '--scope', '--quiet', '--collect', 'true'], {
     encoding: 'utf8',
   });
@@ -158,7 +177,7 @@ after(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-test('check 5a: the off-screen chat gets one ping; the on-screen chat gets none', async () => {
+test('check 5a: the off-screen chat gets one ping; the on-screen chat gets none', { skip: SKIP }, async () => {
   const [a, b] = await Promise.all([
     st.startTurn({ message: 'hello from chat A', tier: 'max', device: 'pc' }),
     st.startTurn({ message: 'hello from chat B', tier: 'max', device: 'phone' }),
@@ -190,7 +209,7 @@ test('check 5a: the off-screen chat gets one ping; the on-screen chat gets none'
   assert.match(entry.body, /echo: hello from chat B/);
 });
 
-test('an internal turn never pings, even off screen', async () => {
+test('an internal turn never pings, even off screen', { skip: SKIP }, async () => {
   const before = readPushLog().length;
   const r = await st.startTurn({
     message: 'handoff memo turn',
