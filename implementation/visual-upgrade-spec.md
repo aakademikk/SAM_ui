@@ -128,6 +128,8 @@ Scheduled jobs: the clock ring (Colin passed the mockup 2026-10-02, then the pol
 30. (Must 19) The demo-mode scan in check 13 covers the ring and Schedule panel: 0 real timer or cron names.
 31. (Must 23) The ring keeps the polished mockup's results: ring width and mark spacing (at least 8 px apart at 1920, 6 px at laptop and phone sizes), numerals at least 11 px at laptop sizes and 1920 without overlaps, weekly ticks in the diamond shape, ticks over 24 h away dimmer, no ring pixel inside the SAM label box; no recorded 1920 box moves more than 2 px apart from the SAM label and fleet key; fps at 1440x900 and 1280x650 within 5 of the floor without the ring.
 
+32. (Must 3c) On the new Dashboard at 1920x1080, 1280x650 and 412x915, the top bar shows the health score chip, sync badge, UTC clock and settings gear, and the gear opens. (Added 2026-10-02 after the lock: Must 3c had no check; no decision changed.)
+
 ## 6. Open questions
 
 1. ANSWERED 2026-10-01 (Colin): phone gets E's full phone layout. Now Must 6a to 6d.
