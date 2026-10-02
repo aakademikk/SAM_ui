@@ -1,8 +1,8 @@
 # SAM_ui: visual upgrade (the fleet view)
 
-Status: DRAFT 2026-10-01, not locked
+Status: LOCKED 2026-10-02
 Grilled: 2026-09-30, recorded in vault note `02 - Atwood Systems/00_SAM_Control/SAM_ui Visual Upgrade.md` (table "Grill, 2026-09-30").
-Design source: the approved mockup, hybrid E, `/home/col/Atwood_demos/sam-ui-concepts/e-hybrid/` (README section "E: Hybrid").
+Design source: the approved mockup, hybrid E with the polished clock ring, `/home/col/Atwood_demos/sam-ui-concepts/e-hybrid/` (README section "E: Hybrid").
 
 ## 1. Goal
 
@@ -60,8 +60,8 @@ Everything else
 21. The other existing pages (Chat, Fleet, Status, Operations, Notifications and the rest) keep working as they do today.
 22. The old Dashboard stays reachable at `/classic`, unchanged, until Colin signs off the new one; it is then deleted in a follow-up change (Colin, 2026-10-01). It is not in the nav.
 
-Scheduled jobs: the clock ring (Colin passed the mockup 2026-10-02; design source `shots/e-ring-*.png` and the README part "Scheduled jobs ring")
-23. A 24-hour clock ring around Zeus's tier, as in the mockup, with one tick per systemd user timer and per crontab entry, placed at its next run time, and a faint "now" hand.
+Scheduled jobs: the clock ring (Colin passed the mockup 2026-10-02, then the polished version; design source `shots/e-ring2-*.png` and the README part "Scheduled jobs ring")
+23. A 24-hour clock ring around Zeus's tier, as in the polished mockup (2026-10-02, `shots/e-ring2-*.png`), with a faint "now" hand. Jobs that run every few hours, daily, on weekdays or weekly get one tick each on the outer dial at their next run time; jobs that run hourly or more often sit as beads on a separate inner track, so busy hours never merge into one patch. Weekly and weekday-only jobs are drawn as diamonds, and any tick whose next run is more than 24 h away is dimmed. The dial carries 00, 06, 12 and 18, and the fleet key has a ring entry. Nothing of the ring sits under the SAM label.
 24. When a scheduled job runs, its tick glows and a light runs round the ring; the tick stays lit while the job runs and settles when it ends.
 25. A timer whose last run failed shows a red tick until its next successful run. Cron keeps no run record, so a cron entry shows its next run only, with last run "not recorded", never a guessed result.
 26. Clicking (or tapping) the ring opens the Schedule panel: each job's name, its schedule in plain words, last run, last result and next run, sorted by next run. It opens where the General detail opens (the drawer's Schedule tab on a small laptop, the bottom sheet on the phone). Esc or Back closes it.
@@ -126,7 +126,7 @@ Scheduled jobs: the clock ring (Colin passed the mockup 2026-10-02; design sourc
 28. (Must 26) A real click on the ring at 1920x1080 and 1280x650, and a tap at 412x915, opens the Schedule panel listing every job in next-run order; Esc and Back close it.
 29. (Must 27, 16e) A test timer that runs `sam-dispatch` fires its tick, and the job appears on the floor under its General with origin `schedule`; the ring draws no worker for it.
 30. (Must 19) The demo-mode scan in check 13 covers the ring and Schedule panel: 0 real timer or cron names.
-31. (Must 23) The ring keeps the mockup's fit and frame-rate results: no recorded 1920 box moves more than 2 px, and fps at 1440x900 and 1280x650 stays within 5 of the floor without the ring.
+31. (Must 23) The ring keeps the polished mockup's results: ring width and mark spacing (at least 8 px apart at 1920, 6 px at laptop and phone sizes), numerals at least 11 px at laptop sizes and 1920 without overlaps, weekly ticks in the diamond shape, ticks over 24 h away dimmer, no ring pixel inside the SAM label box; no recorded 1920 box moves more than 2 px apart from the SAM label and fleet key; fps at 1440x900 and 1280x650 within 5 of the floor without the ring.
 
 ## 6. Open questions
 
