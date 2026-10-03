@@ -19,13 +19,20 @@ const MIN_TAIL_CHARS = 24;
 /**
  * The spoken welcome line, pre-rendered.
  *
- * Rendered offline from the same voice-line Edge service that `/api/chat/tts`
- * uses as its primary, so it is the identical voice to the rest of chat — but
- * it costs no synthesis round trip and cannot arrive in the Kokoro fallback
- * voice partway through. Regenerate it from that service if the line or SAM's
- * voice ever changes.
+ * The line is "Sam Online, what you sayin G?" — no comma before the G, so it
+ * lands in one breath rather than pausing on the way into it, and no full stop
+ * after "Online", which was a longer gap still. Rendered offline from the same
+ * voice-line Edge service that `/api/chat/tts` uses as its primary and at that
+ * service's default rate, so it is the identical voice and pace as the rest of
+ * chat — but it costs no synthesis round trip and cannot arrive in the Kokoro
+ * fallback voice partway through. Regenerate it from that service if the line
+ * or SAM's voice ever changes.
+ *
+ * The filename is versioned because the service worker caches static assets
+ * CacheFirst: replacing the bytes at an unchanged URL leaves any device that
+ * has already fetched it serving the old clip indefinitely.
  */
-const GREETING_URL = '/greeting/sam-greeting.mp3';
+const GREETING_URL = '/greeting/sam-greeting-v2.mp3';
 
 /* ========================================================================== */
 /* Autoplay unlocking                                                          */

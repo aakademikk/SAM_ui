@@ -402,7 +402,7 @@ Depends on: T13 and T14 (both already edit `chat/page.tsx`)
 Blocked by: nothing
 Model: sonnet
 Context: The welcome line ("Sam Online. What you saying G") exists today only as SAM's first reply, so a new chat sits silent until Colin sends something. He asked for it to arrive with the new chat instead.
-The voice half is ALREADY BUILT on main (2026-10-02) and is not this ticket: `src/lib/speech.ts` exports `playGreeting()`, which plays `public/greeting/sam-greeting.mp3` — pre-rendered in Abeo from the voice-line service, the same voice `/api/chat/tts` uses as its primary — and `newConversation()` in `chat/page.tsx` calls it when not muted. Read that as existing behaviour, keep it, and do not rebuild it.
+The voice half is ALREADY BUILT on main (2026-10-02) and is not this ticket: `src/lib/speech.ts` exports `playGreeting()`, which plays `public/greeting/sam-greeting-v2.mp3` — pre-rendered in Abeo from the voice-line service, the same voice `/api/chat/tts` uses as its primary — and `newConversation()` in `chat/page.tsx` calls it when not muted. Read that as existing behaviour, keep it, and do not rebuild it.
 This ticket is the on-screen half only: the line should also be visible, so it still lands when the voice is muted or a browser blocks playback.
 Files: src/app/(app)/chat/page.tsx (edit: the draft empty-state block only, `messages.length === 0`, today `SAM` / `IS EVERYWHERE`)
 Steps:

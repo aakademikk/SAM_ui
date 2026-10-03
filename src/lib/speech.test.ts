@@ -22,7 +22,7 @@ import path from 'node:path';
 
 import { playGreeting, stopAllSpeech } from '@/lib/speech';
 
-const GREETING_PATH = '/greeting/sam-greeting.mp3';
+const GREETING_PATH = '/greeting/sam-greeting-v2.mp3';
 
 /** Records what speech.ts actually asked the element to do. */
 class FakeAudio {
