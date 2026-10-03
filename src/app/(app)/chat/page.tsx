@@ -44,7 +44,7 @@ import {
   type TierId,
   type TierInfo,
 } from '@/types/chat';
-import { speakChunked, primeSpeech, isSpeechBlocked, stopAllSpeech, type SpeechHandle } from '@/lib/speech';
+import { speakChunked, primeSpeech, isSpeechBlocked, stopAllSpeech, playGreeting, type SpeechHandle } from '@/lib/speech';
 import { setSamActivity, clearSamActivity } from '@/lib/samActivity';
 import { useWakeWord, type WakeSource } from '@/lib/useWakeWord';
 import { tryOsIntent } from '@/lib/osIntentRunner';
@@ -1637,6 +1637,13 @@ function ChatPageInner() {
     setHandoffWaitingFor(null);
     setHandoffBusy(false);
     setHandoffCallError(null);
+
+    // Say the welcome line the moment a new chat opens, rather than waiting for
+    // the first send (2026-10-02). The New tap that got here is itself the user
+    // gesture browsers demand before audio may play, so unlike an answer
+    // arriving seconds later this needs no priming. Muted means muted: the
+    // on-screen line in the empty state carries it instead of the voice.
+    if (!muted) playGreeting();
   };
 
   /* ── Handoff: move this chat to a new one on another tier (9b) ────────── */

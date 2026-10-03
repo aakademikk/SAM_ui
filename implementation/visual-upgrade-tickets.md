@@ -402,12 +402,29 @@ Steps:
 Do not touch: anything not on this list without a fresh go from Colin.
 Proof: every check above passes and is recorded in the ticket result; Colin confirms checks 17, 21 and 26 by name.
 
+## T25: The welcome line on a new chat (added after the spec locked — Colin's direction, 2026-10-02)
+Status: TODO
+Spec: none — this is not a spec check and amends no must-do or check above. Added 2026-10-02 on Colin's direction, after the spec was locked, and it is deliberately placed after T24 so it disturbs none of the locked sequence. The running /implement pass (T1–T22) will not pick it up; it is for this branch's next pass.
+Depends on: T13 and T14 (both already edit `chat/page.tsx`)
+Blocked by: nothing
+Model: sonnet
+Context: The welcome line ("Sam Online. What you saying G") exists today only as SAM's first reply, so a new chat sits silent until Colin sends something. He asked for it to arrive with the new chat instead.
+The voice half is ALREADY BUILT on main (2026-10-02) and is not this ticket: `src/lib/speech.ts` exports `playGreeting()`, which plays `public/greeting/sam-greeting-v2.mp3` — pre-rendered in Abeo from the voice-line service, the same voice `/api/chat/tts` uses as its primary — and `newConversation()` in `chat/page.tsx` calls it when not muted. Read that as existing behaviour, keep it, and do not rebuild it.
+This ticket is the on-screen half only: the line should also be visible, so it still lands when the voice is muted or a browser blocks playback.
+Files: src/app/(app)/chat/page.tsx (edit: the draft empty-state block only, `messages.length === 0`, today `SAM` / `IS EVERYWHERE`)
+Steps:
+1. Replace the `IS EVERYWHERE` placeholder with the welcome line, in the locked visual language and fitting T13's phone layout at 390.
+2. On rebase over main, keep `playGreeting()` and its call in `newConversation()` untouched.
+Do not touch: `speech.ts`, the greeting call in `newConversation()`, any file outside the empty-state block.
+Proof: `npm run typecheck` / `npm run lint` / `npm test` / `next build` all exit 0; the draft empty state reads the line at 1920 and 390 with no overflow; the line is visible with the voice muted (check it by eye, not by assertion alone).
+
 ---
 
 ## Order
 
 T1 → T2 → T3 → T4 → T5 → T6 → T16 → T7 → T8 → T9 → T10 → T11 → T12 → T13 → T14 → T15 → T17 → T18 → T19 → T20 → T21 → T22 → T23 → T24.
 T2, T3, T4, T6 and T16 depend on nothing earlier and can move anywhere before the tickets that need them. Every ticket leaves the app building and working; the live `/` route and the live system tools don't change until T22/T23.
+T25 is a post-lock addition (2026-10-02) and runs after T24; it changes nothing above it.
 
 ## Coverage
 

@@ -16,6 +16,24 @@ const MAX_CHUNK_CHARS = 220;
 /** Below this, a trailing fragment is merged backwards rather than spoken alone. */
 const MIN_TAIL_CHARS = 24;
 
+/**
+ * The spoken welcome line, pre-rendered.
+ *
+ * The line is "Sam Online, what you sayin G?" — no comma before the G, so it
+ * lands in one breath rather than pausing on the way into it, and no full stop
+ * after "Online", which was a longer gap still. Rendered offline from the same
+ * voice-line Edge service that `/api/chat/tts` uses as its primary and at that
+ * service's default rate, so it is the identical voice and pace as the rest of
+ * chat — but it costs no synthesis round trip and cannot arrive in the Kokoro
+ * fallback voice partway through. Regenerate it from that service if the line
+ * or SAM's voice ever changes.
+ *
+ * The filename is versioned because the service worker caches static assets
+ * CacheFirst: replacing the bytes at an unchanged URL leaves any device that
+ * has already fetched it serving the old clip indefinitely.
+ */
+const GREETING_URL = '/greeting/sam-greeting-v2.mp3';
+
 /* ========================================================================== */
 /* Autoplay unlocking                                                          */
 /* ========================================================================== */
@@ -199,6 +217,73 @@ const liveStops = new Set<() => void>();
 export function stopAllSpeech(): void {
   for (const stop of [...liveStops]) stop();
   liveStops.clear();
+}
+
+/**
+ * Say the welcome line, played from the pre-rendered file rather than
+ * synthesised.
+ *
+ * Fired by the New chat tap, which is itself the user gesture browsers demand
+ * before `play()` is allowed, so unlike an answer arriving seconds later this
+ * needs no priming. Playback goes through the same shared element as speech,
+ * and registers in `liveStops`, so the mute button and the switch-away stop
+ * both silence it exactly as they silence an answer.
+ *
+ * `done` resolves when playback ends, is stopped, or fails — never rejects.
+ */
+export function playGreeting(): SpeechHandle {
+  const audio = getAudio();
+  let stopped = false;
+  let settle: () => void = () => {};
+  const done = new Promise<void>((resolve) => {
+    settle = resolve;
+  });
+
+  function cleanup() {
+    audio.removeEventListener('ended', onEnded);
+    audio.removeEventListener('error', onError);
+    liveStops.delete(stop);
+  }
+
+  function finish() {
+    if (stopped) return;
+    stopped = true;
+    cleanup();
+    settle();
+  }
+
+  function onEnded() {
+    finish();
+  }
+
+  function onError() {
+    // Surfaced rather than swallowed, the same doctrine as the rest of this
+    // file: a greeting that made no sound must not look like one never asked.
+    lastSpeechError = 'greeting: playback error';
+    finish();
+  }
+
+  function stop() {
+    if (stopped) return;
+    // pause() fires no 'ended', so the finish has to come from here.
+    audio.pause();
+    finish();
+  }
+
+  audio.addEventListener('ended', onEnded, { once: true });
+  audio.addEventListener('error', onError, { once: true });
+
+  audio.src = GREETING_URL;
+  audio.currentTime = 0;
+  liveStops.add(stop);
+
+  void audio.play().catch(() => {
+    blockedRef.blocked = true;
+    lastSpeechError = 'greeting: playback was blocked';
+    finish();
+  });
+
+  return { done, stop };
 }
 
 /**
