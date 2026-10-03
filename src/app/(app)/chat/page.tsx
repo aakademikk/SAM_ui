@@ -23,7 +23,6 @@ import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Gem, Lock, Square, Wrench, 
 
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { HandsFreeMic } from '@/components/voice/HandsFreeMic';
-import { desktopWakeSeq } from '@/lib/desktopBridge';
 import { splitBlocks, AnswerBlocks } from '@/components/chat/MessageBlocks';
 import { WorkPanel } from '@/components/chat/WorkPanel';
 import { ChatList } from '@/components/chat/ChatList';
@@ -47,8 +46,7 @@ import {
 } from '@/types/chat';
 import { speakChunked, primeSpeech, isSpeechBlocked, stopAllSpeech, type SpeechHandle } from '@/lib/speech';
 import { setSamActivity, clearSamActivity } from '@/lib/samActivity';
-import { configureOsBridge, phoneWakeSeq } from '@/lib/osBridge';
-import { newWakeTracker, observeWakeSeq } from '@/lib/wakeSeq';
+import { useWakeWord, type WakeSource } from '@/lib/useWakeWord';
 import { tryOsIntent } from '@/lib/osIntentRunner';
 import {
   clearActiveRun,
@@ -1581,90 +1579,22 @@ function ChatPageInner() {
     return () => ro.disconnect();
   }, []);
 
-  /* ── Wake-word launch ────────────────────────────────────────────────── */
+  /* ── Wake word ───────────────────────────────────────────────────────── */
 
-  // The Android service opens this page as /chat?wake=1&os_port=8765 when it
-  // hears the wake word. The port is where the native OS bridge is listening;
-  // recording it here is what lets "open Spotify" reach the phone.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const port = params.get('os_port');
-    configureOsBridge(port ? Number(port) : null);
-
-    if (params.get('wake') === '1') {
-      // Arriving via the wake word is a user action in spirit, but not one the
-      // browser recognises, so speech stays blocked until the first real tap.
-      primeSpeech();
-      setWokenByVoice(true);
-      setHandsFree(true);
-      setHandsFreeFailed(null);
-    }
+  // The three wake mechanisms (the Android `?wake=1&os_port=` launch, the
+  // desktop bridge's wake counter, the phone bridge's counter while this page
+  // is visible) live in useWakeWord (visual upgrade T14), shared with the
+  // Dashboard's chat widget. This page is always the chat on screen while it
+  // is mounted, so it listens unconditionally. A launch is a user action in
+  // spirit, but not one the browser recognises, so speech is primed here and
+  // stays blocked until the first real tap; the polls never primed it.
+  const onWake = useCallback((source: WakeSource) => {
+    if (source === 'launch') primeSpeech();
+    setWokenByVoice(true);
+    setHandsFree(true);
+    setHandsFreeFailed(null);
   }, []);
-
-  /* ── Desktop wake word ───────────────────────────────────────────────── */
-
-  // The phone is *launched* at /chat?wake=1 when its wake word fires. On the
-  // desktop this page is already open, so there is nothing to navigate — the
-  // bridge publishes a counter instead and this watches it change. Polling
-  // rather than a socket because the voice service's WebSocket accepts a
-  // single connection, which the voice widget already holds.
-  useEffect(() => {
-    if (/android|iphone|ipad|ipod/i.test(navigator.userAgent)) return;
-
-    let alive = true;
-    const tracker = newWakeTracker();
-
-    const tick = async () => {
-      const seq = await desktopWakeSeq();
-      if (!alive || !observeWakeSeq(tracker, seq)) return;
-      setWokenByVoice(true);
-      setHandsFree(true);
-      setHandsFreeFailed(null);
-    };
-
-    void tick();
-    const id = setInterval(tick, 2000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
-
-  /* ── Phone wake word while SAM is on screen ──────────────────────────── */
-
-  // Relaunching the app over itself closed it (2026-10-01), so while this
-  // page is visible on the phone it polls the bridge's wake counter instead.
-  // The polls are also how the phone knows SAM is on screen (WakeGate.java);
-  // hidden, the page stops polling and says so, and the next "Hey Sam"
-  // launches the app as before.
-  useEffect(() => {
-    if (!/android/i.test(navigator.userAgent)) return;
-
-    let alive = true;
-    const tracker = newWakeTracker();
-
-    const tick = async () => {
-      if (document.visibilityState !== 'visible') return;
-      const seq = await phoneWakeSeq(true);
-      if (!alive || !observeWakeSeq(tracker, seq)) return;
-      setWokenByVoice(true);
-      setHandsFree(true);
-      setHandsFreeFailed(null);
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') void tick();
-      else void phoneWakeSeq(false);
-    };
-
-    void tick();
-    const id = setInterval(tick, 2000);
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      alive = false;
-      clearInterval(id);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, []);
+  useWakeWord(onWake, true);
 
   /** Five-tier cycle — Fast → Pro → Max → Max 2 → Gemini → Fast. The button
       shows the current tier; tapping steps to the next one. */

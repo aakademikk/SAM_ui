@@ -94,7 +94,9 @@ test(
     const logFile = path.join(tmp, 'push-log.jsonl');
     fs.mkdirSync(store, { recursive: true });
     fs.mkdirSync(cwd, { recursive: true });
-    fs.writeFileSync(brief, 'Reply with the single word OK.\n');
+    // General:/Stages: are required once the visual-upgrade sam-dispatch
+    // change is staged or live (visual-upgrade spec Must 16a).
+    fs.writeFileSync(brief, 'General: sam\nStages: Reply\n\nReply with the single word OK.\n');
     fs.writeFileSync(subsFile, '[]');
 
     const r = spawnSync(
@@ -108,6 +110,8 @@ test(
           ...process.env,
           SAM_CHAT_ID: CHAT_ID,
           SAM_JOB_STORE: store,
+          // Keeps the test's dispatch line out of the live dispatch log.
+          SAM_DISPATCH_LOG: path.join(tmp, 'dispatch.log'),
           SAM_JOB_BIN: JOB_BIN,
           SAM_JOB_RUN_SH: RUN_SH,
           SAM_PUSH_BIN: PUSH_BIN,

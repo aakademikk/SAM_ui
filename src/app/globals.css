@@ -159,6 +159,32 @@
   --sam-accent-3-rgb: 45 212 191;
 }
 
+/*
+ * T12 (Must 3d): the fleet Dashboard is always emerald, whatever the gear's
+ * theme switch is set to. `useUserPreferencesStore`'s `ambientTheme` still
+ * writes `document.documentElement.dataset.ambient` for every other page
+ * (Status etc. keep changing theme) — this block does not touch that store
+ * or the `:root[data-ambient=...]` rules above it, it only redeclares the
+ * same custom properties on the shell's own root element.
+ *
+ * No specificity fight is needed: the `:root[data-ambient='plasma']` etc.
+ * rules above apply to the <html> element only. `.fleet-dashboard` applies
+ * to `FleetDashboardShell`'s own root div, a *descendant* of <html>. A
+ * custom property's used value always comes from the nearest declaration on
+ * the element itself before falling back to an inherited one, so this block
+ * wins inside the shell regardless of the ambient rules' specificity
+ * (0,2,0) vs. this class selector's (0,1,0) — they're never competing for
+ * the same element.
+ */
+.fleet-dashboard {
+  --sam-accent: #3dff5a;
+  --sam-accent-2: #9dff70;
+  --sam-accent-3: #2dd4bf;
+  --sam-accent-rgb: 61 255 90;
+  --sam-accent-2-rgb: 157 255 112;
+  --sam-accent-3-rgb: 45 212 191;
+}
+
 @layer base {
   * {
     border-color: color-mix(in oklab, var(--color-void-400) 60%, transparent);
