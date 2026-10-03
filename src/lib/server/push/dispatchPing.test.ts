@@ -62,6 +62,15 @@ const SKIP = boxOnlySkip('the real sam-dispatch, sam-job, run.sh and sam-push', 
   PUSH_BIN,
 ]);
 
+// The dispatched job is one real Haiku call on Colin's quota, so the live
+// ping is opt-in (code-review Finding 2): run it on demand with
+// SAM_LIVE_DISPATCH_PING=1 npm test. Skipped by default so ./deploy.sh and
+// every full suite run never spend it.
+const SKIP_PING =
+  process.env.SAM_LIVE_DISPATCH_PING === '1'
+    ? false
+    : 'set SAM_LIVE_DISPATCH_PING=1 to spend one real Haiku call';
+
 const TIMEOUT_MS = 180_000;
 const CHAT_ID = '3f2a9c1e-7b4d-4e8a-9c6f-0d1e2f3a4b5c';
 
@@ -84,7 +93,7 @@ function sleep(ms: number): Promise<void> {
 
 test(
   'a job dispatched from chat X ends with a ping linked to /chat?c=X',
-  { skip: SKIP, timeout: TIMEOUT_MS + 20_000 },
+  { skip: SKIP || SKIP_PING, timeout: TIMEOUT_MS + 20_000 },
   async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-ping-'));
     const store = path.join(tmp, 'jobs');
