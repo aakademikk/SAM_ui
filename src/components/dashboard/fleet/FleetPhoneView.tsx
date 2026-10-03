@@ -5,7 +5,7 @@
  *
  * A port of mockup E's phone page (`e-phone.html` with its shared
  * `phone.css`): today's top bar (Must 3c, in place of the mockup's own
- * header), the floor hero (372 px; Zeus at the top, the five busts on the
+ * header), the floor hero (full screen, 100dvh; Zeus at the top, the five busts on the
  * General row, names and states as the mockup's small canvas text), its
  * caption chip, the KPI tiles, then the job in flight with its lifecycle
  * and stage timeline, T15's carried-over widgets (`SidebarWidgets`: System
@@ -89,8 +89,8 @@ const CSS = `
 .fp-top>header [class~="lg:inline-flex"]{display:inline-flex;letter-spacing:.04em}
 .fp-top>header [class~="sm:inline"]{display:inline;letter-spacing:0}
 .fp-top>header>div:last-child{gap:10px}
-.fp-hero{position:relative;height:372px;overflow:hidden;border-bottom:1px solid ${LINE};background:#020805}
-.fp-cap{position:absolute;left:12px;right:12px;bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;
+.fp-hero{position:relative;height:100dvh;overflow:hidden;border-bottom:1px solid ${LINE};background:#020805}
+.fp-cap{position:absolute;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:space-between;gap:8px;
   font-size:11.5px;color:#98b6a6;pointer-events:none}
 .fp-cap .c{display:flex;align-items:center;gap:7px;padding:5px 10px;border-radius:999px;background:rgba(5,19,13,.85);border:1px solid ${LINE};
   backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:78%}

@@ -49,6 +49,11 @@
  * the same swap as the mockup's `E.setFocus` override in `e-scene.js`'s
  * `EScene.schedule`.
  *
+ * A full-screen button in the hero's top-right corner (`.fd-fs-btn`) pins
+ * the fleet to the whole screen via the browser's fullscreen API: `.fd`
+ * requests fullscreen and `:fullscreen` hides every module bar the hero.
+ * Esc or the button again exits; `fullscreenchange` keeps the button in sync.
+ *
  * Colours are the mockup's emerald literals, never the theme variables
  * (Must 3d; T12 audits this).
  *
@@ -167,6 +172,25 @@ const CSS = `
   .fd-main:not([data-open])[data-tab=detail] .fd-p[data-panel=fleet]{display:flex;grid-row:3}
   .fd-tabs [data-tab=fleet]{display:none}
 }
+/* the full-screen toggle in the hero's top-right corner */
+.fd-fs-btn{position:absolute;top:10px;right:10px;z-index:5;display:flex;align-items:center;justify-content:center;width:34px;height:34px;
+  border-radius:8px;border:1px solid ${PANEL_BORDER};background:rgba(5,17,12,.72);color:#98b6a6;cursor:pointer;
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.fd-fs-btn:hover{color:#e8f7ee;background:rgba(157,255,112,.07)}
+.fd-fs-btn:focus-visible{outline:1px solid rgba(61,255,90,.34);outline-offset:2px}
+/* full-screen fleet: the browser pins .fd to the screen, so hide every module bar the hero */
+.fd:fullscreen{grid-template-rows:minmax(0,1fr);padding:0;gap:0}
+.fd:fullscreen>.fd-top,.fd:fullscreen>.fd-tiles,.fd:fullscreen .fd-tabs,.fd:fullscreen .fd-col-l,
+.fd:fullscreen .fd-col-r,.fd:fullscreen .fd-bottom{display:none}
+.fd:fullscreen .fd-main{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:0}
+.fd:fullscreen .fd-center{display:grid;grid-template-rows:minmax(0,1fr);grid-column:1;grid-row:1}
+.fd:fullscreen .fd-hero{grid-column:1;grid-row:1;border-radius:0;border:0}
+.fd:-webkit-full-screen{grid-template-rows:minmax(0,1fr);padding:0;gap:0}
+.fd:-webkit-full-screen>.fd-top,.fd:-webkit-full-screen>.fd-tiles,.fd:-webkit-full-screen .fd-tabs,
+.fd:-webkit-full-screen .fd-col-l,.fd:-webkit-full-screen .fd-col-r,.fd:-webkit-full-screen .fd-bottom{display:none}
+.fd:-webkit-full-screen .fd-main{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:0}
+.fd:-webkit-full-screen .fd-center{display:grid;grid-template-rows:minmax(0,1fr);grid-column:1;grid-row:1}
+.fd:-webkit-full-screen .fd-hero{grid-column:1;grid-row:1;border-radius:0;border:0}
 @media (prefers-reduced-motion: reduce){.fd *{transition:none!important;animation:none!important}}
 `;
 
@@ -178,6 +202,8 @@ export default function FleetDashboardShell({ demo: demoProp = false, chatSlot, 
   const demo = demoOverride ?? demoProp;
   const onToggleDemo = useCallback(() => setDemoOverride((v) => !(v ?? demoProp)), [demoProp]);
   const [floor, setFloor] = useState<FloorState | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const [panel, dispatch] = useReducer(panelReducer, INITIAL_PANEL_STATE);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const openGeneral = panel.open?.kind === 'general' ? panel.open.id : null;
@@ -189,6 +215,18 @@ export default function FleetDashboardShell({ demo: demoProp = false, chatSlot, 
   const onOpenSchedule = useCallback((e: { stopPropagation: () => void }) => {
     e.stopPropagation();
     dispatch({ type: 'openSchedule' });
+  }, []);
+
+  /* the full-screen toggle (browser fullscreen API on the `.fd` root; Esc exits natively) */
+  const onToggleFullscreen = useCallback((e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    const el = rootRef.current;
+    if (!el) return;
+    if (document.fullscreenElement === el) {
+      document.exitFullscreen().catch(() => {});
+    } else if (el.requestFullscreen) {
+      el.requestFullscreen().catch(() => {});
+    }
   }, []);
 
   /* the top bar's health chip reads the dashboard store, so keep it fed, as DashboardShell does */
@@ -214,6 +252,13 @@ export default function FleetDashboardShell({ demo: demoProp = false, chatSlot, 
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  /* keep the toggle's icon and aria in sync when the browser leaves fullscreen on its own (Esc, F11) */
+  useEffect(() => {
+    const onFsChange = () => setFullscreen(document.fullscreenElement === rootRef.current);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
   /*
@@ -242,7 +287,7 @@ export default function FleetDashboardShell({ demo: demoProp = false, chatSlot, 
   const tab: DrawerTab = panel.tab;
 
   return (
-    <div className="fd fleet-dashboard" data-layout={layout?.mode ?? undefined}>
+    <div ref={rootRef} className="fd fleet-dashboard" data-layout={layout?.mode ?? undefined}>
       <style>{CSS}</style>
 
       <div className="fd-top">
@@ -312,6 +357,17 @@ export default function FleetDashboardShell({ demo: demoProp = false, chatSlot, 
                 onClick={onOpenSchedule}
               />
             )}
+            {/* full-screen fleet: the floor fills the whole screen (Esc or the button exits) */}
+            <button
+              type="button"
+              className="fd-fs-btn"
+              aria-label={fullscreen ? 'Exit full screen' : 'Full screen fleet'}
+              aria-pressed={fullscreen}
+              title={fullscreen ? 'Exit full screen' : 'Full screen fleet'}
+              onClick={onToggleFullscreen}
+            >
+              <FullscreenIcon full={fullscreen} />
+            </button>
           </div>
           <div className="fd-bottom">
             <div className="fd-p" data-panel="events">
@@ -362,5 +418,17 @@ function ChatSlotPlaceholder() {
         Chat is on the Chat page for now.
       </p>
     </section>
+  );
+}
+
+/** The full-screen toggle's expand / collapse glyph (four corner arrows). */
+function FullscreenIcon({ full }: { full: boolean }) {
+  const d = full
+    ? 'M6 2H2v4M14 6V2h-4M10 14h4v-4M2 10h4v4'
+    : 'M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4';
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={d} />
+    </svg>
   );
 }
