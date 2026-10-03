@@ -32,6 +32,8 @@ const CURRENT_KEY = 'sam-chat-current';
 const DRAFT = 'draft';
 
 const messagesKey = (id: string) => `sam-chat-messages:${id}`;
+/** Chat ids in the order their caches were last saved, oldest first (what a full device evicts first). */
+const LRU_KEY = 'sam-chat-lru';
 const activeKey = (id: string) => `sam-chat-active:${id}`;
 const pendingKey = (id: string) => `sam-chat-pending:${id}`;
 
@@ -63,9 +65,67 @@ export function loadChatMessages(storage: Storage, id: string): ChatMessage[] {
   return [];
 }
 
-/** Caps at MAX_STORED, same as the old global list did. */
+/*
+ * A full device (Colin's laptop, 2026-10-03): every chat ever opened kept up to
+ * 40 messages here with nothing ever evicted, until one tool-heavy chat took the
+ * origin past the browser's ~5 MB and `setItem` threw QuotaExceededError on
+ * opening it. This cache is disposable: the server holds every chat's full
+ * history and `openChat` repaints it. So a save never throws. When the device
+ * is full it drops other chats' caches, least recently saved first, then keeps
+ * fewer of this chat's messages (newest kept), and at worst caches nothing.
+ */
+function tryWrite(storage: Storage, key: string, value: string): boolean {
+  try {
+    storage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readLru(storage: Storage): string[] {
+  try {
+    const v = JSON.parse(storage.getItem(LRU_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function touchLru(storage: Storage, id: string): void {
+  tryWrite(storage, LRU_KEY, JSON.stringify([...readLru(storage).filter((x) => x !== id), id].slice(-200)));
+}
+
+/** Other chats' caches in eviction order: ones the LRU never saw (oldest, pre-LRU) first, then least recent. */
+function evictionOrder(storage: Storage, keep: string): string[] {
+  const held = localChatIds(storage).filter((x) => x !== keep);
+  const lru = readLru(storage);
+  return [...held.filter((x) => !lru.includes(x)), ...lru.filter((x) => held.includes(x))];
+}
+
+/** Writes `key`, clearing other chats' message caches (oldest first) to make room. False if it still won't fit. */
+function writeWithRoom(storage: Storage, key: string, value: string, keep: string): boolean {
+  if (tryWrite(storage, key, value)) return true;
+  for (const other of evictionOrder(storage, keep)) {
+    storage.removeItem(messagesKey(other));
+    if (tryWrite(storage, key, value)) return true;
+  }
+  return false;
+}
+
+/** Caps at MAX_STORED, same as the old global list did. Never throws (see above). */
 export function saveChatMessages(storage: Storage, id: string, messages: ChatMessage[]): void {
-  storage.setItem(messagesKey(id), JSON.stringify(messages.slice(-MAX_STORED)));
+  let keep = messages.slice(-MAX_STORED);
+  let ok = writeWithRoom(storage, messagesKey(id), JSON.stringify(keep), id);
+  while (!ok && keep.length > 1) {
+    keep = keep.slice(Math.ceil(keep.length / 2)); // the newest half
+    ok = tryWrite(storage, messagesKey(id), JSON.stringify(keep));
+  }
+  if (!ok) {
+    storage.removeItem(messagesKey(id)); // a stale copy would repaint wrong history
+    return;
+  }
+  touchLru(storage, id);
 }
 
 /** The chat on screen: an id, `'draft'`, or null when never set (e.g. a
@@ -75,7 +135,7 @@ export function getCurrentChatId(storage: Storage): string | null {
 }
 
 export function setCurrentChatId(storage: Storage, id: string): void {
-  storage.setItem(CURRENT_KEY, id);
+  writeWithRoom(storage, CURRENT_KEY, id, id);
 }
 
 /**
@@ -84,7 +144,7 @@ export function setCurrentChatId(storage: Storage, id: string): void {
  * where they are, so New never wipes, deletes or overwrites anything.
  */
 export function startDraft(storage: Storage): void {
-  storage.setItem(CURRENT_KEY, DRAFT);
+  writeWithRoom(storage, CURRENT_KEY, DRAFT, DRAFT);
 }
 
 /** A turn in flight for one chat. Generic because the shape (`ActiveRun`) is
@@ -97,8 +157,9 @@ export function loadActiveRun<T>(storage: Storage, id: string): T | null {
   return null;
 }
 
+/** Never throws: a full device clears other chats' message caches to make room for this small record. */
 export function saveActiveRun<T>(storage: Storage, id: string, run: T): void {
-  storage.setItem(activeKey(id), JSON.stringify(run));
+  writeWithRoom(storage, activeKey(id), JSON.stringify(run), id);
 }
 
 export function clearActiveRun(storage: Storage, id: string): void {
@@ -110,7 +171,7 @@ export function loadPendingMessage(storage: Storage, id: string): string | null 
 }
 
 export function savePendingMessage(storage: Storage, id: string, message: string): void {
-  storage.setItem(pendingKey(id), message);
+  writeWithRoom(storage, pendingKey(id), message, id);
 }
 
 export function clearPendingMessage(storage: Storage, id: string): void {

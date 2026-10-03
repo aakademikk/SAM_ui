@@ -28,6 +28,8 @@ import {
   localChatIds,
   migrateLegacy,
   resetConversation,
+  saveChatMessages,
+  setCurrentChatId,
 } from './chatLocal.js';
 
 /** Node has no localStorage — a plain in-memory Storage stub stands in. */
@@ -120,4 +122,59 @@ test('a reload after New must not re-migrate: migrateLegacy is a no-op once the 
   // screen back onto chat A.
   assert.equal(migrateLegacy(storage), null);
   assert.equal(getCurrentChatId(storage), 'draft');
+});
+
+/* ---------- a full device: the cache must never throw (Colin's laptop, 2026-10-03) ---------- */
+
+/** Storage with the browser's behaviour at its quota: a write that would take it over throws QuotaExceededError. */
+class QuotaStorage extends MemoryStorage {
+  constructor(private readonly limit: number) { super(); }
+  private used(except: string): number {
+    let n = 0;
+    for (let i = 0; i < this.length; i += 1) {
+      const k = this.key(i)!;
+      if (k !== except) n += k.length + (this.getItem(k) ?? '').length;
+    }
+    return n;
+  }
+  override setItem(key: string, value: string): void {
+    if (this.used(key) + key.length + value.length > this.limit) {
+      throw new DOMException(`Setting the value of '${key}' exceeded the quota.`, 'QuotaExceededError');
+    }
+    super.setItem(key, value);
+  }
+}
+
+const bigMessages = (n: number, size: number): ChatMessage[] => Array.from({ length: n }, (_, i) => ({
+  id: `m_${i}`, role: i % 2 ? 'assistant' : 'user', blocks: [{ kind: 'text', text: 'x'.repeat(size) }], done: true,
+}));
+
+test('a full device: saving a chat evicts other chats\' caches, oldest first, instead of throwing', () => {
+  const st = new QuotaStorage(30_000);
+  saveChatMessages(st, 'old', bigMessages(4, 2_000));
+  saveChatMessages(st, 'mid', bigMessages(4, 2_000));
+  saveChatMessages(st, 'new', bigMessages(4, 2_000));
+  assert.doesNotThrow(() => saveChatMessages(st, 'current', bigMessages(4, 3_000)));
+  assert.equal(loadChatMessages(st, 'current').length, 4, 'the chat on screen is saved whole');
+  assert.equal(loadChatMessages(st, 'old').length, 0, 'the least recently saved chat went first');
+  assert.equal(loadChatMessages(st, 'new').length, 4, 'the most recent other chat is kept while there is room');
+});
+
+test('a full device: a chat too big on its own keeps its most recent messages, or nothing, and never throws', () => {
+  const st = new QuotaStorage(10_000);
+  assert.doesNotThrow(() => saveChatMessages(st, 'huge', bigMessages(10, 3_000)));
+  const kept = loadChatMessages(st, 'huge');
+  assert.ok(kept.length >= 1 && kept.length < 10, `kept ${kept.length}`);
+  assert.equal(kept[kept.length - 1].id, 'm_9', 'the newest message survives');
+  assert.doesNotThrow(() => saveChatMessages(st, 'huge', bigMessages(1, 50_000)));
+  assert.equal(loadChatMessages(st, 'huge').length, 0, 'one message bigger than the device: no cache, no throw');
+});
+
+test('a device already full when Colin opens a chat: pointing at it makes room instead of throwing', () => {
+  const st = new QuotaStorage(10_000);
+  saveChatMessages(st, 'a', bigMessages(3, 3_000));
+  for (let n = 1; ; n += 1) { try { st.setItem(`fill${n}`, 'z'.repeat(40)); } catch { break; } } // the device is now full
+  assert.doesNotThrow(() => setCurrentChatId(st, 'b'));
+  assert.equal(getCurrentChatId(st), 'b');
+  assert.equal(loadChatMessages(st, 'a').length, 0, 'the other chat\'s cache made the room');
 });
