@@ -6,11 +6,15 @@
  * (Must 13, 28), so it wraps `readScheduledJobs`'s own bounded, read-only
  * scan (four child processes at most, regardless of timer count — see
  * `schedule.ts`) in the envelope every client parser expects.
+ *
+ * `?demo=1` (Must 18, 19, T20) returns `demoScheduleAt`'s invented schedule
+ * instead — real timer and cron names never reach this path in demo mode.
  */
 
 import { envelope } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
 import { requireSession } from '@/lib/server/auth/guard';
+import { demoScheduleAt } from '@/lib/server/fleet/demoFixtures';
 import { readScheduledJobs } from '@/lib/server/fleet/schedule';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +26,10 @@ export async function GET(request: Request) {
   const startedAt = Date.now();
   const estate = getEstate();
 
-  const data = await readScheduledJobs();
+  const url = new URL(request.url);
+  const demo = url.searchParams.get('demo') === '1';
+
+  const data = demo ? demoScheduleAt(Date.now()) : await readScheduledJobs();
 
   return envelope(data, 'sam.fleet.schedule', startedAt, estate.tick);
 }

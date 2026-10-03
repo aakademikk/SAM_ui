@@ -6,6 +6,11 @@
  * ordered by wall-clock creation, newest first, regardless of what the manager
  * still holds. Cost per job comes from the shared fleet costing helper, so the
  * run list and the spend scan can never disagree.
+ *
+ * `?demo=1` (Must 19, T20b) returns `demoFleetPersonaJobs`'s invented list
+ * instead — the live job store is never read on this path, and the persona
+ * is matched against the five General ids directly rather than the live
+ * registry, so no real job name ever reaches a demo screen-share.
  */
 
 import fsp from 'node:fs/promises';
@@ -15,11 +20,25 @@ import os from 'node:os';
 import { envelope, failure } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
 import { requireSession } from '@/lib/server/auth/guard';
+import { demoFleetPersonaJobs } from '@/lib/server/fleet/demoFixtures';
 import { readFleetRegistry } from '@/lib/server/fleet/registry';
 import { costFleetJob } from '@/lib/server/fleet/jobCosts';
 
+import type { GeneralId } from '@/types/floor';
 import type { FleetPersonaJob } from '@/types/fleet';
 import type { JobStatus } from '@/types/jobs';
+
+const GENERAL_IDS: readonly GeneralId[] = [
+  'hermes',
+  'hephaestus',
+  'calliope',
+  'cerberus',
+  'prometheus',
+];
+
+function isGeneralId(value: string): value is GeneralId {
+  return (GENERAL_IDS as readonly string[]).includes(value);
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +63,17 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const personaName = url.searchParams.get('persona') ?? '';
+  const demo = url.searchParams.get('demo') === '1';
+
+  if (demo) {
+    if (!isGeneralId(personaName)) return failure(`Unknown persona '${personaName}'.`, 400);
+    return envelope(
+      { persona: personaName, jobs: demoFleetPersonaJobs(personaName, Date.now()) },
+      'sam.fleet.jobs',
+      startedAt,
+      estate.tick,
+    );
+  }
 
   // The persona must come from the live registry — never trusted from the
   // query string alone.

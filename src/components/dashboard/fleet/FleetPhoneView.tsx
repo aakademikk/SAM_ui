@@ -43,6 +43,7 @@ import { useDashboardStore } from '@/store/dashboardStore';
 import type { FloorState, FloorWorker, GeneralId, ScheduledJob } from '@/types/floor';
 
 import ActiveJobsModule, { activeJobEntries } from './ActiveJobsModule';
+import DemoModeToggle from './DemoModeToggle';
 import FleetStatusModule from './FleetStatusModule';
 import GeneralDetailSheet, { BottomSheet } from './GeneralDetailSheet';
 import JobDetailModule from './JobDetailModule';
@@ -96,8 +97,8 @@ const CSS = `
 .fp-cap .c i{width:6px;height:6px;border-radius:50%;background:#3dff5a;flex:none;box-shadow:0 0 6px #3dff5a}
 .fp-cap .c span{overflow:hidden;text-overflow:ellipsis}
 .fp-cap .hint{font-size:10.5px;color:#5f7d6e;white-space:nowrap}
-.fp-tiles{padding:12px 12px 0}
-.fp-tiles>section{gap:8px}
+.fp-tiles{display:flex;align-items:center;gap:8px;padding:12px 12px 0}
+.fp-tiles>section{gap:8px;flex:1 1 auto;min-width:0}
 .fp-tiles>section>div{border-radius:10px;padding:9px 11px}
 /* e-phone.html .tile: a 9.5 px label over a 17 px figure, no sub-line */
 .fp-tiles>section>div>span:first-child{font-size:9.5px;letter-spacing:.08em}
@@ -146,7 +147,11 @@ const CSS = `
 @media (prefers-reduced-motion: reduce){.fp *{transition:none!important;animation:none!important}}
 `;
 
-export default function FleetPhoneView({ demo = false, chatSlot, chatWake = 0, belowJobSlot }: FleetPhoneViewProps) {
+export default function FleetPhoneView({ demo: demoProp = false, chatSlot, chatWake = 0, belowJobSlot }: FleetPhoneViewProps) {
+  // The demo switch (Must 20) overrides the prop once tapped — same pattern as the desktop shell.
+  const [demoOverride, setDemoOverride] = useState<boolean | null>(null);
+  const demo = demoOverride ?? demoProp;
+  const onToggleDemo = useCallback(() => setDemoOverride((v) => !(v ?? demoProp)), [demoProp]);
   const [floor, setFloor] = useState<FloorState | null>(null);
   const [sheet, dispatch] = useReducer(phoneSheetReducer, null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -245,6 +250,7 @@ export default function FleetPhoneView({ demo = false, chatSlot, chatWake = 0, b
 
       <div className="fp-tiles">
         <KpiTiles state={floor} demo={demo} />
+        <DemoModeToggle demo={demo} onToggle={onToggleDemo} />
       </div>
 
       <div className="fp-stack">

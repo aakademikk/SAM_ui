@@ -65,6 +65,7 @@ import { useDashboardStore } from '@/store/dashboardStore';
 import type { FloorState, GeneralId, ScheduledJob } from '@/types/floor';
 
 import ActiveJobsModule, { activeJobEntries } from './ActiveJobsModule';
+import DemoModeToggle from './DemoModeToggle';
 import FleetStatusModule from './FleetStatusModule';
 import GeneralDetailPanel from './GeneralDetailPanel';
 import JobDetailModule from './JobDetailModule';
@@ -99,8 +100,8 @@ const CSS = `
 .fd *,.fd *::before,.fd *::after{box-sizing:border-box}
 .fd-top{min-width:0}
 .fd-top>header{margin:0;position:relative;top:auto}
-.fd-tiles{min-height:0;min-width:0}
-.fd-tiles>section{height:100%}
+.fd-tiles{display:flex;align-items:center;gap:12px;min-height:0;min-width:0}
+.fd-tiles>section{height:100%;flex:1 1 auto;min-width:0}
 .fd-main{display:grid;grid-template-columns:340px minmax(0,1fr) 360px;gap:14px;min-height:0;min-width:0}
 .fd-tabs{display:none}
 .fd-col{display:flex;flex-direction:column;gap:14px;min-height:0;min-width:0;position:relative}
@@ -169,8 +170,13 @@ const CSS = `
 @media (prefers-reduced-motion: reduce){.fd *{transition:none!important;animation:none!important}}
 `;
 
-export default function FleetDashboardShell({ demo = false, chatSlot, chatWake = 0 }: FleetDashboardShellProps) {
+export default function FleetDashboardShell({ demo: demoProp = false, chatSlot, chatWake = 0 }: FleetDashboardShellProps) {
   const layout = useDashboardLayout();
+  // The demo switch (Must 20) overrides the prop once clicked; null means "follow the prop" so a
+  // caller that forces `demo` (e.g. a future ?demo=1 page wrapper) still works until someone toggles it.
+  const [demoOverride, setDemoOverride] = useState<boolean | null>(null);
+  const demo = demoOverride ?? demoProp;
+  const onToggleDemo = useCallback(() => setDemoOverride((v) => !(v ?? demoProp)), [demoProp]);
   const [floor, setFloor] = useState<FloorState | null>(null);
   const [panel, dispatch] = useReducer(panelReducer, INITIAL_PANEL_STATE);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -245,6 +251,7 @@ export default function FleetDashboardShell({ demo = false, chatSlot, chatWake =
 
       <div className="fd-tiles">
         <KpiTiles state={floor} demo={demo} />
+        <DemoModeToggle demo={demo} onToggle={onToggleDemo} />
       </div>
 
       <div className="fd-main" data-tab={tab} data-open={panel.open ? panel.open.kind : undefined}>

@@ -25,6 +25,10 @@
  * estate in one place. That scan is approximate (local pricing, calendar-day
  * window) and degrades to fleet-only if it fails — see
  * `src/lib/server/claudeCosts.ts`.
+ *
+ * `?demo=1` (Must 19, T20b) returns `demoFleetSpend`'s invented totals
+ * instead — the live job store and `claudeCosts()` are never read on this
+ * path, so no real cost can leak into a demo screen-share.
  */
 
 import fsp from 'node:fs/promises';
@@ -35,6 +39,7 @@ import { envelope } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
 import { requireSession } from '@/lib/server/auth/guard';
 
+import { demoFleetSpend } from '@/lib/server/fleet/demoFixtures';
 import { costFleetJob } from '@/lib/server/fleet/jobCosts';
 import { claudeCosts } from '@/lib/server/claudeCosts';
 
@@ -51,6 +56,11 @@ export async function GET(request: Request) {
 
   const startedAt = Date.now();
   const estate = getEstate();
+
+  const url = new URL(request.url);
+  if (url.searchParams.get('demo') === '1') {
+    return envelope(demoFleetSpend(), 'sam.fleet.spend', startedAt, estate.tick);
+  }
 
   const spend: FleetSpend = { personas: {}, totalCostUsd: 0, scannedJobs: 0 };
 

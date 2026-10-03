@@ -315,7 +315,7 @@ Do not touch: any of Colin's real 48 timers or the 53 cron entries, `FloorState`
 Proof: `npm test` passes, including `scheduleTrigger.test` (check 29), and the test's teardown leaves no stray systemd user unit behind (`systemctl --user list-timers` before and after the test run shows the same count).
 
 ## T20: Demo mode — fixtures and the loop
-Status: TODO
+Status: DONE 2026-10-03 (demoFixtures.test 7/7: three jobs cycle hephaestus→cerberus→hermes over a 90s loop, queued→running (stages lighting in order)→done with one tower slab, dispatch flare fires only in a ~3s window at dispatch, background jobs never invent stages; demoScheduleAt covers bead/line/diamond plus a cron "not recorded" and a failed timer; npm test 270/270, typecheck and lint 0; DemoModeToggle wired into FleetDashboardShell/FleetPhoneView's tiles row as a local override of the demo prop, doubling as the persistent "Demo" marker)
 Spec: must-do 18, 20; check 12
 Depends on: T1, T16
 Blocked by: none
@@ -329,8 +329,15 @@ Steps:
 Do not touch: `readFloorState`/`readScheduledJobs` themselves (demo mode is a separate branch, not a flag inside the live reader).
 Proof: `npm test` passes, including `demoFixtures.test`. `npm run typecheck`/`npm run lint` pass. Browser check (full pass in T24): demo mode plays the three demo jobs on a loop with a visible "Demo" marker (check 12).
 
+## T20b: Demo mode must not leak live costs or job names (SAM, 2026-10-03, serves Must 19/check 13)
+Status: DONE 2026-10-03 (spend/route.test.ts and jobs/route.test.ts: 2/4 failing against the unfixed routes — `demo=1` was silently ignored on both, live scannedJobs/persona counts and the live job's command text came straight back; 4/4 after the fix; both routes now branch to demoFleetSpend/demoFleetPersonaJobs on `demo=1` and never touch the live job store, registry or claudeCosts on that path; npm test 274/274, typecheck and lint 0)
+Spec: must-do 19; check 13
+Depends on: T20
+Files: src/app/api/fleet/spend/route.ts (edit), src/app/api/fleet/spend/route.test.ts (new file), src/app/api/fleet/jobs/route.ts (edit), src/app/api/fleet/jobs/route.test.ts (new file), src/lib/server/fleet/demoFixtures.ts (edit: demoFleetSpend/demoFleetPersonaJobs, added under T20)
+Proof: the before-run against the unmodified routes fails on the two demo-mode assertions (live scannedJobs/persona-job-count and the live command text both come back); `npm test` passes after the fix, including both new route test files.
+
 ## T21: Demo-mode leak scan (failing test first)
-Status: TODO
+Status: DONE 2026-10-03 (demoScan.test 3/3: scanForLeaks catches a fixture vault's fake client name and a home path and clears a clean string; the live-mode control run — the real floor/schedule/spend/jobs×5 routes against a seeded live job whose command carries "Example Co" and a fake /home/ path — scores ≥1 hit; the same four routes with demo=1 score 0 (T20b's fixtures route never surface the live job's command text at all, since FloorState/FleetSpend carry no raw command and the jobs route returns demoFleetPersonaJobs); npm test 277/277, typecheck and lint 0; SidebarWidgets' existing demo-mode `return null` already satisfies check 23, no route for it to scan)
 Spec: must-do 19; checks 13, 23, 30
 Depends on: T20, T15, T17
 Blocked by: none
@@ -345,7 +352,7 @@ Do not touch: the real vault contents beyond reading folder names under `10_Clie
 Proof: `npm test` passes, including `demoScan.test`, and its own output/ticket result records the live-fixture run finding ≥1 hit and the demo run finding 0 (checks 13, 23, 30).
 
 ## T22: Swap `/` for the fleet view; move the old Dashboard to `/classic`
-Status: TODO
+Status: DONE 2026-10-03 (`/classic` created with `page.tsx`'s exact pre-ticket content; `/` now renders `FleetView`; Sidebar.tsx/TabBar.tsx's one `dashboard` nav entry already points at `/`, neither ever linked `/classic` — confirmed by grep, no edit needed; the three untracked preview-floor/preview-shell/preview-view pages deleted; typecheck, lint, npm test 277/277 and `next build` all exit 0 — build output lists both `/` and `/classic` as static routes, no preview-* routes)
 Spec: must-do 22; check 25
 Depends on: T11, T12, T13, T14, T15, T17, T18, T19, T20, T21
 Blocked by: none
