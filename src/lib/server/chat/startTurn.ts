@@ -84,6 +84,11 @@ export const onTurnExit: TurnExitHook[] = [];
 onTurnExit.push((event) => {
   const chat = event.chat;
   if (!chat) return;
+  // A handoff child is named after its parent (T18) and keeps that name. It
+  // is the same conversation carried on, so a title generated from its own
+  // first message — which is only "continue from the memo at ..." — would be
+  // strictly worse than the name it already has. Colin's ask, 2026-10-03.
+  if (chat.handedOffFrom) return;
   if (chat.titleSource === 'haiku') return;
   if (chat.titleTries >= 3) return;
   void queueTitle(event.chatId);
@@ -159,6 +164,14 @@ export interface StartTurnInput {
   device: string;
   /** A server-started turn (T18's handoff memo), passed to exit hooks. */
   internal?: boolean;
+  /**
+   * The name a NEW chat is created with. Absent → the first message, cut
+   * short. Ignored for a resume, which keeps the name it already has. T18's
+   * handoff passes the parent's name plus " (handoff)", so the child is
+   * named for the conversation it continues rather than for the memo path it
+   * happens to open with.
+   */
+  title?: string;
 }
 
 export type StartTurnResult =
@@ -313,7 +326,7 @@ export async function startTurn(input: StartTurnInput): Promise<StartTurnResult>
       tier,
       account: tier === 'max2' ? 'max2' : 'main',
       firstMessage: message,
-      title: fallbackTitle(message),
+      title: input.title ?? fallbackTitle(message),
       titleSource: 'fallback',
     });
     args.push('--session-id', chatId);

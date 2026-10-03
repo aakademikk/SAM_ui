@@ -133,7 +133,7 @@ function getSprites(): Record<SpriteName, HTMLCanvasElement> {
 /* ---------- the god busts: images, loaded once per page ---------- */
 
 type BustId = GeneralId | 'sam';
-interface BustImage { im: HTMLImageElement; halo: HTMLCanvasElement | null; ok: boolean }
+interface BustImage { im: HTMLImageElement; halo: HTMLCanvasElement | null; matte: HTMLCanvasElement | null; ok: boolean }
 const bustImages: Partial<Record<BustId, BustImage>> = {};
 const bustListeners = new Set<() => void>();
 
@@ -142,7 +142,7 @@ function ensureBusts(onLoad: () => void): () => void {
   bustListeners.add(onLoad);
   (Object.keys(BUST_PATHS) as BustId[]).forEach((id) => {
     if (bustImages[id]) return;
-    const b: BustImage = { im: new Image(), halo: null, ok: false };
+    const b: BustImage = { im: new Image(), halo: null, matte: null, ok: false };
     bustImages[id] = b;
     b.im.decoding = 'async';
     b.im.onload = () => {
@@ -152,6 +152,24 @@ function ensureBusts(onLoad: () => void): () => void {
       c.width = c.height = 20;
       const x = c.getContext('2d');
       if (x) { x.imageSmoothingQuality = 'high'; x.drawImage(b.im, 0, 0, 20, 20); b.halo = c; }
+      // SAM's bust gets a luma matte so it can draw opaquely (source-over) instead of additively: the
+      // source image is figure-on-black, so luminance becomes alpha and nothing bright shows through him.
+      if (id === 'sam') {
+        const m = document.createElement('canvas');
+        m.width = m.height = 256;
+        const mx = m.getContext('2d');
+        if (mx) {
+          mx.drawImage(b.im, 0, 0, 256, 256);
+          const img = mx.getImageData(0, 0, 256, 256);
+          const d = img.data;
+          for (let i = 0; i < d.length; i += 4) {
+            const lum = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+            d[i + 3] = Math.max(0, Math.min(255, Math.round((lum - 24) * 7)));
+          }
+          mx.putImageData(img, 0, 0);
+          b.matte = m;
+        }
+      }
       bustListeners.forEach((f) => f());
     };
     b.im.onerror = () => { b.ok = false; }; // keep the fallback; never throw
@@ -236,6 +254,14 @@ function drawBust(ctx: Ctx, b: BustImage, x: number, y: number, h: number, lv: n
   return r;
 }
 
+/** SAM's bust drawn from its luma matte at full opacity (source-over), so nothing bright behind him shows through. */
+function drawBustOpaque(ctx: Ctx, b: BustImage, x: number, y: number, h: number): [number, number, number, number] {
+  const r: [number, number, number, number] = [x - h / 2, y - h, h, h];
+  if (b.matte) ctx.drawImage(b.matte, r[0], r[1], r[2], r[3]);
+  else { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(b.im, r[0], r[1], r[2], r[3]); ctx.globalCompositeOperation = 'source-over'; }
+  return r;
+}
+
 /* ---------- the backdrop (cached; it only moves with the camera) ---------- */
 
 function drawBackdrop(ctx: Ctx, v: View, layout: Layout, dpr: number) {
@@ -304,7 +330,7 @@ function drawPlinth(ctx: Ctx, sc: Scene) {
  * SAM's node: Zeus on the top tier inside a ring (`scene.zeusSlot`), flaring on a dispatch (Must 2, 9).
  * If his image could not be loaded, the mockup's own fallback: the diamond core.
  */
-function drawCore(ctx: Ctx, sc: Scene, layout: Layout, flare: number) {
+function drawCore(ctx: Ctx, sc: Scene, layout: Layout) {
   const c = sc.core, v = sc.view, k = v.cam.k, R = GEO.CORER, col = c.verifying ? TEAL : CORE;
   const z = GEO.COREZ + c.bob, vv = layout.samV, P = (u: number, w: number, zz: number) => project(v, u, w, zz);
   const zeus = bustReady('sam');
@@ -314,13 +340,6 @@ function drawCore(ctx: Ctx, sc: Scene, layout: Layout, flare: number) {
     ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = rgba(col, 0.35 + c.glow * 0.25); ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.ellipse(ring[0], ring[1], 24 * k, 14 * k, 0, 0, 7); ctx.stroke(); ctx.globalCompositeOperation = 'source-over';
     glow(ctx, ring[0], ring[1], 34 * k, c.verifying ? 'teal' : 'core', 0.35);
-    const r = drawBust(ctx, zeus, zs.x, zs.y, zs.heightPx, 0.9, 0.25 + c.glow * 0.15 + flare);
-    if (flare > 0.01) { // the strike: the whole image again, added on top, and a burst of light behind his head
-      glow(ctx, r[0] + r[2] / 2, r[1] + r[3] * 0.4, r[2] * 0.75, 'mist', 0.55 * flare);
-      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(1, flare);
-      ctx.drawImage(zeus.im, r[0], r[1], r[2], r[3]);
-      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-    }
     return;
   }
   const top = P(0, vv, z + R * 1.3), bot = P(0, vv, z - R * 1.3), e1 = P(R * 1.1, vv, z), e2 = P(0, vv + R * 0.6, z), e3 = P(-R * 1.1, vv, z);
@@ -336,6 +355,23 @@ function drawCore(ctx: Ctx, sc: Scene, layout: Layout, flare: number) {
   g.addColorStop(0, rgba(col, 0.22)); g.addColorStop(1, rgba(col, 0));
   ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g; ctx.fillRect(s0[0] - 9 * k, c.y, 18 * k, s0[1] - c.y);
   ctx.globalCompositeOperation = 'source-over';
+}
+
+/**
+ * SAM's bust, painted last and opaquely: the matte covers whatever is behind him (source-over, full
+ * alpha), so the clock ring's lights and numerals can no longer draw over him (Colin, 2026-10-03).
+ */
+function drawZeus(ctx: Ctx, sc: Scene, flare: number) {
+  const zeus = bustReady('sam');
+  if (!zeus) return;
+  const zs = sc.zeusSlot;
+  const r = drawBustOpaque(ctx, zeus, zs.x, zs.y, zs.heightPx);
+  if (flare > 0.01) { // the strike: the whole image again, added on top, and a burst of light behind his head
+    glow(ctx, r[0] + r[2] / 2, r[1] + r[3] * 0.4, r[2] * 0.75, 'mist', 0.55 * flare);
+    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(1, flare);
+    ctx.drawImage(zeus.im, r[0], r[1], r[2], r[3]);
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
 }
 
 /* ---------- a General's station ---------- */
@@ -717,7 +753,7 @@ function paint(
   // 3. lit routes
   sc.litLinks.forEach((f) => filament(ctx, v, f.curve, f.t1, f.col, f.alpha, f.lit));
   // 4. SAM's node over the filaments
-  drawCore(ctx, sc, layout, busts.flare);
+  drawCore(ctx, sc, layout);
   layer('afterCore');
   // 5. worker pads, figures and their labels
   sc.pads.forEach((p) => drawPad(ctx, p));
@@ -734,6 +770,8 @@ function paint(
   if (flags.key) drawKey(ctx, layout.opts.laptop);
   if (flags.phone) drawPhoneLabels(ctx, sc, layout, state);
   layer('top');
+  // 8. SAM's bust stays on top of everything, opaque (Colin, 2026-10-03)
+  drawZeus(ctx, sc, busts.flare);
 }
 
 function isFloorState(x: unknown): x is FloorState {

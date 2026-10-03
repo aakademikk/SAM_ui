@@ -80,16 +80,21 @@ export const GEO = {
   RR: 81, // the clock ring's radius (T17 draws it; the SAM label already sits clear of it)
 } as const;
 
+/** The phone's full-screen hero pins Zeus's head this far from the canvas top (the 00 numeral sits above it). */
+const TOP_ANCHOR_PX = 48;
+
 export interface SceneOptions {
-  bustU: number; zeusU: number; zeusTop: number; zeusShift: number;
+  bustU: number; zeusU: number; zeusTop: number;
   spacing: number; cardPx: number; labelPx: number; labelW: number; minFont: number;
   pad: number; padTop: number; zoom: number; zoomCard: number; maxScale: number; numPx: number;
   /** Laptop layout drops the optional key entry and lets worker tasks wrap. */
   laptop: boolean;
+  /** Pin the scene's top to the canvas top instead of centring (the phone's full-screen hero). */
+  anchorTop?: boolean;
 }
 
 const BASE_OPTIONS: SceneOptions = {
-  bustU: 72, zeusU: 120, zeusTop: 34, zeusShift: -14, spacing: 230, cardPx: 78, labelPx: 30, labelW: 0.44,
+  bustU: 72, zeusU: 120, zeusTop: 34, spacing: 230, cardPx: 78, labelPx: 30, labelW: 0.44,
   minFont: 11, pad: 18, padTop: 44, zoom: 1.7, zoomCard: 1.3, maxScale: 1.25, numPx: 12, laptop: false,
 };
 /** e-hybrid.html's desktop options. minFont is 11 here too: no canvas text under 11 px at desktop sizes. */
@@ -105,7 +110,7 @@ export const LAPTOP_QUERY = '(min-width:820px) and (max-width:1600px),(min-width
  */
 export const PHONE_OPTIONS: SceneOptions = {
   ...BASE_OPTIONS, zeusTop: 6, spacing: 170, cardPx: 26, labelPx: 36, pad: 10, padTop: 16, zoom: 1.9, zoomCard: 1,
-  maxScale: 1, numPx: 10.5,
+  maxScale: 1, numPx: 10.5, anchorTop: true,
 };
 
 /* ---------- small maths ---------- */
@@ -161,7 +166,15 @@ export function computeLayout(W: number, H: number, opts: SceneOptions = DESKTOP
     gapW = clamp(gapW + extra * 0.3, 0, 50);
   }
   lay();
-  const home: Cam = { x: 0, y: (top + bot) / 2 - (opts.padTop - opts.pad) / (2 * s), k: s };
+  // The phone hero is full screen (100dvh) but the floor is width-bound, so centring leaves a big empty
+  // band above SAM. Pin Zeus's head (and the 00 numeral above it) near the top instead; the spare height
+  // falls below the Generals. Desktop and laptop keep the centred fit.
+  const headTopW = samV - (GEO.SZ2 - opts.zeusU * 0.12 + opts.zeusU);
+  const home: Cam = {
+    x: 0,
+    y: opts.anchorTop ? headTopW - (TOP_ANCHOR_PX - h / 2) / s : (top + bot) / 2 - (opts.padTop - opts.pad) / (2 * s),
+    k: s,
+  };
   // Zeus is as tall as fits between the fleet key and SAM's top tier (T8 draws him); Generals at most 70% of that.
   const tierY = h / 2 + (samV - SZ2 - home.y) * s;
   const zeusU = clamp((tierY - opts.zeusTop) / s / 0.88, 40, opts.zeusU);
@@ -752,7 +765,7 @@ export function buildScene(state: FloorState, layout: Layout, input: SceneInput)
   const bob = red ? 0 : Math.sin(time * 1.2) * 3;
   const coreP = P(0, v0, COREZ + bob);
   const zu = layout.zeusU;
-  const zBase = P(Math.min(opts.zeusShift, 26 - zu * 0.38), v0, SZ2 - zu * 0.12 + bob * 0.6);
+  const zBase = P(0, v0, SZ2 - zu * 0.12 + bob * 0.6);
   const core: CoreShape = { x: coreP[0], y: coreP[1], glow: samGlow, verifying, doneFlash, verifyK, bob };
   const zeusSlot: ZeusSlot = { x: zBase[0], y: zBase[1], heightPx: zu * k, ring: P(0, v0, SZ2), flare: anyDispatch };
 

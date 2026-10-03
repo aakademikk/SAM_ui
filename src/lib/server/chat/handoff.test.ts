@@ -333,3 +333,56 @@ test('a memo turn that writes no memo sets handoffError and starts nothing', asy
     'no new chat was created',
   );
 });
+
+test('handoffChildTitle: the parent name plus one (handoff), never two', () => {
+  assert.equal(ho.handoffChildTitle('Plan the kitchen extension'), 'Plan the kitchen extension (handoff)');
+  // Handing off a handoff must not stack the suffix.
+  assert.equal(ho.handoffChildTitle('Plan the kitchen extension (handoff)'), 'Plan the kitchen extension (handoff)');
+  assert.equal(ho.handoffChildTitle(''), 'Chat (handoff)');
+});
+
+test('a handoff child is named after its parent, and the titler leaves that name alone', async () => {
+  // Let Haiku titles succeed for this test, so a surviving name proves the
+  // titler was skipped rather than that it failed. Restored below: the rest
+  // of this file relies on titles failing so the memo file name is known.
+  delete process.env.FAKE_TITLE_FAIL;
+  process.env.FAKE_TITLE = 'Fake Title';
+  try {
+    const oldId = await finishedChat('plan the kitchen extension');
+    exits.delete(oldId);
+    // Settle the parent's own Haiku title first, so the name the child takes
+    // over is a known one rather than whatever the race happened to leave.
+    await waitFor(() => store.getChat(oldId)?.titleSource === 'haiku', 'the parent to be titled');
+    const parentTitle = store.getChat(oldId)?.title ?? '';
+
+    const r = await ho.startHandoff(oldId, 'max', 'phone');
+    assert.equal(r.ok, true, r.ok ? '' : `startHandoff failed: ${r.status} ${r.error}`);
+    if (!r.ok) return;
+    await waitExit(r.memoJobId);
+
+    const newId = store.getChat(oldId)?.handedOffTo;
+    assert.ok(newId, 'the old chat has handedOffTo');
+    assert.equal(
+      store.getChat(newId)?.title,
+      `${parentTitle} (handoff)`,
+      'the child takes the parent name, not its own memo-path first message',
+    );
+
+    // Its own turn has run to exit, which is when the ordinary titler would
+    // have renamed it (title mode returns immediately, so half a second is
+    // ample for a rename that should not happen).
+    await waitExit(newId);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.equal(store.getChat(newId)?.title, `${parentTitle} (handoff)`);
+    assert.equal(store.getChat(newId)?.titleSource, 'fallback');
+
+    // Control: an ordinary chat in the same run IS titled by Haiku, so this
+    // could not pass with the titler broken.
+    const control = await finishedChat('an ordinary chat');
+    await waitFor(() => store.getChat(control)?.titleSource === 'haiku', 'the control chat to be titled');
+    assert.equal(store.getChat(control)?.title, 'Fake Title');
+  } finally {
+    process.env.FAKE_TITLE_FAIL = '1';
+    delete process.env.FAKE_TITLE;
+  }
+});

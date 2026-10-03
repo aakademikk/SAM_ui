@@ -11,7 +11,8 @@
  *      memo there and nowhere else.
  *   2. This module's `onTurnExit` hook, once that turn exits: if the memo
  *      file exists, a NEW chat starts on the picked tier with a first message
- *      pointing at the memo, and the two chats are linked (`markHandedOff`).
+ *      pointing at the memo, named after the chat it came from
+ *      (`handoffChildTitle`), and the two chats are linked (`markHandedOff`).
  *      If it does not (the old chat's seat hit its limit, say), the old chat
  *      gets `handoffError` and nothing starts.
  *
@@ -83,6 +84,23 @@ function today(now = new Date()): string {
 function fileSafeTitle(title: string): string {
   const cleaned = title.replace(/[/\\:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
   return cleaned || 'Chat';
+}
+
+/**
+ * The name a handoff's child chat takes over from its parent: the parent's
+ * own title with ` (handoff)` appended.
+ *
+ * The child is the same conversation carried on, so it is named for where it
+ * came from. Left to the ordinary titler it would instead be named from its
+ * own first message, which is only "Continue from the handoff memo at
+ * <path>" — strictly worse than the name the parent already had.
+ *
+ * An existing suffix is stripped first, so handing off twice reads
+ * `Foo (handoff)` rather than `Foo (handoff) (handoff)`.
+ */
+export function handoffChildTitle(parentTitle: string): string {
+  const base = parentTitle.replace(/\s*\(handoff\)$/i, '').trim();
+  return `${base || 'Chat'} (handoff)`;
 }
 
 /**
@@ -200,6 +218,9 @@ async function continueHandoff(event: TurnExitEvent): Promise<void> {
       message: `Continue from the handoff memo at ${handoff.memoPath}. Read it first.`,
       tier: handoff.tier,
       device: handoff.device,
+      // Named after the chat it came from: `event.chat` is the parent's
+      // record after its memo turn, so this is its current title.
+      title: handoffChildTitle(event.chat?.title ?? getChat(event.chatId)?.title ?? ''),
     });
     if (!next.ok) {
       setHandoffError(event.chatId, `The new chat could not start: ${next.error}`);
