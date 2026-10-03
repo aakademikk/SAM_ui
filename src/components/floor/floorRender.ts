@@ -91,6 +91,12 @@ export interface SceneOptions {
   laptop: boolean;
   /** Pin the scene's top to the canvas top instead of centring (the phone's full-screen hero). */
   anchorTop?: boolean;
+  /**
+   * With `anchorTop`: the most SAM (Zeus and his clock ring) may grow when the canvas has height to spare,
+   * and how far above the canvas foot the Generals' labels stop (clear of the caption and the Ask SAM bar).
+   */
+  samMax?: number;
+  padBottom?: number;
 }
 
 const BASE_OPTIONS: SceneOptions = {
@@ -110,7 +116,7 @@ export const LAPTOP_QUERY = '(min-width:820px) and (max-width:1600px),(min-width
  */
 export const PHONE_OPTIONS: SceneOptions = {
   ...BASE_OPTIONS, zeusTop: 6, spacing: 170, cardPx: 26, labelPx: 36, pad: 10, padTop: 16, zoom: 1.9, zoomCard: 1,
-  maxScale: 1, numPx: 10.5, anchorTop: true,
+  maxScale: 1, numPx: 10.5, anchorTop: true, samMax: 2.5, padBottom: 124,
 };
 
 /* ---------- small maths ---------- */
@@ -137,6 +143,8 @@ export interface Layout {
   W: number; H: number; s: number;
   samV: number; cardTop: number; padV: number; top: number; bot: number;
   zeusU: number; bustU: number;
+  /** SAM's own scale over the floor's: Zeus and the clock ring grow by it (1 except on a tall phone hero). */
+  samK: number;
   GU: Record<GeneralId, number>;
   home: Cam;
   opts: SceneOptions;
@@ -166,10 +174,28 @@ export function computeLayout(W: number, H: number, opts: SceneOptions = DESKTOP
     gapW = clamp(gapW + extra * 0.3, 0, 50);
   }
   lay();
-  // The phone hero is full screen (100dvh) but the floor is width-bound, so centring leaves a big empty
-  // band above SAM. Pin Zeus's head (and the 00 numeral above it) near the top instead; the spare height
-  // falls below the Generals. Desktop and laptop keep the centred fit.
-  const headTopW = samV - (GEO.SZ2 - opts.zeusU * 0.12 + opts.zeusU);
+  // The phone hero is full screen (100dvh) but the floor is width-bound, so a centred fit leaves a big
+  // empty band. Pin Zeus's head (and the 00 numeral above it) near the top, then spend the spare height
+  // (Colin, 2026-10-03): SAM grows (Zeus and his ring together, as far as the width allows) and the links
+  // stretch until the Generals' labels sit just above the caption. Desktop and laptop keep the centred fit.
+  let samK = 1, zeusFit = 0;
+  if (opts.anchorTop && opts.samMax && opts.padBottom != null) {
+    const span = (h - TOP_ANCHOR_PX - opts.padBottom) / s; // world height from Zeus's head to the labels' foot
+    const bustTopW = -4 - GEO.GZ - opts.bustU * 1.08; // the Generals' busts at full size (Zeus is never small here)
+    const numW = numeralW(opts.numPx);
+    for (let f = opts.samMax; f >= 1; f = Math.round((f - 0.05) * 100) / 100) {
+      const kr = s * f, lenLit = Math.max(11, 16 * kr), zu = opts.zeusU * f;
+      if (GEO.RR * 1.732 * kr + lenLit + 4 + numW > w / 2 - opts.pad) continue; // ring and numerals across the screen
+      const gap = span - (bot + 168 + SZ2 + 0.88 * zu);
+      const frontW = -168 - gap - SZ2 - 1 + GEO.RR * f;
+      // below the ring's front: its 12 numeral, then the SAM tag (27 px), then a margin, all above the busts
+      if ((bustTopW - frontW) * s < lenLit + 4 + opts.numPx + 4 + 27 + 8) continue;
+      samK = f; zeusFit = zu; gapS = gap; samV = -168 - gap;
+      break;
+    }
+  }
+  const zeusTall = zeusFit || opts.zeusU;
+  const headTopW = samV - (GEO.SZ2 - zeusTall * 0.12 + zeusTall);
   const home: Cam = {
     x: 0,
     y: opts.anchorTop ? headTopW - (TOP_ANCHOR_PX - h / 2) / s : (top + bot) / 2 - (opts.padTop - opts.pad) / (2 * s),
@@ -177,10 +203,13 @@ export function computeLayout(W: number, H: number, opts: SceneOptions = DESKTOP
   };
   // Zeus is as tall as fits between the fleet key and SAM's top tier (T8 draws him); Generals at most 70% of that.
   const tierY = h / 2 + (samV - SZ2 - home.y) * s;
-  const zeusU = clamp((tierY - opts.zeusTop) / s / 0.88, 40, opts.zeusU);
+  const zeusU = zeusFit || clamp((tierY - opts.zeusTop) / s / 0.88, 40, opts.zeusU);
   const bustU = Math.min(opts.bustU, zeusU * 0.7);
-  return { W: w, H: h, s, samV, cardTop, padV, top, bot, zeusU, bustU, GU, home, opts };
+  return { W: w, H: h, s, samV, cardTop, padV, top, bot, zeusU, bustU, samK, GU, home, opts };
 }
+
+/** A two-digit ring numeral's width at `numPx` (ringRender's `numeralWidth`, kept here so layout can reserve it). */
+const numeralW = (numPx: number) => 2 * 0.625 * numPx;
 
 /** The camera for a focused General (the zoom), or home. */
 export function camFor(layout: Layout, id: GeneralId | null | undefined): Cam {
@@ -771,7 +800,8 @@ export function buildScene(state: FloorState, layout: Layout, input: SceneInput)
 
   /* the SAM label sits just right of the clock ring (its 06 numeral included) */
   const tier = P(0, v0, SZ2 + 1);
-  const ringRight = tier[0] + GEO.RR * 1.732 * k + Math.max(11, 16 * k) + 4 + opts.numPx * 1.25;
+  const kr = k * layout.samK; // the ring grows with SAM
+  const ringRight = tier[0] + GEO.RR * 1.732 * kr + Math.max(11, 16 * kr) + 4 + numeralW(opts.numPx);
   const nodeP = P(0, v0, COREZ);
   const samState = anyDispatch ? 'Dispatching' : verifying ? 'Checking proof' : totalRunning > 0 ? `Supervising ${totalRunning} job${totalRunning === 1 ? '' : 's'}` : 'Idle';
   const samLabel: SamLabel = { x: Math.max(nodeP[0] + 30 * k, ringRight + 12), y: nodeP[1] - 30, state: samState };
@@ -843,7 +873,11 @@ export function phoneLabels(scene: Scene, layout: Layout, state: FloorState, zeu
   const zs = scene.zeusSlot;
   const zeusRight = zs.x - zs.heightPx / 2 + zs.heightPx * 0.84;
   const sx = Math.max(zeusDrawn ? Math.max(nodeX + 16, zeusRight) : nodeX + 16, scene.ringRight + 7);
-  return { generals, sam: { x: sx, y: nodeY } };
+  if (sx + 80 <= layout.W - 4) return { generals, sam: { x: sx, y: nodeY } };
+  // A big SAM fills the width: the tag goes under the ring instead, centred below its 12 numeral.
+  const kr = v.cam.k * layout.samK;
+  const twelveFoot = toY(v, layout.samV - GEO.SZ2 - 1 + GEO.RR * layout.samK) + Math.max(11, 16 * kr) + 4 + layout.opts.numPx;
+  return { generals, sam: { x: nodeX - 34, y: twelveFoot + 4 + 14 } };
 }
 
 /* ---------- the backdrop's seeded data (the vault etched into the floor, the neon accents) ---------- */

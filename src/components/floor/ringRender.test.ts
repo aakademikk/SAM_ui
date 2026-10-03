@@ -21,7 +21,7 @@ process.env.HOME = fs.mkdtempSync(`${os.tmpdir()}/ringrender-home-`);
 
 import type { FloorState, ScheduleCadence, ScheduledJob } from '../../types/floor.js';
 import {
-  DESKTOP_OPTIONS, LAPTOP_OPTIONS, PHONE_OPTIONS, buildScene, computeLayout, phoneLabels,
+  DESKTOP_OPTIONS, GEO, LAPTOP_OPTIONS, PHONE_OPTIONS, buildScene, computeLayout, phoneLabels, toY,
 } from './floorRender.js';
 import type { SceneOptions } from './floorRender.js';
 import {
@@ -90,6 +90,10 @@ const SIZES: { name: string; W: number; H: number; opts: SceneOptions; variant: 
   { name: '1280x650', W: 910, H: 516, opts: LAPTOP_OPTIONS, variant: 'laptop' },
   { name: '412x915', W: 412, H: 371, opts: PHONE_OPTIONS, variant: 'phone' },
   { name: '390x844', W: 390, H: 371, opts: PHONE_OPTIONS, variant: 'phone' },
+  // the phone hero has been full screen (100dvh) since 2026-10-03: the whole viewport is the canvas
+  { name: '390x844 full', W: 390, H: 844, opts: PHONE_OPTIONS, variant: 'phone' },
+  { name: '412x915 full', W: 412, H: 915, opts: PHONE_OPTIONS, variant: 'phone' },
+  { name: '360x780 full', W: 360, H: 780, opts: PHONE_OPTIONS, variant: 'phone' },
 ];
 
 function ringAt(size: (typeof SIZES)[number], jobs = schedule(), extra: Partial<Parameters<typeof buildRing>[2]> = {}) {
@@ -252,3 +256,36 @@ test('a failed last run is red until a good run; reduced motion: no light, lit i
   assert.ok(backup.glow > 0.5);
   assert.equal(still.marks.find((m) => m.id === 'lead-sweep.timer')!.state, 'failed');
 });
+
+/* ---------- the phone's full-screen hero: a bigger SAM up top, the Generals down by the caption (Colin, 2026-10-03) ---------- */
+
+/** `.fp-cap` sits 84 px up and is about 26 px tall, so the caption's top is about 110 px above the hero's foot. */
+const CAPTION_PX = 110;
+
+for (const size of SIZES.filter((x) => x.name.endsWith(' full'))) {
+  test(`${size.name}: Zeus at least twice his old size, centred in a ring scaled with him, Generals down by the caption`, () => {
+    const { W, H } = size;
+    const layout = computeLayout(W, H, PHONE_OPTIONS);
+    const sc = buildScene(floorState(), layout, { now: NOW });
+    const geo = ringGeometry(layout, layout.home, true);
+    const oldZeus = PHONE_OPTIONS.zeusU * layout.s;
+    assert.ok(sc.zeusSlot.heightPx >= 2 * oldZeus, `Zeus ${sc.zeusSlot.heightPx.toFixed(0)} px, was ${oldZeus.toFixed(0)}`);
+    assert.ok(Math.abs(geo.rx - GEO.RR * 1.732 * layout.s * layout.samK) < 1e-6, 'the ring grows with Zeus');
+    assert.ok(Math.abs(sc.zeusSlot.x - geo.cx) < 0.5, 'Zeus stays centred in the ring');
+    const foot = toY(sc.view, layout.bot), cap = H - CAPTION_PX;
+    assert.ok(foot <= cap - 8 && foot >= cap - 50, `the Generals' labels end at ${foot.toFixed(0)} px, the caption starts at ${cap}`);
+    const pl = phoneLabels(sc, layout, floorState(), true).sam;
+    assert.ok(pl.x >= 0 && pl.x + 80 <= W, `the SAM tag is on screen (x ${pl.x.toFixed(0)})`);
+    const bustTop = Math.min(...sc.stations.map((st) => st.bustSlot.y - st.bustSlot.heightPx));
+    const twelve = geo.nums[2].r;
+    assert.ok(twelve[1] + twelve[3] < bustTop - 4, 'the 12 numeral clears the Generals\' busts');
+    assert.ok(pl.y + 13 < bustTop - 4, 'the SAM tag clears the Generals\' busts');
+  });
+}
+
+test('desktop and laptop keep SAM at his old size (samK 1)', () => {
+  assert.equal(computeLayout(1150, 666, DESKTOP_OPTIONS).samK, 1);
+  assert.equal(computeLayout(996, 546, LAPTOP_OPTIONS).samK, 1);
+  assert.equal(computeLayout(390, 371, PHONE_OPTIONS).samK, 1, 'a short phone hero has no spare height to spend');
+});
+

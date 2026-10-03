@@ -156,7 +156,8 @@ export const numeralWidth = (t: string, numPx: number) => t.length * 0.625 * num
  * bob) when his bust is drawn, else on the track like the others.
  */
 export function ringGeometry(layout: Layout, cam: Cam, zeusDrawn: boolean): RingGeo {
-  const v = { W: layout.W, H: layout.H, cam }, k = cam.k, numPx = layout.opts.numPx;
+  // the dial grows with SAM (`samK`, the tall phone hero), ticks and numeral gaps with it
+  const v = { W: layout.W, H: layout.H, cam }, k = cam.k * layout.samK, numPx = layout.opts.numPx;
   const c0 = project(v, 0, layout.samV, GEO.SZ2 + 1);
   const g: RingGeo = {
     cx: c0[0], cy: c0[1], rx: GEO.RR * 1.732 * k, ry: GEO.RR * k, k,
@@ -164,7 +165,7 @@ export function ringGeometry(layout: Layout, cam: Cam, zeusDrawn: boolean): Ring
     core: project(v, 0, layout.samV, GEO.COREZ),
   };
   const zu = layout.zeusU;
-  const zeusTop = zeusDrawn ? project(v, 0, layout.samV, GEO.SZ2 - zu * 0.12 + 1.8)[1] - zu * k - 2 : Infinity;
+  const zeusTop = zeusDrawn ? project(v, 0, layout.samV, GEO.SZ2 - zu * 0.12 + 1.8)[1] - zu * cam.k - 2 : Infinity;
   g.nums = RING.NUMS.map((t, i) => {
     const a = (i * Math.PI) / 2, e = along(onRing(g, a, 1), outward(g, a), g.lenLit + 4), w = numeralWidth(t, numPx), h = numPx;
     // 00 never leaves the canvas: where Zeus stands too tall for it, it sits on the top of his head (the phone)
