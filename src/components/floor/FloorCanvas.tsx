@@ -33,6 +33,9 @@
  * and `drawNumerals`: the ring right after the plinth, its travelling
  * lights with the other lights, red ticks and the numerals last, so
  * additive light cannot wash out the red and the links never cut through 12.
+ * A firing job that launches a fleet job also sends its trigger light up
+ * into SAM's core (T19, Must 27); the fleet job itself is drawn once, on
+ * the floor, from `FloorState`.
  *
  * Extension points for later tickets: `onDrawLayer`, `onSelectGeneral` + `focus` (the dashboard shell's
  * zoom and detail, T11), `pollUrl`/`schedulePollUrl`/`demo` (demo mode, T20), `onSchedule`/`onRing` (the Schedule
@@ -638,6 +641,22 @@ function drawLaps(ctx: Ctx, rm: RingModel) {
   });
 }
 
+/** A scheduled dispatch's trigger: a light rising from its mark into SAM's core, in canvas px (T19; the mockup's request pulse from a tick). */
+function drawTriggers(ctx: Ctx, rm: RingModel) {
+  const k = rm.geo.k, n = 12, len = 0.35;
+  rm.triggers.forEach((tr) => {
+    const p = ease(tr.p), t0 = Math.max(0, p - len), a = 0.9;
+    ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const qa = bez(tr.curve, t0 + ((p - t0) * i) / n), qb = bez(tr.curve, t0 + ((p - t0) * (i + 1)) / n), kk = (i + 1) / n;
+      ctx.strokeStyle = rgba(ACC, a * kk * 0.9); ctx.lineWidth = 0.6 + kk * 2.6;
+      ctx.beginPath(); ctx.moveTo(qa[0], qa[1]); ctx.lineTo(qb[0], qb[1]); ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    const h = bez(tr.curve, p); glow(ctx, h[0], h[1], 22 * k, 'acc', a);
+  });
+}
+
 /** A failed last run in status red, drawn over the additive light (port of `drawFailed`, for every shape). */
 function drawFailed(ctx: Ctx, rm: RingModel) {
   const g = rm.geo, k = g.k;
@@ -706,7 +725,7 @@ function paint(
   if (!flags.phone) sc.figures.forEach((f) => { if (f.dying < 0.6) workerLabel(ctx, f, sc, layout); });
   // 6. lights travelling along the links (none under reduced motion: buildScene returns none)
   if (!reduced) sc.pulses.forEach((p) => pulse(ctx, v, p.curve, p.p, p.len, p.col, p.sprite, p.alpha, p.r, p.back));
-  if (ring && !reduced) drawLaps(ctx, ring);
+  if (ring && !reduced) { drawLaps(ctx, ring); drawTriggers(ctx, ring); }
   // the ring's red ticks and numerals last, over the additive light and the links
   if (ring) { drawFailed(ctx, ring); drawNumerals(ctx, ring, FONT); }
   // 7. labels

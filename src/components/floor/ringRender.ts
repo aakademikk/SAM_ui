@@ -19,6 +19,13 @@
  * - When a job fires, its mark glows and a light runs once round its track;
  *   the mark stays lit while the job runs, then settles. A last run that
  *   failed is status red until a good run (Must 25).
+ * - A job that launches a fleet job (T16's `launchesFleetJob`, a timer or
+ *   cron line that runs `sam-dispatch`) is the trigger only (Must 27, T19):
+ *   as it fires, a light rises from its mark into SAM's core (the mockup's
+ *   "Schedule · <name> fired"), and that is all. The fleet job it starts is
+ *   one real job in the job store, drawn on the floor under its General by
+ *   `FloorState` (tagged `origin: 'schedule'`); the ring never draws a worker
+ *   or a second mark for it.
  *
  * The live box has far more jobs than the mockup's fourteen, and many share
  * a time (several at 00:00), so two rules the mockup never needed keep marks
@@ -124,6 +131,8 @@ export interface RingGeo {
   nums: RingNumeral[];
   /** The dial's right edge, the 06 numeral included (the SAM label sits right of it). */
   right: number;
+  /** SAM's core, canvas px: where a scheduled dispatch's trigger light ends (T19). */
+  core: Pt;
 }
 
 export const onRing = (g: RingGeo, a: number, f: number): Pt => [g.cx + g.rx * f * Math.sin(a), g.cy - g.ry * f * Math.cos(a)];
@@ -152,6 +161,7 @@ export function ringGeometry(layout: Layout, cam: Cam, zeusDrawn: boolean): Ring
   const g: RingGeo = {
     cx: c0[0], cy: c0[1], rx: GEO.RR * 1.732 * k, ry: GEO.RR * k, k,
     len: Math.max(8, 12 * k), lenLit: Math.max(11, 16 * k), px: clamp(k, 0.6, 1.2), numPx, nums: [], right: 0,
+    core: project(v, 0, layout.samV, GEO.COREZ),
   };
   const zu = layout.zeusU;
   const zeusTop = zeusDrawn ? project(v, 0, layout.samV, GEO.SZ2 - zu * 0.12 + 1.8)[1] - zu * k - 2 : Infinity;
@@ -242,6 +252,14 @@ export interface RingTick { jobId: string; markId: string; shape: RingShape; dim
 
 export interface RingLap { a: number; p: number; f: number }
 
+/**
+ * A scheduled job that launches a fleet job, firing (T19, Must 27): the light
+ * rising from its mark into SAM's core, as a cubic in canvas px (port of the
+ * mockup's request pulse from `tickWorld` into the core). `p` is how far up
+ * it has travelled, 0 to 1, over the firing lap.
+ */
+export interface RingTrigger { jobId: string; markId: string; curve: [Pt, Pt, Pt, Pt]; p: number }
+
 export interface RingModel {
   geo: RingGeo;
   marks: RingMark[];
@@ -252,6 +270,8 @@ export interface RingModel {
   handAngle: number;
   minuteAngle: number;
   laps: RingLap[];
+  /** Trigger lights for firing jobs that launch a fleet job; none under reduced motion. */
+  triggers: RingTrigger[];
   /** Everything the ring draws, numerals included (T18's click target). */
   extent: Box;
 }
@@ -391,6 +411,12 @@ function beadClusters(g: RingGeo, beads: { m: number; jobId: string }[], gap: nu
   return clusters;
 }
 
+/** The trigger light's path: up from a mark's foot on the track, curving in over SAM's core (canvas px). */
+export function triggerCurve(g: RingGeo, from: Pt): [Pt, Pt, Pt, Pt] {
+  const k = g.k, core = g.core;
+  return [from, [g.cx + (from[0] - g.cx) * 0.5, from[1] - 40 * k], [core[0], core[1] + 40 * k], core];
+}
+
 /**
  * The whole ring for one frame: every mark's place, shape, state and dim
  * flag, the hand, the travelling lights and the extent. Pure: the same jobs,
@@ -400,7 +426,7 @@ export function buildRing(jobs: ScheduledJob[], geo: RingGeo, input: RingInput):
   const { now, variant } = input, fx = input.fx ?? emptyRingFx(), reduced = !!input.reduced, clock = input.clock ?? localMinuteOfDay;
   const gap = RING_MIN_GAP[variant] + GAP_MARGIN;
   const nowMin = clock(now);
-  const marks: RingMark[] = [], ticks: RingTick[] = [], laps: RingLap[] = [], unplaced: string[] = [];
+  const marks: RingMark[] = [], ticks: RingTick[] = [], laps: RingLap[] = [], triggers: RingTrigger[] = [], unplaced: string[] = [];
 
   type Placed = { job: ScheduledJob; cls: RingClass; st: JobRingState; dim: boolean; nextInMin: number | null; when: number | null; last: number | null };
   const placed: Placed[] = [];
@@ -431,7 +457,10 @@ export function buildRing(jobs: ScheduledJob[], geo: RingGeo, input: RingInput):
     }
     marks.push({ id: p.job.id, jobIds: [p.job.id], shape, track: 'outer', angle: a, xy, box, state: p.st.state, glow: p.st.glow, lap: p.st.lap, dim: p.dim });
     ticks.push({ jobId: p.job.id, markId: p.job.id, shape, dim: p.dim, state: p.st.state, nextInMin: p.nextInMin });
-    if (p.st.lap != null && !reduced) laps.push({ a, p: p.st.lap, f: 1 });
+    if (p.st.lap != null && !reduced) {
+      laps.push({ a, p: p.st.lap, f: 1 });
+      if (p.job.launchesFleetJob) triggers.push({ jobId: p.job.id, markId: p.job.id, curve: triggerCurve(geo, p0), p: p.st.lap });
+    }
   });
 
   /* the inner track: one bead per run in the hour, shared where runs crowd */
@@ -467,7 +496,10 @@ export function buildRing(jobs: ScheduledJob[], geo: RingGeo, input: RingInput):
     const m = own.mark;
     if (lit) {
       if (p.st.glow > m.glow) { m.glow = p.st.glow; m.state = p.st.state; m.lap = p.st.lap; }
-      if (p.st.lap != null && !reduced) laps.push({ a: m.angle, p: p.st.lap, f: RING.INNER });
+      if (p.st.lap != null && !reduced) {
+        laps.push({ a: m.angle, p: p.st.lap, f: RING.INNER });
+        if (p.job.launchesFleetJob) triggers.push({ jobId: p.job.id, markId: m.id, curve: triggerCurve(geo, m.xy), p: p.st.lap });
+      }
     } else if (p.st.state === 'failed' && m.glow <= 0.02) m.state = 'failed';
     ticks.push({ jobId: p.job.id, markId: m.id, shape: 'bead', dim: false, state: p.st.state, nextInMin: p.nextInMin });
   }
@@ -480,7 +512,7 @@ export function buildRing(jobs: ScheduledJob[], geo: RingGeo, input: RingInput):
   geo.nums.forEach((n) => { ext = union(ext, n.r); });
 
   return {
-    geo, marks, ticks, unplaced, laps, extent: ext,
+    geo, marks, ticks, unplaced, laps, triggers, extent: ext,
     handAngle: smooth('~hand', dayAngle(nowMin)), minuteAngle: smooth('~min', hourAngle(nowMin % 60)),
   };
 }

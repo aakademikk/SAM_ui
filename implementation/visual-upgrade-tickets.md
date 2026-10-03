@@ -299,7 +299,7 @@ Do not touch: T16's data shape, T17's ring drawing beyond adding the click targe
 Proof: `npm run typecheck`/`npm run lint`/`npm test` pass. Browser check (full pass in T24): a real click on the ring at 1920×1080 and 1280×650, and a tap at 412×915, opens the Schedule panel listing every job in next-run order; Esc and Back close it (check 28).
 
 ## T19: A scheduled job's dispatch shows as the ring's trigger, not a double job
-Status: TODO
+Status: DONE 2026-10-03 (scheduleTrigger.test 1/1: a throwaway samui-t19-test-<hex> timer ran sam-dispatch.next -> sam-job.next, which ran only `true` via a stub run script, with temp store/log, --notify stripped, stub push; one job, origin 'schedule', the only worker on the floor (under Cerberus), then one slab; readScheduledJobs marks the timer launchesFleetJob; buildRing gives the timer's marks only plus one trigger light into SAM, none when reduced or not launching; npm test 263/263, typecheck and lint 0; list-timers --all 53 before and 53 after, no tagged units left; live dispatch log and job store hold no samui-t19 entries; box-only skip if the tools are absent, loud fail if systemd-run --user is)
 Spec: must-do 16e (origin half), 27; check 29
 Depends on: T17, T3
 Blocked by: none

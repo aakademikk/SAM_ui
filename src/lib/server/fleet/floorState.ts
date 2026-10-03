@@ -277,6 +277,13 @@ function modelFromCommand(command: string | undefined): string {
   return match?.[2] ?? '';
 }
 
+/**
+ * `origin` exactly as `sam-job` recorded it (Must 16e), never patched in.
+ * A job a timer launched through `sam-dispatch` arrives here as
+ * `'schedule'` and is placed like any other job, once, under its General;
+ * the clock ring draws only the timer's trigger for it, never a worker
+ * (Must 27, T19: `scheduleTrigger.test.ts` proves the pair end to end).
+ */
 function resolveOrigin(meta: StoredMeta): FloorWorker['origin'] {
   if (meta.origin === 'chat' || meta.origin === 'schedule' || meta.origin === 'manual') {
     return meta.origin;
