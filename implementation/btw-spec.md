@@ -1,6 +1,6 @@
 # SAM_ui: side messages during a running turn ("/btw")
 
-Status: DRAFT (awaiting Colin's "lock it")
+Status: LOCKED 2026-10-03
 Grilled: 2026-10-03, recorded in the vault daily note `01 - Daily Notes/10 - October 2026/2026-10-03.md` ("/grill-me: SAM_ui /btw") and in Active Priorities.
 
 ## 1. Goal
@@ -66,4 +66,4 @@ SAM picks it up at its next step and uses it in the same answer.
 
 - RESOLVED 2026-10-03 (Colin): two devices at once, in the order they arrive (must-do 12).
 - RESOLVED 2026-10-03 (Colin): a hands-free message during a turn is a side message (must-do 13).
-- OPEN: build branch. SAM's advice: a new branch `build/btw` cut from production (`claude/sam-core-dashboard-sf3639`, `520ae3e` on 2026-10-03), in its own worktree `/home/col/SAM_ui-btw`, so the live checkout is never edited mid-build. Awaiting Colin's ok.
+- RESOLVED 2026-10-03 (Colin: "sounds good" to SAM's advice): build on a new branch `build/btw` cut from production (`claude/sam-core-dashboard-sf3639`, `520ae3e` on 2026-10-03), in its own worktree `/home/col/SAM_ui-btw`, so the live checkout is never edited mid-build.
