@@ -36,7 +36,33 @@ import path from 'node:path';
  *  - when the prompt contains a line "Write the memo to: <path>", also
  *    writes a short Markdown memo to that path, unless `FAKE_SKIP_MEMO=1`
  *    (a memo turn that ran but wrote nothing, as when a seat is at its
- *    limit — T18's missing-memo case).
+ *    limit — T18's missing-memo case);
+ *  - stream-json mode (`--input-format` present in argv; `-p` is then a bare
+ *    flag): reads the prompt from the first stdin line instead of argv, then
+ *    keeps accepting further lines for the rest of its life. Once the first
+ *    line (the real prompt) arrives, the first reply follows the exact same
+ *    sequence and knobs as the argv turn path: `$FAKE_CLAUDE_DELAY_MS` before
+ *    anything is written, then the transcript entries, then
+ *    `$FAKE_CLAUDE_POST_WRITE_DELAY_MS`, then the memo shortcut
+ *    (`$FAKE_SKIP_MEMO`), then stdout — plus, unique to this mode,
+ *    `$FAKE_CLAUDE_TOOL_DELAY_MS` (default 0) between the prompt entry being
+ *    written and the reply being produced, during which further stdin lines
+ *    are side messages folded into that first reply's text. The invocation's
+ *    `$FAKE_CLAUDE_LOG` entry (if set) is written once the first stdin line
+ *    is read (or stdin closes before any line, with `stdinPrompt: ''`),
+ *    carrying an extra `stdinPrompt` field with the text read. Each line
+ *    after the first is a side message: appended as its own `user` transcript
+ *    entry immediately, and logged to `$FAKE_CLAUDE_STDIN_LOG` (one JSON
+ *    `{ text }` line per message), if set. After the first `result`, any
+ *    further line is answered with its own `assistant` + `result`
+ *    (`'SIDE:' + text`), any number of rounds. Exactly like the real CLI, the
+ *    fake never exits on its own while stdin is open: it only exits once
+ *    stdin has ended and no reply is currently pending. `$FAKE_CLAUDE_LINGER_MS`
+ *    is still accepted (harmless) for any caller that still sets it, but no
+ *    longer affects exit timing. A safety cap guards a test that forgets to
+ *    close stdin: if stdin is still open 120s after the process started, the
+ *    fake writes a line to stderr and exits 3, so a missed close shows up as
+ *    that test failing, never as a pass.
  */
 export function writeFakeClaude(dir: string): string {
   fs.mkdirSync(dir, { recursive: true });
@@ -55,13 +81,18 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 
-function parseArgs(argv) {
+function parseArgs(argv, streamJsonMode) {
   const out = { prompt: '', sessionId: null, resume: null, model: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-p') {
-      out.prompt = argv[i + 1] || '';
-      i++;
+      /* In stream-json mode, -p is a bare flag (no inline prompt follows);
+         the prompt arrives on stdin instead. Leave this branch untouched
+         for every other caller. */
+      if (!streamJsonMode) {
+        out.prompt = argv[i + 1] || '';
+        i++;
+      }
     } else if (a === '--session-id') {
       out.sessionId = argv[i + 1] || null;
       i++;
@@ -83,19 +114,319 @@ function cwdSlug(dir) {
   return dir.replace(/[^A-Za-z0-9]/g, '-');
 }
 
-async function main() {
-  const argv = process.argv.slice(2);
-  const parsed = parseArgs(argv);
+/* Pulls the text out of a stream-json user line:
+   {"type":"user","message":{"content":[{"type":"text","text":"..."}]}} */
+function extractStreamText(line) {
+  try {
+    const obj = JSON.parse(line);
+    const content = obj && obj.message && obj.message.content;
+    if (Array.isArray(content) && content[0] && typeof content[0].text === 'string') {
+      return content[0].text;
+    }
+  } catch (err) {
+    /* malformed line: treat as empty rather than crashing the fake */
+  }
+  return '';
+}
 
-  if (process.env.FAKE_CLAUDE_LOG) {
-    const entry = {
+/* Shared by both the argv turn path and the stream-json turn path, so the
+   two stay byte-for-byte consistent with each other. */
+function appendLog(argv, extra) {
+  if (!process.env.FAKE_CLAUDE_LOG) return;
+  const entry = Object.assign(
+    {
       argv: argv,
       cwd: process.cwd(),
       CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR || null,
       SAM_CHAT_ID: process.env.SAM_CHAT_ID || null,
-    };
-    fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify(entry) + '\\n');
+    },
+    extra || {},
+  );
+  fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify(entry) + '\\n');
+}
+
+function maybeWriteMemo(promptText, replyText) {
+  const memoMatch = /^Write the memo to: (.+)$/m.exec(promptText);
+  if (memoMatch && process.env.FAKE_SKIP_MEMO !== '1') {
+    const memoPath = memoMatch[1].trim();
+    fs.mkdirSync(path.dirname(memoPath), { recursive: true });
+    fs.writeFileSync(memoPath, '# Memo\\n\\n' + replyText + '\\n');
   }
+}
+
+/*
+ * Stream-json mode: the prompt arrives as the first stdin line instead of
+ * argv, and the process stays alive to accept further lines (side
+ * messages) for the rest of its life, per the tickets file's proven CLI
+ * contract — including never exiting on its own while stdin is open, exactly
+ * like the real CLI. Sets up stdin listeners and a safety-cap timer and
+ * returns immediately; the process later exits itself via finishExit()
+ * below, only once stdin has ended with nothing left to answer (or the
+ * safety cap fires first).
+ */
+function runStreamJsonTurn(parsed, argv) {
+  const id = parsed.resume || parsed.sessionId || crypto.randomUUID();
+  const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+  const slug = cwdSlug(process.cwd());
+  const projectDir = path.join(configDir, 'projects', slug);
+  fs.mkdirSync(projectDir, { recursive: true });
+  const transcriptPath = path.join(projectDir, id + '.jsonl');
+
+  const toolDelayMs = Number(process.env.FAKE_CLAUDE_TOOL_DELAY_MS || '0');
+  /* FAKE_CLAUDE_LINGER_MS is accepted (harmless) for any caller that still
+     sets it, but no longer affects exit timing — see the file-level comment
+     above runStreamJsonTurn. */
+
+  let buffer = '';
+  let firstLineReceived = false;
+  let prompt = '';
+  let phase = 'awaiting-prompt';
+  const foldLines = [];
+  const pendingLinger = [];
+  let stdinEnded = false;
+  let invocationLogged = false;
+
+  /* Safety cap: a broken test that never closes stdin must not leave this
+     process running forever. 120s is deliberately longer than every test's
+     own wait, so a missed close shows up as that test failing (timeout),
+     never as a pass. unref() so this timer itself never keeps the process
+     alive once a normal exit is otherwise due. */
+  const safetyCapTimer = setTimeout(() => {
+    process.stderr.write('fake-claude: stdin still open after 120s safety cap; exiting 3\\n');
+    process.exitCode = 3;
+    process.exit(3);
+  }, 120000);
+  if (typeof safetyCapTimer.unref === 'function') safetyCapTimer.unref();
+
+  /* Exactly one FAKE_CLAUDE_LOG entry per invocation (same rule as the argv
+     path's appendLog() call), written once the prompt is known rather than
+     at process start, so the entry can carry the stdin-read prompt. */
+  function logInvocationOnce(stdinPromptValue) {
+    if (invocationLogged) return;
+    invocationLogged = true;
+    appendLog(argv, { stdinPrompt: stdinPromptValue });
+  }
+
+  function writeTranscriptUserEntry(text) {
+    const entry = {
+      type: 'user',
+      message: { role: 'user', content: text },
+      sessionId: id,
+      cwd: process.cwd(),
+      timestamp: new Date().toISOString(),
+      uuid: crypto.randomUUID(),
+    };
+    fs.appendFileSync(transcriptPath, JSON.stringify(entry) + '\\n');
+  }
+
+  /* A side message received before the first reply (still "collecting") is
+     written exactly as the real CLI writes one landing mid-turn (SAM's
+     real-CLI probe, 2026-10-03, /tmp/btw-queued-command-line.json): a
+     'queued_command' attachment entry, not a 'user' entry. */
+  function writeTranscriptQueuedCommandAttachment(text) {
+    const now = new Date().toISOString();
+    const entry = {
+      parentUuid: null,
+      isSidechain: false,
+      attachment: {
+        type: 'queued_command',
+        prompt: [{ type: 'text', text: text }],
+        source_uuid: crypto.randomUUID(),
+        commandMode: 'prompt',
+        timestamp: now,
+      },
+      type: 'attachment',
+      uuid: crypto.randomUUID(),
+      timestamp: now,
+      sessionId: id,
+      cwd: process.cwd(),
+    };
+    fs.appendFileSync(transcriptPath, JSON.stringify(entry) + '\\n');
+  }
+
+  function writeTranscriptAssistantEntry(text) {
+    const entry = {
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'text', text: text }] },
+      sessionId: id,
+      cwd: process.cwd(),
+      timestamp: new Date().toISOString(),
+      uuid: crypto.randomUUID(),
+    };
+    fs.appendFileSync(transcriptPath, JSON.stringify(entry) + '\\n');
+  }
+
+  function logStdin(text) {
+    if (process.env.FAKE_CLAUDE_STDIN_LOG) {
+      fs.appendFileSync(process.env.FAKE_CLAUDE_STDIN_LOG, JSON.stringify({ text: text }) + '\\n');
+    }
+  }
+
+  function finishExit() {
+    clearTimeout(safetyCapTimer);
+    process.exitCode = 0;
+    process.exit(0);
+  }
+
+  function emitSideReply(text) {
+    const result = 'SIDE:' + text;
+    process.stdout.write(
+      JSON.stringify({ type: 'assistant', session_id: id, message: { content: [{ type: 'text', text: result }] } }) +
+        '\\n',
+    );
+    /* Key order matches the real CLI (2.1.x): duration_api_ms first, type
+       last — type is NOT the first key, unlike every other event. See
+       streamInput.ts's isResultLine for why this matters. */
+    process.stdout.write(
+      JSON.stringify({
+        duration_api_ms: 0,
+        stop_reason: 'end_turn',
+        session_id: id,
+        total_cost_usd: 0,
+        duration_ms: 0,
+        is_error: false,
+        result: result,
+        type: 'result',
+      }) + '\\n',
+    );
+  }
+
+  /* Exactly like the real CLI: never exits on its own while stdin is open.
+     Answers any pending side message immediately, then either exits (stdin
+     has already ended and nothing is left to answer) or simply waits —
+     there is no timer to arm, because there is no window to wait out. */
+  function advanceLinger() {
+    if (pendingLinger.length > 0) {
+      const text = pendingLinger.shift();
+      emitSideReply(text);
+      advanceLinger();
+      return;
+    }
+    if (stdinEnded) {
+      finishExit();
+    }
+  }
+
+  function produceFirstReply() {
+    const reply = (process.env.FAKE_CLAUDE_REPLY || 'echo: ' + prompt) + foldLines.map((l) => ' | SIDE:' + l).join('');
+    writeTranscriptAssistantEntry(reply);
+
+    /* Same knob, same meaning as the argv turn path: holds the job "running"
+       with both transcript entries already on disk but nothing streamed
+       yet (review finding 7's reattach window). */
+    const postWriteDelayMs = Number(process.env.FAKE_CLAUDE_POST_WRITE_DELAY_MS || '0');
+    const emit = function () {
+      maybeWriteMemo(prompt, reply);
+
+      process.stdout.write(
+        JSON.stringify({ type: 'system', subtype: 'init', session_id: id, model: parsed.model || 'fake-model' }) +
+          '\\n',
+      );
+      process.stdout.write(
+        JSON.stringify({ type: 'assistant', session_id: id, message: { content: [{ type: 'text', text: reply }] } }) +
+          '\\n',
+      );
+      /* Key order matches the real CLI (2.1.x) — see emitSideReply's comment
+         above. */
+      process.stdout.write(
+        JSON.stringify({
+          duration_api_ms: toolDelayMs,
+          stop_reason: 'end_turn',
+          session_id: id,
+          total_cost_usd: 0,
+          duration_ms: toolDelayMs,
+          is_error: false,
+          result: reply,
+          type: 'result',
+        }) + '\\n',
+      );
+
+      phase = 'lingering';
+      advanceLinger();
+    };
+    if (postWriteDelayMs > 0) {
+      setTimeout(emit, postWriteDelayMs);
+    } else {
+      emit();
+    }
+  }
+
+  function handleLine(line) {
+    if (line === '') return;
+    if (!firstLineReceived) {
+      firstLineReceived = true;
+      prompt = extractStreamText(line);
+      logInvocationOnce(prompt);
+      phase = 'collecting';
+
+      /* Same knob, same meaning as the argv turn path: nothing is written
+         at all until this elapses. */
+      const delayMs = Number(process.env.FAKE_CLAUDE_DELAY_MS || '0');
+      const afterDelay = function () {
+        writeTranscriptUserEntry(prompt);
+        setTimeout(produceFirstReply, toolDelayMs);
+      };
+      if (delayMs > 0) {
+        setTimeout(afterDelay, delayMs);
+      } else {
+        afterDelay();
+      }
+      return;
+    }
+
+    const text = extractStreamText(line);
+    logStdin(text);
+
+    if (phase === 'collecting') {
+      /* Mid-turn: before the first reply. Real CLI shape: a queued_command
+         attachment, never a 'user' entry (see writeTranscriptQueuedCommandAttachment). */
+      writeTranscriptQueuedCommandAttachment(text);
+      foldLines.push(text);
+    } else if (phase === 'lingering') {
+      /* After the first result: a normal prompt-shaped 'user' entry, exactly
+         as the original (pre-R3) behaviour for every side message. */
+      writeTranscriptUserEntry(text);
+      pendingLinger.push(text);
+      advanceLinger();
+    }
+  }
+
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => {
+    buffer += chunk;
+    let idx;
+    while ((idx = buffer.indexOf('\\n')) !== -1) {
+      const line = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 1);
+      handleLine(line.trim());
+    }
+  });
+  process.stdin.on('end', () => {
+    stdinEnded = true;
+    if (!firstLineReceived) {
+      logInvocationOnce('');
+      finishExit();
+      return;
+    }
+    if (phase === 'lingering') {
+      advanceLinger();
+    }
+    /* phase === 'collecting': the pending setTimeout still fires and moves
+       to 'lingering', which re-checks stdinEnded itself. */
+  });
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+  const isStreamJson = argv.indexOf('--input-format') !== -1;
+  const parsed = parseArgs(argv, isStreamJson);
+
+  if (!isStreamJson) {
+    appendLog(argv, {});
+  }
+  /* Stream-json mode defers its FAKE_CLAUDE_LOG entry until the prompt is
+     actually read from stdin (or stdin closes without one) — see
+     runStreamJsonTurn's logInvocationOnce. */
 
   const isTitleMode = typeof parsed.model === 'string' && parsed.model.indexOf('haiku') !== -1;
 
@@ -107,6 +438,11 @@ async function main() {
     const title = process.env.FAKE_TITLE || 'Fake Title';
     process.stdout.write(JSON.stringify({ type: 'result', is_error: false, result: title }) + '\\n');
     process.exitCode = 0;
+    return;
+  }
+
+  if (isStreamJson) {
+    runStreamJsonTurn(parsed, argv);
     return;
   }
 
@@ -153,12 +489,7 @@ async function main() {
     await new Promise((resolve) => setTimeout(resolve, postWriteDelayMs));
   }
 
-  const memoMatch = /^Write the memo to: (.+)$/m.exec(parsed.prompt);
-  if (memoMatch && process.env.FAKE_SKIP_MEMO !== '1') {
-    const memoPath = memoMatch[1].trim();
-    fs.mkdirSync(path.dirname(memoPath), { recursive: true });
-    fs.writeFileSync(memoPath, '# Memo\\n\\n' + reply + '\\n');
-  }
+  maybeWriteMemo(parsed.prompt, reply);
 
   process.stdout.write(
     JSON.stringify({ type: 'system', subtype: 'init', session_id: id, model: parsed.model || 'fake-model' }) + '\\n',

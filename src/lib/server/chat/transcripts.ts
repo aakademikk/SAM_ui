@@ -26,6 +26,7 @@ import { AgentStreamParser } from '@/lib/agentStream';
 import type { ChatAccount, ChatMessage, ChatTier, TierId } from '@/types/chat';
 
 import { agentCwd } from './agentCwd';
+import { tagPending, taggedUuids, unresolved } from './sideMessageLog';
 import { max2ConfigDir } from './tiers';
 
 /* -------------------------------------------------------------------------- */
@@ -80,6 +81,17 @@ interface TranscriptEntry {
     model?: string;
     content?: unknown;
   };
+  /** Only present on a `type: 'attachment'` entry — a mid-turn side message
+   *  lands here (T8 R1), not as a `user` entry. */
+  attachment?: {
+    type?: string;
+    prompt?: unknown;
+  };
+  /** Set by `readHistory` itself (never present on disk) on a clone of a
+   *  tagged late side message, or a queued_command attachment's own
+   *  synthetic `user`-shaped entry — tells `buildAssistantMessage` to feed
+   *  it to the parser as `sam_side` instead of its nominal type. */
+  __side?: boolean;
   [key: string]: unknown;
 }
 
@@ -130,13 +142,32 @@ function isPromptContent(content: unknown): boolean {
  *  and `isSidechain` entries (a sub-agent's own conversation, not the main
  *  thread) are dropped too: both can carry plain-string content that would
  *  otherwise look like a real prompt. */
-function relevantEntries(entries: TranscriptEntry[]): TranscriptEntry[] {
+function relevantEntries(
+  entries: TranscriptEntry[],
+  opts: { includeQueuedCommandAttachments?: boolean } = {},
+): TranscriptEntry[] {
   return entries.filter((entry) => {
+    if (opts.includeQueuedCommandAttachments && isQueuedCommandAttachment(entry)) return true;
     if (entry.type !== 'user' && entry.type !== 'assistant') return false;
     if (entry.isMeta === true) return false;
     if (entry.isSidechain === true) return false;
     return true;
   });
+}
+
+/** True for a `type: 'attachment'` entry the CLI wrote for a side message
+ *  that landed mid-turn (T8 R1) — `relevantEntries` drops every attachment
+ *  by default (see its own comment), so only a caller that opts in via
+ *  `includeQueuedCommandAttachments` ever sees one. */
+function isQueuedCommandAttachment(entry: TranscriptEntry): boolean {
+  return entry.type === 'attachment' && entry.attachment?.type === 'queued_command';
+}
+
+/** The text of a mid-turn side message's queued_command attachment, or
+ *  `null` for any entry that isn't one. */
+function queuedCommandText(entry: TranscriptEntry): string | null {
+  if (!isQueuedCommandAttachment(entry)) return null;
+  return extractPromptText(entry.attachment?.prompt);
 }
 
 function extractPromptText(content: unknown): string {
@@ -172,7 +203,8 @@ function buildAssistantMessage(chatId: string, turn: number, entries: Transcript
 
   for (const entry of entries) {
     if (entry.type !== 'assistant' && entry.type !== 'user') continue;
-    parser.push(`${JSON.stringify({ type: entry.type, message: entry.message })}\n`);
+    const type = entry.__side ? 'sam_side' : entry.type;
+    parser.push(`${JSON.stringify({ type, message: entry.message })}\n`);
     if (typeof entry.sessionId === 'string') sessionId = entry.sessionId;
     if (entry.type === 'assistant' && typeof entry.uuid === 'string') lastAssistantUuid = entry.uuid;
   }
@@ -223,7 +255,16 @@ export function readHistory(id: string): ChatMessage[] {
   const found = transcriptPath(id);
   if (!found) return [];
 
-  const entries = relevantEntries(readEntries(found.path));
+  // T8: a late side message (one that landed after its turn's `result`) is
+  // written by the CLI as an ordinary prompt-shaped `user` entry —
+  // structurally identical to a genuine new turn. `tagged` names every such
+  // entry `tagSideMessages` has already matched against this chat's own
+  // record of what it sent (`sideMessageLog.ts`), so the loop below can tell
+  // the two apart. A mid-turn side message needs no such lookup: the CLI
+  // writes it as a `queued_command` attachment, a different entry type
+  // entirely, which `includeQueuedCommandAttachments` below opts into seeing.
+  const tagged = taggedUuids(id);
+  const entries = relevantEntries(readEntries(found.path), { includeQueuedCommandAttachments: true });
 
   const messages: ChatMessage[] = [];
   let turn = -1;
@@ -238,7 +279,31 @@ export function readHistory(id: string): ChatMessage[] {
   };
 
   for (const entry of entries) {
+    const queuedText = queuedCommandText(entry);
+    if (queuedText !== null) {
+      // A turn must already be open — a queued_command attachment landing
+      // before the transcript's first real prompt has nowhere to attach and
+      // is dropped, same rule as any other pre-first-prompt entry.
+      if (promptEntry) {
+        turnEntries.push({
+          type: 'user',
+          __side: true,
+          message: { content: [{ type: 'text', text: queuedText }] },
+          uuid: entry.uuid,
+          sessionId: entry.sessionId,
+        });
+      }
+      continue;
+    }
+
     if (entry.type === 'user' && isPromptContent(entry.message?.content)) {
+      // A turn already open, and this entry is one `tagSideMessages` matched
+      // to a side message this chat actually sent: it joins the open turn as
+      // a side block instead of starting a new one.
+      if (promptEntry !== null && typeof entry.uuid === 'string' && tagged.has(entry.uuid)) {
+        turnEntries.push({ ...entry, __side: true });
+        continue;
+      }
       flush();
       promptEntry = entry;
       turnEntries = [];
@@ -251,6 +316,63 @@ export function readHistory(id: string): ChatMessage[] {
   flush();
 
   return messages;
+}
+
+/**
+ * Re-reads `chatId`'s transcript and matches every still-unresolved side
+ * message record (`sideMessageLog.ts`'s `unresolved`) against it, so a late
+ * side message's own transcript entry is never again mistaken for a new
+ * top-level turn. Call once a turn's transcript is final (`startTurn.ts`'s
+ * `onTurnExit` hook) — never while the file could still be mid-write.
+ *
+ * Two kinds of match, tried in this order for each record:
+ *  - A `queued_command` attachment entry with this exact text (T8 R1's
+ *    mid-turn case — already rendered correctly by `readHistory` without any
+ *    tagging; matching it here only marks the record resolved, via the
+ *    attachment's own uuid, so it is never also matched to a user entry).
+ *  - Failing that, the earliest prompt-shaped `user` entry with this exact
+ *    text, not already tagged, and not the transcript's very first relevant
+ *    entry (that one can never be a side message — it is the chat's own
+ *    first prompt).
+ */
+export function tagSideMessages(chatId: string): void {
+  const found = transcriptPath(chatId);
+  if (!found) return;
+
+  const records = unresolved(chatId);
+  if (records.length === 0) return;
+
+  const entries = relevantEntries(readEntries(found.path), { includeQueuedCommandAttachments: true });
+  const used = taggedUuids(chatId);
+
+  const pairs: { text: string; uuid: string }[] = [];
+
+  for (const record of records) {
+    const attachmentMatch = entries.find(
+      (entry) => typeof entry.uuid === 'string' && !used.has(entry.uuid) && queuedCommandText(entry) === record.text,
+    );
+    if (attachmentMatch && typeof attachmentMatch.uuid === 'string') {
+      pairs.push({ text: record.text, uuid: attachmentMatch.uuid });
+      used.add(attachmentMatch.uuid);
+      continue;
+    }
+
+    const userMatch = entries.find(
+      (entry, index) =>
+        index !== 0 &&
+        entry.type === 'user' &&
+        typeof entry.uuid === 'string' &&
+        !used.has(entry.uuid) &&
+        isPromptContent(entry.message?.content) &&
+        extractPromptText(entry.message?.content) === record.text,
+    );
+    if (userMatch && typeof userMatch.uuid === 'string') {
+      pairs.push({ text: record.text, uuid: userMatch.uuid });
+      used.add(userMatch.uuid);
+    }
+  }
+
+  tagPending(chatId, pairs);
 }
 
 /**

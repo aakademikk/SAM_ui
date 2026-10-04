@@ -20,6 +20,11 @@ const ready = (async () => {
   transcripts = await import('./transcripts.js');
 })();
 
+let sideMessageLog: typeof import('./sideMessageLog.js');
+const sideMessageLogReady = (async () => {
+  sideMessageLog = await import('./sideMessageLog.js');
+})();
+
 /** Point HOME at a fresh temp dir. transcripts.ts itself reads os.homedir()
  *  (via agentCwd()) on every call, so no module reset is needed there —
  *  only samuiSessions.ts/chatStore.ts-style globalThis caches need that.
@@ -178,6 +183,213 @@ test('readHistory: a chat id with no transcript on disk returns an empty list', 
   await ready;
   freshHome();
   assert.deepEqual(transcripts.readHistory('no-such-chat'), []);
+});
+
+/* -------------------------------------------------------------------------- */
+/* T8: side messages survive a reload                                         */
+/* -------------------------------------------------------------------------- */
+
+/** Mirrors the real CLI's own shape for a side message landing mid-turn
+ *  (SAM's probe, 2026-10-03, /tmp/btw-queued-command-line.json, large
+ *  `rendered` field removed) — only the fields transcripts.ts reads matter
+ *  for this fixture; the rest ride along for realism. */
+function queuedCommandEntry(id: string, parentUuid: string, uuid: string, text: string): unknown {
+  return {
+    parentUuid,
+    isSidechain: false,
+    attachment: {
+      type: 'queued_command',
+      prompt: [{ type: 'text', text }],
+      source_uuid: `src-${uuid}`,
+      commandMode: 'prompt',
+      timestamp: new Date().toISOString(),
+    },
+    type: 'attachment',
+    uuid,
+    timestamp: new Date().toISOString(),
+    sessionId: id,
+  };
+}
+
+test('readHistory (T8 R1): a mid-turn queued_command attachment renders as a side block between assistant texts', async () => {
+  await ready;
+  const home = freshHome();
+  const slug = defaultSlug(home);
+  const id = 'chat-midturn-side-1';
+
+  writeTranscript(home, '.claude', slug, id, [
+    { type: 'user', message: { role: 'user', content: 'Start the long task' }, sessionId: id, uuid: 'u1' },
+    {
+      type: 'assistant',
+      message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'Working on it...' }] },
+      sessionId: id,
+      uuid: 'a1',
+    },
+    queuedCommandEntry(id, 'a1', 'side-att-1', 'also check the logs'),
+    {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        model: 'claude-opus-5',
+        content: [{ type: 'text', text: 'Done, logs look fine.' }],
+      },
+      sessionId: id,
+      uuid: 'a2',
+    },
+  ]);
+
+  // Fails before T8 R1: relevantEntries drops every attachment, so the side
+  // text is simply absent (not even a split — this is one turn either way).
+  const messages = transcripts.readHistory(id);
+  assert.equal(messages.length, 2, 'one user/assistant pair, not split by the attachment');
+  assert.equal(messages[0].role, 'user');
+  assert.equal(messages[1].role, 'assistant');
+  assert.deepEqual(messages[1].blocks, [
+    { kind: 'text', text: 'Working on it...' },
+    { kind: 'side', text: 'also check the logs' },
+    { kind: 'text', text: 'Done, logs look fine.' },
+  ]);
+});
+
+test('readHistory + tagSideMessages (T8 R2): a late side message, matched via sideMessageLog, stays in its turn as a side block', async () => {
+  await ready;
+  await sideMessageLogReady;
+  const home = freshHome();
+  sideMessageLog.__resetSideMessageLogForTests();
+  const slug = defaultSlug(home);
+  const id = 'chat-late-side-1';
+  const sideText = 'what about the logs too';
+
+  writeTranscript(home, '.claude', slug, id, [
+    { type: 'user', message: { role: 'user', content: 'Start the long task' }, sessionId: id, uuid: 'u1' },
+    {
+      type: 'assistant',
+      message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'first answer' }] },
+      sessionId: id,
+      uuid: 'a1',
+    },
+    // A side message's own entry is written by the CLI in exactly the shape
+    // of a fresh top-level prompt (array content, same as streamJsonUserLine
+    // writes) — the only thing that tells it apart is T5's own record of
+    // having sent it (sideMessageLog.ts).
+    {
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'text', text: sideText }] },
+      sessionId: id,
+      uuid: 'u-side',
+    },
+    {
+      type: 'assistant',
+      message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'second answer' }] },
+      sessionId: id,
+      uuid: 'a2',
+    },
+  ]);
+
+  sideMessageLog.recordSideMessageSent(id, sideText);
+  transcripts.tagSideMessages(id);
+
+  const messages = transcripts.readHistory(id);
+  assert.equal(messages.length, 2, 'one user/assistant pair, not split at the tagged entry');
+  assert.deepEqual(messages[1].blocks, [
+    { kind: 'text', text: 'first answer' },
+    { kind: 'side', text: sideText },
+    { kind: 'text', text: 'second answer' },
+  ]);
+});
+
+test('readHistory (T8 "before" baseline): without recordSideMessageSent/tagSideMessages, the same fixture splits into two turns', async () => {
+  await ready;
+  await sideMessageLogReady;
+  const home = freshHome();
+  sideMessageLog.__resetSideMessageLogForTests();
+  const slug = defaultSlug(home);
+  const id = 'chat-late-side-baseline-1';
+  const sideText = 'what about the logs too';
+
+  writeTranscript(home, '.claude', slug, id, [
+    { type: 'user', message: { role: 'user', content: 'Start the long task' }, sessionId: id, uuid: 'u1' },
+    {
+      type: 'assistant',
+      message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'first answer' }] },
+      sessionId: id,
+      uuid: 'a1',
+    },
+    {
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'text', text: sideText }] },
+      sessionId: id,
+      uuid: 'u-side',
+    },
+    {
+      type: 'assistant',
+      message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'second answer' }] },
+      sessionId: id,
+      uuid: 'a2',
+    },
+  ]);
+
+  // recordSideMessageSent/tagSideMessages deliberately skipped — today's
+  // wrong behaviour, kept as the explicit "before" baseline.
+  const messages = transcripts.readHistory(id);
+  assert.equal(messages.length, 4, 'the mid-turn-shaped entry wrongly splits into a second turn');
+});
+
+test('readHistory + tagSideMessages (T8 R4c): a mid-turn attachment and a late tagged side message in one chat each render exactly once', async () => {
+  await ready;
+  await sideMessageLogReady;
+  const home = freshHome();
+  sideMessageLog.__resetSideMessageLogForTests();
+  const slug = defaultSlug(home);
+  const id = 'chat-both-kinds-1';
+  const midText = 'mid turn note';
+  const lateText = 'late note';
+
+  writeTranscript(home, '.claude', slug, id, [
+    { type: 'user', message: { role: 'user', content: 'Start' }, sessionId: id, uuid: 'u1' },
+    {
+      type: 'assistant',
+      message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'one' }] },
+      sessionId: id,
+      uuid: 'a1',
+    },
+    queuedCommandEntry(id, 'a1', 'att-1', midText),
+    {
+      type: 'assistant',
+      message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'two' }] },
+      sessionId: id,
+      uuid: 'a2',
+    },
+    {
+      type: 'user',
+      message: { role: 'user', content: [{ type: 'text', text: lateText }] },
+      sessionId: id,
+      uuid: 'u-late',
+    },
+    {
+      type: 'assistant',
+      message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'three' }] },
+      sessionId: id,
+      uuid: 'a3',
+    },
+  ]);
+
+  // Both recorded in the side-message log, as sendSideMessage would do
+  // regardless of which shape the CLI happened to write each one in —
+  // tagSideMessages must resolve the mid-turn one via its own attachment
+  // uuid and never also try to match it against a user entry.
+  sideMessageLog.recordSideMessageSent(id, midText);
+  sideMessageLog.recordSideMessageSent(id, lateText);
+  transcripts.tagSideMessages(id);
+
+  const messages = transcripts.readHistory(id);
+  assert.equal(messages.length, 2, 'one user/assistant pair');
+  const sideBlocks = messages[1].blocks.filter((b) => b.kind === 'side');
+  assert.equal(sideBlocks.length, 2, 'each side message appears exactly once');
+  assert.deepEqual(
+    sideBlocks.map((b) => (b.kind === 'side' ? b.text : '')),
+    [midText, lateText],
+  );
 });
 
 /* -------------------------------------------------------------------------- */

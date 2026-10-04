@@ -271,6 +271,8 @@ export function splitBlocks(blocks: ChatBlock[]): { answer: ChatBlock[]; work: C
       answer.push(b);
     } else if (b.kind === 'text') {
       (i === lastText ? answer : work).push(b);
+    } else if (b.kind === 'side') {
+      answer.push(b); // shows in the chat, not behind "View work" (must-do 4)
     } else {
       work.push(b); // thinking, tool
     }
@@ -295,6 +297,17 @@ export function AnswerBlocks({ blocks }: { blocks: ChatBlock[] }) {
             <p
               key={i}
               className="text-xs text-red-400 bg-red-900/15 border border-red-700/25
+                         rounded px-2 py-1.5"
+            >
+              {block.text}
+            </p>
+          );
+        }
+        if (block.kind === 'side') {
+          return (
+            <p
+              key={i}
+              className="text-xs text-amber-400 bg-amber-900/30 border border-amber-500/30
                          rounded px-2 py-1.5"
             >
               {block.text}

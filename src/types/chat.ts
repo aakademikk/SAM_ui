@@ -62,7 +62,8 @@ export type ChatBlock =
       /** Populated when the matching tool_result arrives. */
       result?: string;
     }
-  | { kind: 'error'; text: string };
+  | { kind: 'error'; text: string }
+  | { kind: 'side'; text: string };
 
 export interface TokenUsage {
   /** Fresh input tokens — billed at the cache-miss rate. */

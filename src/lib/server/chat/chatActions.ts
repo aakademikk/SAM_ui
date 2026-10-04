@@ -139,19 +139,25 @@ export function openChat(id: string): OpenChatResult | null {
   if (chat.runningJobId) {
     const job = getJobManager().liveRecord(chat.runningJobId);
     const startedAtMs = job?.startedAt ? Date.parse(job.startedAt) : null;
-    const starts = turnStartTimestamps(id);
-    const lastStart = starts.length > 0 ? starts[starts.length - 1] : undefined;
-    const lastStartMs = lastStart !== undefined ? Date.parse(lastStart) : null;
+    // Every pair whose prompt landed at or after the job's own start belongs
+    // to this job: the turn's own prompt plus, on a Max turn, each late side
+    // message (a prompt-shaped `user` entry, only tagged at turn exit, so
+    // `readHistory` still returns it as its own pair). The live replay shows
+    // all of them, so all of them are dropped here. A job we can no longer
+    // find live should not happen while the lock is held, but falls back to
+    // the old blunt rule (drop one pair) rather than risk a duplicate turn.
+    let inFlightPairs = 0;
+    if (startedAtMs !== null) {
+      for (const start of turnStartTimestamps(id)) {
+        if (start !== undefined && Date.parse(start) >= startedAtMs) inFlightPairs += 1;
+      }
+    } else if (job === null) {
+      inFlightPairs = 1;
+    }
 
-    // The trailing pair is the in-flight turn only when its prompt landed at
-    // or after the job's own start. A job we can no longer find live should
-    // not happen while the lock is held, but falls back to the old blunt
-    // rule rather than risk showing a duplicate turn.
-    const lastIsInFlight =
-      startedAtMs !== null && lastStartMs !== null ? lastStartMs >= startedAtMs : job === null;
-
-    if (lastIsInFlight && messages.length >= 2) {
-      messages = messages.slice(0, -2);
+    const drop = Math.min(2 * inFlightPairs, messages.length);
+    if (drop > 0) {
+      messages = messages.slice(0, messages.length - drop);
     }
     if (job) pendingPrompt = promptFromJobLabel(job.command);
   }

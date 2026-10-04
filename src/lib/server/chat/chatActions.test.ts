@@ -373,6 +373,54 @@ test('finding 7: once the new turn\'s prompt is actually on disk, reattach hides
   }
 });
 
+test('finding 7 + T8a: a late side message answered by the running job hides the whole in-flight turn, not just its last pair', async () => {
+  const id = await (async () => {
+    const started = await st.startTurn({ message: 'first turn c', tier: 'max', device: 'pc' });
+    assertOk(started);
+    await waitExit(started.jobId);
+    return started.chatId;
+  })();
+
+  process.env.FAKE_CLAUDE_POST_WRITE_DELAY_MS = '3000';
+  try {
+    const started = await st.startTurn({ message: 'second turn c', tier: 'max', chatId: id, device: 'pc' });
+    assertOk(started);
+
+    // Wait for the fake to write the in-flight prompt + first answer.
+    await new Promise((resolve) => setTimeout(resolve, 1800));
+
+    // A late side message: an ordinary prompt-shaped user entry, untagged
+    // (nothing has recorded it in the side-message log), plus the job's
+    // second answer — both after the job's start.
+    const found = transcripts.transcriptPath(id);
+    assert.ok(found);
+    const later = new Date(Date.now() + 1000).toISOString();
+    const entry = (type: string, message: object) =>
+      JSON.stringify({ type, message, sessionId: id, timestamp: later, uuid: crypto.randomUUID() }) + '\n';
+    fs.appendFileSync(found.path, entry('user', { role: 'user', content: 'late side c' }));
+    fs.appendFileSync(
+      found.path,
+      entry('assistant', { role: 'assistant', content: [{ type: 'text', text: 'second answer c' }] }),
+    );
+
+    assert.equal(transcripts.readHistory(id).length, 6, 'the late entry reads as its own pair before the fix applies');
+
+    const opened = actions.openChat(id);
+    assert.ok(opened);
+    assert.equal(opened.runningJobId, started.jobId);
+    assert.equal(opened.messages.length, 2, 'only the earlier finished turn is shown');
+    assert.equal(textOf(opened.messages[0]), 'first turn c');
+    assert.ok(
+      !opened.messages.some((m) => textOf(m).includes('second turn c') || textOf(m).includes('late side c')),
+      'no part of the in-flight turn is in history',
+    );
+
+    await waitExit(started.jobId);
+  } finally {
+    delete process.env.FAKE_CLAUDE_POST_WRITE_DELAY_MS;
+  }
+});
+
 test('adopt: refuses an unknown id, adopts a pre-upgrade chat unarchived, and stays idempotent', async () => {
   const unknown = actions.adopt('11111111-2222-3333-4444-555555555555');
   assert.equal(unknown.ok, false);

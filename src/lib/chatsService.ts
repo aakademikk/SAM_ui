@@ -107,6 +107,16 @@ export function handoff(id: string, tier: TierId): Promise<{ memoJobId: string }
 }
 
 /**
+ * Sends a side message into this chat's running turn (spec must-do 2, 6).
+ * Rejects (via `unwrap`) with the server's own message on failure — e.g. a
+ * 409 once the turn's input channel is gone, or a 400 off the Claude tiers —
+ * so a caller's `catch` sees the same text the server reported.
+ */
+export function sendSideMessage(id: string, text: string): Promise<{ ok: true }> {
+  return send<{ ok: true }>(`/api/chats/${encodeURIComponent(id)}/side`, 'POST', { text });
+}
+
+/**
  * Reports the chat this device currently has on screen (`null` for none —
  * hidden, unmounted, or a draft), so the server can tell whether a chat that
  * just finished a turn was being looked at (T10's `isOnScreen`). Fire and
