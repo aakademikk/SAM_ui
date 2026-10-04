@@ -10,9 +10,9 @@
 
 import fs from 'node:fs';
 
+import { activePrioritiesPath } from '@/lib/server/livePaths';
 import type { DailyTask, TaskPriority } from '@/types/dashboard';
 
-const PRIORITIES_PATH = '/home/col/ai-memory-vault/Active Priorities.md';
 const CACHE_MS = 8_000;
 
 const SECTION_META: Record<string, { tag: string; priority: TaskPriority }> = {
@@ -73,7 +73,7 @@ let cached: { at: number; tasks: DailyTask[] } | null = null;
 
 function readNow(): DailyTask[] {
   try {
-    const text = fs.readFileSync(PRIORITIES_PATH, 'utf-8');
+    const text = fs.readFileSync(activePrioritiesPath(), 'utf-8');
     return parsePriorities(text);
   } catch {
     return [];
@@ -101,7 +101,7 @@ export function invalidateTasksCache() {
  */
 export function setTaskDone(task: DailyTask, done: boolean): void {
   try {
-    const text = fs.readFileSync(PRIORITIES_PATH, 'utf-8');
+    const text = fs.readFileSync(activePrioritiesPath(), 'utf-8');
     const lines = text.split('\n');
     let section: string | null = null;
 
@@ -118,7 +118,7 @@ export function setTaskDone(task: DailyTask, done: boolean): void {
       if (cleanTitle(match[4]) !== task.title) continue;
 
       lines[i] = `${match[1]}${done ? 'x' : ' '}${match[3]}${match[4]}`;
-      fs.writeFileSync(PRIORITIES_PATH, lines.join('\n'), 'utf-8');
+      fs.writeFileSync(activePrioritiesPath(), lines.join('\n'), 'utf-8');
       return;
     }
   } catch {

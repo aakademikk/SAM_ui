@@ -22,7 +22,9 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
-const VAULT_PATH = process.env.SAM_VAULT_PATH ?? '/home/col/ai-memory-vault';
+import { vaultDir } from '@/lib/server/livePaths';
+
+const vaultPath = () => process.env.SAM_VAULT_PATH ?? vaultDir();
 
 // Mirrors IGNORED_DIRS in vaultMetrics.ts and build_vault_graph.py — keep the
 // three in step or they will disagree about what the vault contains.
@@ -123,7 +125,7 @@ async function walk(dir: string, out: Contact[]): Promise<void> {
       name: entry.name.slice(0, -3),
       email,
       aliases: parseAliases(fm.aliases),
-      path: path.relative(VAULT_PATH, full),
+      path: path.relative(vaultPath(), full),
       status: fm.status ?? 'active',
     });
   }
@@ -135,7 +137,7 @@ export async function listContacts(): Promise<Contact[]> {
   if (cached && now - cached.at < CACHE_MS) return cached.contacts;
 
   const contacts: Contact[] = [];
-  await walk(VAULT_PATH, contacts);
+  await walk(vaultPath(), contacts);
   contacts.sort((a, b) => a.name.localeCompare(b.name));
 
   cached = { at: now, contacts };

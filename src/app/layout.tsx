@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { ServiceWorkerRegistration } from '@/components/shell/ServiceWorkerRegistration';
 import { ScreenWakeLock } from '@/components/shell/ScreenWakeLock';
+import { bootScript } from '@/lib/preferencesBoot';
 
 export const metadata: Metadata = {
   title: 'SAM — Core Dashboard',
@@ -40,6 +41,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en-GB" data-ambient="toxic" suppressHydrationWarning>
       <head>
+        {/* Saved theme, intensity and grid onto <html> before first paint, so a
+            reload never flashes Toxic (floor-fixes Must 11). First in <head>;
+            `data-ambient="toxic"` above stays the default for a device with
+            nothing saved, and suppressHydrationWarning covers the difference. */}
+        <script dangerouslySetInnerHTML={{ __html: bootScript }} />
         {/* Apple PWA meta — Next.js appleWebApp above handles most, but these are the belt-and-suspenders */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

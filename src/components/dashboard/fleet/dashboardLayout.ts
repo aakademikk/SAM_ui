@@ -138,7 +138,9 @@ export type PanelAction =
   | { type: 'close' }
   | { type: 'tab'; tab: DrawerTab }
   /** A click on the floor: a General (station, card or pads) opens it; empty floor closes. */
-  | { type: 'floorClick'; hit: GeneralId | null };
+  | { type: 'floorClick'; hit: GeneralId | null }
+  /** A job was picked (an Active jobs row or a worker figure): close any panel and show the Job tab. */
+  | { type: 'selectJob' };
 
 export const INITIAL_PANEL_STATE: PanelState = { tab: DEFAULT_TAB, open: null };
 
@@ -158,5 +160,8 @@ export function panelReducer(state: PanelState, action: PanelAction): PanelState
       return { tab: action.tab, open: null };
     case 'floorClick':
       return action.hit ? panelReducer(state, { type: 'openGeneral', id: action.hit }) : panelReducer(state, { type: 'close' });
+    case 'selectJob':
+      if (state.tab === 'detail' && !state.open) return state;
+      return { tab: 'detail', open: null };
   }
 }

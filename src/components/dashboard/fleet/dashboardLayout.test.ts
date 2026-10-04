@@ -191,3 +191,14 @@ test('summariseGeneral: live workers from the floor, spend and history from toda
   const full = Array.from({ length: 10 }, (_, i) => job(`j${i}`, today + i * 60_000));
   assert.equal(summariseGeneral(floor(), 'hephaestus', full, now).spendPartial, true);
 });
+
+test('T11: selectJob closes any panel and shows the Job tab', () => {
+  const fromGeneral = panelReducer({ tab: 'events', open: { kind: 'general', id: 'hermes' } }, { type: 'selectJob' });
+  assert.deepEqual(fromGeneral, { tab: 'detail', open: null }, 'a General open: closed, Job tab');
+  const fromSchedule = panelReducer({ tab: 'detail', open: { kind: 'schedule' } }, { type: 'selectJob' });
+  assert.deepEqual(fromSchedule, { tab: 'detail', open: null }, 'the Schedule panel open: closed');
+  const fromTab = panelReducer({ tab: 'events', open: null }, { type: 'selectJob' });
+  assert.deepEqual(fromTab, { tab: 'detail', open: null }, 'another tab: switches to Job');
+  const already = { tab: 'detail', open: null } as const;
+  assert.equal(panelReducer(already, { type: 'selectJob' }), already, 'already on Job, nothing open: same state object');
+});

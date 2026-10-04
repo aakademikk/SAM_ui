@@ -69,7 +69,8 @@ import type { Box } from '@/components/floor/ringRender';
 import { useDashboardStore } from '@/store/dashboardStore';
 import type { FloorState, GeneralId, ScheduledJob } from '@/types/floor';
 
-import ActiveJobsModule, { activeJobEntries } from './ActiveJobsModule';
+import ActiveJobsModule from './ActiveJobsModule';
+import { resolveJobId } from './jobSelection';
 import DemoModeToggle from './DemoModeToggle';
 import FleetStatusModule from './FleetStatusModule';
 import GeneralDetailPanel from './GeneralDetailPanel';
@@ -116,6 +117,10 @@ const CSS = `
 .fd-p>section{flex:1 1 auto;min-height:0}
 .fd-bottom>.fd-p{height:100%}
 .fd-p[data-panel=chat]{margin-top:auto;flex:0 0 auto}
+/* floor-fixes T7 (Must 6): the tile group gives up the column's height first (Active jobs and Chat keep theirs) and scrolls inside itself; it keeps one Small tile's height while it has a tile */
+.fd-p[data-panel=sidebar]{flex:0 1000 auto}
+.fd-p[data-panel=sidebar]:has([data-tile]){min-height:176px}
+.fd-p[data-panel=sidebar]>[data-sidebar-widgets]{flex:0 1 auto;overscroll-behavior:contain}
 .fd-hero{position:relative;min-height:0;min-width:0;border-radius:12px;overflow:hidden;border:1px solid ${PANEL_BORDER};background:#020805}
 .fd-col-r>.fd-p:not(.fd-focus){transition:opacity .4s}
 .fd-focus{position:absolute;left:0;right:0;top:0;max-height:100%;overflow:auto;scrollbar-width:thin;z-index:8;opacity:0;
@@ -127,7 +132,9 @@ const CSS = `
 .fd-ring-hit{position:absolute;left:0;top:0;padding:0;margin:0;border:0;border-radius:50%;background:none;cursor:pointer}
 .fd-ring-hit:focus-visible{outline:1px solid rgba(61,255,90,.34);outline-offset:-1px}
 /* T15: SidebarWidgets folded into the drawer's Job tab (no seventh tab, per the mockup's own note on the 336px drawer); only mounted at all in the drawer (see the component's JS gate), so this is just its spacing, not a visibility toggle. */
-.fd-drawer-sidebar{margin-top:10px}
+/* floor-fixes T7 (Must 6): in the Job tab the tile group is at most the tab's own height (so it never grows the tab's row past its cap) and scrolls inside itself; the tab scrolls on past it */
+.fd-drawer-sidebar{margin-top:10px;flex:0 0 auto;display:flex;flex-direction:column;max-height:100%;min-height:0}
+.fd-drawer-sidebar>[data-sidebar-widgets]{flex:0 1 auto}
 @media ${COMPACT_QUERY}{
   .fd{grid-template-rows:auto 54px minmax(0,1fr);gap:10px;padding:10px 14px 14px}
   .fd-main{grid-template-columns:292px minmax(0,1fr) 318px;gap:10px}
@@ -263,7 +270,8 @@ export default function FleetDashboardShell({ demo: demoProp = false, chatSlot, 
 
   /*
    * Floor clicks. FloorCanvas calls onSelectGeneral during the canvas's own
-   * click handler when a General is hit; the event then bubbles to the hero
+   * click handler when a General is hit (onSelectJob when a worker figure
+   * is, T13); the event then bubbles to the hero
    * wrapper, which closes the detail if nothing was hit (empty floor).
    */
   const hitThisClick = useRef(false);
@@ -276,13 +284,27 @@ export default function FleetDashboardShell({ demo: demoProp = false, chatSlot, 
     hitThisClick.current = false;
   }, []);
   const onSelectGeneral = useCallback((id: GeneralId) => dispatch({ type: 'openGeneral', id }), []);
+  // an Active jobs row shows its job: close any General or Schedule panel and switch the drawer to its Job tab
+  const onSelectJob = useCallback((id: string) => {
+    setSelectedJobId(id);
+    dispatch({ type: 'selectJob' });
+  }, []);
+  // a worker figure on the floor (T13): the same as its Active jobs row; the click counts as a hit so the hero does not treat it as empty floor
+  const onFloorJob = useCallback((id: string) => {
+    hitThisClick.current = true;
+    onSelectJob(id);
+  }, [onSelectJob]);
+  // the ring's click target is a box round the dial and can cover SAM's pads: a click on a figure there still picks the job
+  const figureAt = useRef<((clientX: number, clientY: number) => string | null) | null>(null);
+  const onHeroClickCapture = useCallback((e: React.MouseEvent) => {
+    if (e.detail === 0 || !(e.target instanceof Element) || !e.target.closest('.fd-ring-hit')) return; // keyboard activation stays the ring's
+    const job = figureAt.current?.(e.clientX, e.clientY);
+    if (job) { e.stopPropagation(); onSelectJob(job); }
+  }, [onSelectJob]);
   const onClose = useCallback(() => dispatch({ type: 'close' }), []);
 
-  // Job detail follows the picked job while it is live, else the first live job
-  const entries = activeJobEntries(floor);
-  const jobId = selectedJobId && entries.some((e) => e.worker.jobId === selectedJobId)
-    ? selectedJobId
-    : entries[0]?.worker.jobId ?? null;
+  // Job detail follows the picked job while it is pickable, else the first live job
+  const jobId = resolveJobId(floor, selectedJobId, Date.now());
 
   const tab: DrawerTab = panel.tab;
 
@@ -320,8 +342,7 @@ export default function FleetDashboardShell({ demo: demoProp = false, chatSlot, 
             <ActiveJobsModule
               state={floor}
               selectedJobId={jobId}
-              onSelectJob={setSelectedJobId}
-              onSelectGeneral={onSelectGeneral}
+              onSelectJob={onSelectJob}
             />
           </div>
           {!drawerMode && (
@@ -335,12 +356,14 @@ export default function FleetDashboardShell({ demo: demoProp = false, chatSlot, 
         </div>
 
         <div className="fd-center">
-          <div className="fd-hero" onClick={onHeroClick}>
+          <div className="fd-hero" onClick={onHeroClick} onClickCapture={onHeroClickCapture}>
             <FloorCanvas
               demo={demo}
               focus={openGeneral}
               variant={layout?.floorVariant ?? 'auto'}
               onSelectGeneral={onFloorGeneral}
+              onSelectJob={onFloorJob}
+              figureAtRef={figureAt}
               onState={setFloor}
               onSchedule={setSchedule}
               onRing={setRingBox}

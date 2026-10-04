@@ -40,6 +40,13 @@
  * Extension points for later tickets: `onDrawLayer`, `onSelectGeneral` + `focus` (the dashboard shell's
  * zoom and detail, T11), `pollUrl`/`schedulePollUrl`/`demo` (demo mode, T20), `onSchedule`/`onRing` (the Schedule
  * panel and the ring's click target, T18).
+ *
+ * Figure picking (floor-fixes T13, Must 17, 18, 20, 25): with `onSelectJob` set, a click or tap within 44x44px of
+ * a worker figure's pad centre picks its job (`figureHit.pickAt`) and wins over the General's column behind it;
+ * a recently failed (red) figure is picked the same way. Figures get no tab stops (keyboard users have the Active
+ * jobs list). Their hit boxes are mirrored into an `aria-hidden`, `pointer-events:none` overlay of empty
+ * `[data-figure-job]` elements, written straight from `draw` only when the rounded set changes, so tests can
+ * read where the figures are.
  */
 
 import { useCallback, useEffect, useRef } from 'react';
@@ -48,6 +55,7 @@ import { BUST_PATHS } from '@/lib/busts';
 import type { FloorState, GeneralId, ScheduledJob } from '@/types/floor';
 import { bustLevel, cardBustAlpha, currentFlare, recordFlares, workingK } from './busts';
 import type { FlareLog } from './busts';
+import { FIGURE_HIT_PX, hitFigure, pickAt } from './figureHit';
 import {
   ACC, BAD, CORE, DESKTOP_OPTIONS, EDGE, FONT, GEO, KEY_ITEMS, LAPTOP_OPTIONS, LAPTOP_QUERY, MIST, PHONE_FONT, PHONE_OPTIONS,
   SPRITE_COLOURS, TEAL, bez, buildScene, camFor, clamp, computeLayout, diffFloor, ease, emptyFx, hitGeneral, iso, lerpCam,
@@ -80,6 +88,13 @@ export interface FloorCanvasProps {
   pollMs?: number;
   /** Called with a General's id when its station, card or pads are clicked. */
   onSelectGeneral?: (id: GeneralId) => void;
+  /** Called with a job id when a worker figure is clicked or tapped (wins over `onSelectGeneral`). */
+  onSelectJob?: (jobId: string) => void;
+  /**
+   * Filled with a figure hit test in client px (null while figures are not selectable), for a shell whose own
+   * control is layered over the canvas: the clock ring's hit box covers SAM's pads on the phone (T13).
+   */
+  figureAtRef?: { current: ((clientX: number, clientY: number) => string | null) | null };
   /** Zoom the camera onto a General (null: the whole floor). */
   focus?: GeneralId | null;
   /**
@@ -803,12 +818,13 @@ function isFloorState(x: unknown): x is FloorState {
 }
 
 export default function FloorCanvas({
-  pollUrl = '/api/fleet/floor', demo = false, pollMs = 3000, onSelectGeneral, focus = null, variant = 'auto',
+  pollUrl = '/api/fleet/floor', demo = false, pollMs = 3000, onSelectGeneral, onSelectJob, figureAtRef, focus = null, variant = 'auto',
   showCards = true, showSamLabel = true, showKey = true, onState, onDrawLayer, className,
   schedulePollUrl = '/api/fleet/schedule', showRing = true, onSchedule, onRing,
 }: FloorCanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const figRef = useRef<HTMLDivElement>(null);
   const st = useRef({
     state: null as FloorState | null,
     fx: emptyFx() as FloorFx,
@@ -829,9 +845,12 @@ export default function FloorCanvas({
     ringAngles: {} as Record<string, number>,
     ringT: 0,
     ringExtent: null as Box | null,
+    /** The last drawn scene's figures (T13: the click and hover hit test) and the overlay's rounded key. */
+    figures: [] as Figure[],
+    figKey: '',
   });
-  const props = useRef({ onSelectGeneral, onState, onDrawLayer, showCards, showSamLabel, showKey, variant, showRing, onSchedule, onRing });
-  props.current = { onSelectGeneral, onState, onDrawLayer, showCards, showSamLabel, showKey, variant, showRing, onSchedule, onRing };
+  const props = useRef({ onSelectGeneral, onSelectJob, onState, onDrawLayer, showCards, showSamLabel, showKey, variant, showRing, onSchedule, onRing });
+  props.current = { onSelectGeneral, onSelectJob, onState, onDrawLayer, showCards, showSamLabel, showKey, variant, showRing, onSchedule, onRing };
 
   const camNow = useCallback((now: number): Cam | null => {
     const s = st.current, L = s.layout;
@@ -875,6 +894,23 @@ export default function FloorCanvas({
     if (!ext !== !prev || (ext && prev && ext.some((x, i) => Math.abs(x - prev[i]) >= 1))) { s.ringExtent = ext; p.onRing?.(ext); }
     paint(ctx, s.cache, s.cacheKey, sc, s.state, L, wall, s.reduced, s.dpr,
       { cards: p.showCards, sam: p.showSamLabel, key: p.showKey, phone: p.variant === 'phone' }, busts, ring, p.onDrawLayer);
+    // T13: remember the figures for the hit test, and mirror the selectable ones' hit boxes into the DOM overlay
+    s.figures = sc.figures;
+    const ov = figRef.current;
+    if (ov) {
+      const { W, H } = sc.view;
+      const sel = p.onSelectJob ? sc.figures.filter((f) => !f.returned && f.vis > 0 && f.x >= 0 && f.x <= W && f.y >= 0 && f.y <= H) : [];
+      const key = sel.map((f) => `${f.jobId}@${Math.round(f.x)},${Math.round(f.y)}${f.failed ? '!' : ''}`).join('|');
+      if (key !== s.figKey) {
+        s.figKey = key;
+        ov.replaceChildren(...sel.map((f) => {
+          const el = document.createElement('div'), half = FIGURE_HIT_PX / 2;
+          el.dataset.figureJob = f.jobId; el.dataset.owner = f.owner; el.dataset.failed = String(f.failed);
+          el.style.cssText = `position:absolute;left:${Math.round(f.x) - half}px;top:${Math.round(f.y) - half}px;width:${FIGURE_HIT_PX}px;height:${FIGURE_HIT_PX}px`;
+          return el;
+        }));
+      }
+    }
   }, [camNow]);
 
   const drawOnce = useCallback(() => { draw(performance.now()); }, [draw]);
@@ -1003,6 +1039,17 @@ export default function FloorCanvas({
     return () => { stopped = true; if (timer) clearTimeout(timer); ctl?.abort(); };
   }, [schedulePollUrl, demo, pollMs, showRing, drawOnce]);
 
+  useEffect(() => {
+    if (!figureAtRef) return;
+    figureAtRef.current = (clientX, clientY) => {
+      const cv = canvasRef.current;
+      if (!cv || !props.current.onSelectJob) return null;
+      const r = cv.getBoundingClientRect();
+      return hitFigure(st.current.figures, clientX - r.left, clientY - r.top);
+    };
+    return () => { figureAtRef.current = null; };
+  }, [figureAtRef]);
+
   const localPoint = (e: React.PointerEvent | React.MouseEvent): Pt | null => {
     const cv = canvasRef.current;
     if (!cv) return null;
@@ -1014,15 +1061,25 @@ export default function FloorCanvas({
     if (!p || !s.layout || !cam) return null;
     return hitGeneral(s.layout, cam, p[0], p[1]);
   };
+  /** The job id of the figure under the pointer, when figures are selectable. */
+  const figureAt = (e: React.PointerEvent | React.MouseEvent): string | null => {
+    const p = localPoint(e);
+    return p && props.current.onSelectJob ? hitFigure(st.current.figures, p[0], p[1]) : null;
+  };
   const onPointerMove = (e: React.PointerEvent) => {
-    const id = hitAt(e), s = st.current;
+    const id = hitAt(e), s = st.current, fig = figureAt(e);
+    if (canvasRef.current) canvasRef.current.style.cursor = fig || (id && props.current.onSelectGeneral) ? 'pointer' : 'default';
     if (id === s.hover) return;
     s.hover = id;
-    if (canvasRef.current) canvasRef.current.style.cursor = id && props.current.onSelectGeneral ? 'pointer' : 'default';
     if (s.reduced) drawOnce();
   };
   const onPointerLeave = () => { const s = st.current; if (s.hover) { s.hover = null; if (s.reduced) drawOnce(); } };
-  const onClick = (e: React.MouseEvent) => { const id = hitAt(e); if (id) props.current.onSelectGeneral?.(id); };
+  // a figure wins over the General's column behind it (Must 18)
+  const onClick = (e: React.MouseEvent) => {
+    const p = localPoint(e), pick = p ? pickAt(props.current.onSelectJob ? st.current.figures : [], hitAt(e), p[0], p[1]) : null;
+    if (pick?.kind === 'job') props.current.onSelectJob?.(pick.jobId);
+    else if (pick?.kind === 'general') props.current.onSelectGeneral?.(pick.id);
+  };
 
   return (
     <div ref={wrapRef} className={className} style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0, background: '#020805', overflow: 'hidden' }}>
@@ -1035,6 +1092,8 @@ export default function FloorCanvas({
         onClick={onClick}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }}
       />
+      {/* T13: the selectable figures' 44x44 hit boxes, for tests only: never focusable, never in the way of the canvas */}
+      <div ref={figRef} data-figure-overlay="" aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
     </div>
   );
 }

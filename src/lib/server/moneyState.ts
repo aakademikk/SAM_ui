@@ -12,11 +12,12 @@
  */
 
 import fs from 'node:fs';
+import path from 'node:path';
 
+import { samStateDir } from '@/lib/server/livePaths';
 import type { MoneyEntry, MoneyInPayload } from '@/types/dashboard';
 
-const STATE_DIR = '/home/col/.sam';
-const STATE_PATH = process.env.SAM_MONEY_STATE_PATH ?? `${STATE_DIR}/money-state.json`;
+const statePath = () => process.env.SAM_MONEY_STATE_PATH ?? path.join(samStateDir(), 'money-state.json');
 
 interface MoneyStateFile {
   entries: MoneyEntry[];
@@ -40,7 +41,7 @@ function isEntry(raw: unknown): raw is MoneyEntry {
 
 function load(): MoneyStateFile {
   try {
-    const raw: unknown = JSON.parse(fs.readFileSync(STATE_PATH, 'utf-8'));
+    const raw: unknown = JSON.parse(fs.readFileSync(statePath(), 'utf-8'));
     const r = (raw ?? {}) as Record<string, unknown>;
     // `recurring` is new — pre-existing entries lack it and are one-off.
     const entries = Array.isArray(r.entries)
@@ -56,10 +57,11 @@ const state: MoneyStateFile = load();
 
 function persist() {
   try {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
-    const tmp = `${STATE_PATH}.tmp`;
+    const file = statePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = `${file}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf-8');
-    fs.renameSync(tmp, STATE_PATH);
+    fs.renameSync(tmp, file);
   } catch {
     // Persistence is best-effort — the in-memory store still serves the request.
   }

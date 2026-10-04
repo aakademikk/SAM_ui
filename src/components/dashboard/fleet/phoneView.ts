@@ -43,7 +43,9 @@ export type PhoneSheetAction =
   | { type: 'openSchedule' }
   | { type: 'close' }
   /** A tap on the hero: a General opens its sheet; empty floor leaves things as they are (the scrim covers the hero while a sheet is open). */
-  | { type: 'heroTap'; hit: GeneralId | null };
+  | { type: 'heroTap'; hit: GeneralId | null }
+  /** A job was picked (an Active jobs row or a figure): every sheet closes so the job panel behind shows. */
+  | { type: 'selectJob' };
 
 export function phoneSheetReducer(state: PhoneSheet, action: PhoneSheetAction): PhoneSheet {
   switch (action.type) {
@@ -57,7 +59,14 @@ export function phoneSheetReducer(state: PhoneSheet, action: PhoneSheetAction): 
       return null;
     case 'heroTap':
       return action.hit ? phoneSheetReducer(state, { type: 'openGeneral', id: action.hit }) : state;
+    case 'selectJob':
+      return null;
   }
+}
+
+/** Scrolling the job panel into view is instant under reduced motion. */
+export function scrollBehaviorFor(reducedMotion: boolean): 'auto' | 'smooth' {
+  return reducedMotion ? 'auto' : 'smooth';
 }
 
 /** Swipe-down: past this many px, or a quick flick, closes the sheet; otherwise it springs back. */
@@ -90,15 +99,26 @@ export function ownerName(general: GeneralId | 'sam'): string {
  * The hero's caption chip (the mockup's `captionFor`), for the job in flight
  * (the one Job detail shows): "<General> · <stage>" while a stage is lit,
  * "<General> · running" when it has no stage events, "SAM queued a job for
- * <General>" while queued.
+ * <General>" while queued, "<General> · failed" for a failed (red) job.
  */
 export function heroCaption(state: FloorState | null, w: FloorWorker | null): string {
   if (!state) return 'Connecting to the fleet';
   if (!w) return 'No jobs running';
   const who = ownerName(w.general);
   if (w.status === 'queued') return w.general === 'sam' ? 'SAM queued a job' : `SAM queued a job for ${who}`;
+  if (w.status === 'failed') return `${who} · failed`;
   const now = w.stages?.find((s) => s.state === 'now');
   return now ? `${who} · ${now.name}` : `${who} · running`;
+}
+
+/** Any worker on the floor by job id (a failed one too), as Job detail finds it. */
+export function findFloorWorker(state: FloorState | null, jobId: string | null): FloorWorker | null {
+  if (!state || !jobId) return null;
+  for (const general of Object.keys(GENERAL_NAMES) as GeneralId[]) {
+    const hit = state.generals[general].workers.find((w) => w.jobId === jobId);
+    if (hit) return hit;
+  }
+  return state.samWorkers.find((w) => w.jobId === jobId) ?? null;
 }
 
 export const LIFECYCLE = ['Queued', 'Dispatched', 'Running', 'Verifying', 'Done'] as const;

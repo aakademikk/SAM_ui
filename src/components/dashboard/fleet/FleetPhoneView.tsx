@@ -13,10 +13,11 @@
  * events, Active jobs and Spend stacked, and a solid Ask SAM bar fixed at
  * the bottom.
  *
- * Tapping a General (in the hero, its Fleet row or an Active jobs row) zooms
+ * Tapping a General (its station in the hero or its Fleet row) zooms
  * the hero onto it and opens its bottom sheet with the large bust
  * (`GeneralDetailSheet`); swiping the sheet down, tapping outside it, Back
- * or Esc closes it. The Ask SAM bar opens the same sheet shell with the chat
+ * or Esc closes it. Tapping a worker figure in the hero or an Active jobs
+ * row shows that job in the job panel instead (floor-fixes T12, T13). The Ask SAM bar opens the same sheet shell with the chat
  * (`chatSlot`; T14's widget, a placeholder until then).
  *
  * T18, Must 26: a transparent tap target over the ring (`.fp-ring-hit`, sized
@@ -42,7 +43,7 @@ import type { Box } from '@/components/floor/ringRender';
 import { useDashboardStore } from '@/store/dashboardStore';
 import type { FloorState, FloorWorker, GeneralId, ScheduledJob } from '@/types/floor';
 
-import ActiveJobsModule, { activeJobEntries } from './ActiveJobsModule';
+import ActiveJobsModule from './ActiveJobsModule';
 import DemoModeToggle from './DemoModeToggle';
 import FleetStatusModule from './FleetStatusModule';
 import GeneralDetailSheet, { BottomSheet } from './GeneralDetailSheet';
@@ -52,7 +53,8 @@ import SchedulePanel from './SchedulePanel';
 import SidebarWidgets from './SidebarWidgets';
 import SpendByHourModule from './SpendByHourModule';
 import StageEventsModule from './StageEventsModule';
-import { LIFECYCLE, heroCaption, lifecycleSteps, phoneSheetReducer, stageTimeline } from './phoneView';
+import { resolveJobId } from './jobSelection';
+import { LIFECYCLE, findFloorWorker, heroCaption, lifecycleSteps, phoneSheetReducer, scrollBehaviorFor, stageTimeline } from './phoneView';
 
 export interface FleetPhoneViewProps {
   /** Demo mode (T20): passed to every data source. */
@@ -108,7 +110,9 @@ const CSS = `
 .fp-tiles>section>div small{display:none}
 .fp-stack{display:flex;flex-direction:column;gap:12px;padding:12px}
 .fp-stack section{border-radius:14px}
-.fp-job{border-radius:14px;padding:14px 15px;background:${PANEL_BG};border:1px solid ${PANEL_BORDER}}
+/* floor-fixes T7 (Must 6): the tile group scrolls inside itself, bounded to fit between the top bar and the Ask SAM bar; the page scrolls on past it (no overscroll containment) */
+.fp-stack>[data-slot=below-job]>[data-sidebar-widgets]{max-height:min(70dvh,calc(100dvh - 200px))}
+.fp-job{scroll-margin-top:72px;border-radius:14px;padding:14px 15px;background:${PANEL_BG};border:1px solid ${PANEL_BORDER}}
 .fp-job>section{background:none!important;border:0!important;border-radius:0!important;padding:0!important}
 .fp-life{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,1fr);position:relative}
 .fp-life li{position:relative;text-align:center;font-size:12px;color:#5f7d6e;padding-top:16px}
@@ -201,6 +205,27 @@ export default function FleetPhoneView({ demo: demoProp = false, chatSlot, chatW
     hitThisTap.current = false;
   }, []);
   const onSelectGeneral = useCallback((id: GeneralId) => dispatch({ type: 'openGeneral', id }), []);
+  // an Active jobs row shows its job: any sheet closes and the job panel scrolls into view (clear of the sticky top bar via scroll-margin-top)
+  const onSelectJob = useCallback((id: string) => {
+    setSelectedJobId(id);
+    dispatch({ type: 'selectJob' });
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    requestAnimationFrame(() => {
+      document.querySelector('.fp-job[data-panel="detail"]')?.scrollIntoView({ behavior: scrollBehaviorFor(reduced), block: 'start' });
+    });
+  }, []);
+  // a worker figure on the hero (T13): the same as its Active jobs row (no sheet opens; the job panel scrolls into view)
+  const onFloorJob = useCallback((id: string) => {
+    hitThisTap.current = true;
+    onSelectJob(id);
+  }, [onSelectJob]);
+  // the ring's tap target is a box round the dial, and on the phone it covers SAM's pads: a tap on a figure there still picks the job
+  const figureAt = useRef<((clientX: number, clientY: number) => string | null) | null>(null);
+  const onHeroClickCapture = useCallback((e: React.MouseEvent) => {
+    if (e.detail === 0 || !(e.target instanceof Element) || !e.target.closest('.fp-ring-hit')) return; // keyboard activation stays the ring's
+    const job = figureAt.current?.(e.clientX, e.clientY);
+    if (job) { e.stopPropagation(); onSelectJob(job); }
+  }, [onSelectJob]);
   const onClose = useCallback(() => dispatch({ type: 'close' }), []);
   const onAsk = useCallback(() => dispatch({ type: 'openChat' }), []);
   const onOpenSchedule = useCallback((e: { stopPropagation: () => void }) => {
@@ -208,10 +233,9 @@ export default function FleetPhoneView({ demo: demoProp = false, chatSlot, chatW
     dispatch({ type: 'openSchedule' });
   }, []);
 
-  // the job in flight: the picked job while it is live, else the first live job (the same rule as the desktop)
-  const entries = activeJobEntries(floor);
-  const flight = (selectedJobId ? entries.find((e) => e.worker.jobId === selectedJobId) : undefined) ?? entries[0] ?? null;
-  const jobId = flight?.worker.jobId ?? null;
+  // the job in flight: the picked job while it is pickable, else the first live job (the same rule as the desktop; one place for Job detail, the timeline and the row selection)
+  const jobId = resolveJobId(floor, selectedJobId, Date.now());
+  const flight = findFloorWorker(floor, jobId);
 
   return (
     <div className="fp fleet-dashboard" data-layout="phone">
@@ -221,7 +245,7 @@ export default function FleetPhoneView({ demo: demoProp = false, chatSlot, chatW
         <TopBar />
       </div>
 
-      <section className="fp-hero" aria-label="Fleet floor" onClick={onHeroClick}>
+      <section className="fp-hero" aria-label="Fleet floor" onClick={onHeroClick} onClickCapture={onHeroClickCapture}>
         <FloorCanvas
           demo={demo}
           focus={openGeneral}
@@ -230,6 +254,8 @@ export default function FleetPhoneView({ demo: demoProp = false, chatSlot, chatW
           showSamLabel={false}
           showKey={false}
           onSelectGeneral={onFloorGeneral}
+          onSelectJob={onFloorJob}
+          figureAtRef={figureAt}
           onState={setFloor}
           onSchedule={setSchedule}
           onRing={setRingBox}
@@ -247,7 +273,7 @@ export default function FleetPhoneView({ demo: demoProp = false, chatSlot, chatW
           />
         )}
         <div className="fp-cap">
-          <span className="c"><i aria-hidden /><span data-bind="caption">{heroCaption(floor, flight?.worker ?? null)}</span></span>
+          <span className="c"><i aria-hidden /><span data-bind="caption">{heroCaption(floor, flight)}</span></span>
           <span className="hint">Tap a General or the ring</span>
         </div>
       </section>
@@ -260,7 +286,7 @@ export default function FleetPhoneView({ demo: demoProp = false, chatSlot, chatW
       <div className="fp-stack">
         <div className="fp-job" data-panel="detail">
           <JobDetailModule state={floor} selectedJobId={jobId} demo={demo} />
-          {flight ? <StageTimeline worker={flight.worker} /> : null}
+          {flight ? <StageTimeline worker={flight} /> : null}
         </div>
         <div data-slot="below-job">{belowJobSlot ?? <SidebarWidgets demo={demo} />}</div>
         <div data-panel="fleet">
@@ -273,8 +299,7 @@ export default function FleetPhoneView({ demo: demoProp = false, chatSlot, chatW
           <ActiveJobsModule
             state={floor}
             selectedJobId={jobId}
-            onSelectJob={setSelectedJobId}
-            onSelectGeneral={onSelectGeneral}
+            onSelectJob={onSelectJob}
           />
         </div>
         <div data-panel="spend">

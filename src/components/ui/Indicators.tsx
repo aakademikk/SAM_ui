@@ -243,7 +243,7 @@ export function Stat({ label, value, hint, tone, className, align = 'left' }: St
       >
         {value}
       </span>
-      {hint && <span className="text-[12px] leading-tight text-slate-500">{hint}</span>}
+      {hint && <span className="text-[12px] leading-tight text-dim-500">{hint}</span>}
     </div>
   );
 }

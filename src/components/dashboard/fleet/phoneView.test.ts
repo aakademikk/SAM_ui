@@ -20,7 +20,7 @@ import type { FloorState, FloorWorker, GeneralId } from '../../../types/floor.js
 import { DESKTOP_OPTIONS, PHONE_OPTIONS, buildScene, computeLayout, hitGeneral, phoneLabels, toX } from '../../floor/floorRender.js';
 import { dashboardLayout } from './dashboardLayout.js';
 import {
-  PHONE_QUERY, chooseFleetView, heroCaption, lifecycleSteps, phoneSheetReducer, sheetDragOffset, sheetReleaseCloses,
+  PHONE_QUERY, chooseFleetView, findFloorWorker, heroCaption, lifecycleSteps, phoneSheetReducer, scrollBehaviorFor, sheetDragOffset, sheetReleaseCloses,
   stageTimeline, viewOverride,
 } from './phoneView.js';
 
@@ -191,4 +191,30 @@ test('the phone options are e-phone.html\'s, and leave the desktop options alone
   assert.equal(PHONE_OPTIONS.numPx, 10.5);
   assert.equal(DESKTOP_OPTIONS.spacing, 230);
   assert.equal(DESKTOP_OPTIONS.padTop, 44);
+});
+
+test('T11: selectJob closes every sheet; scrolling is instant under reduced motion', () => {
+  assert.equal(phoneSheetReducer({ kind: 'general', id: 'hermes' }, { type: 'selectJob' }), null, 'a General sheet closes');
+  assert.equal(phoneSheetReducer({ kind: 'schedule' }, { type: 'selectJob' }), null, 'the Schedule sheet closes');
+  assert.equal(phoneSheetReducer({ kind: 'chat' }, { type: 'selectJob' }), null, 'the chat sheet closes');
+  assert.equal(phoneSheetReducer(null, { type: 'selectJob' }), null, 'nothing open stays nothing');
+  assert.equal(scrollBehaviorFor(true), 'auto');
+  assert.equal(scrollBehaviorFor(false), 'smooth');
+});
+
+test('a failed (red) job: found on the floor, captioned as failed, and its timeline steps render', () => {
+  const st = fixture();
+  const red = worker('jf', 'hermes', 'failed');
+  st.generals.hermes = { idle: false, workers: [red] };
+  const sam = worker('js', 'sam', 'failed');
+  st.samWorkers = [sam];
+  assert.equal(findFloorWorker(st, 'jf'), red, 'a General\'s failed worker');
+  assert.equal(findFloorWorker(st, 'js'), sam, 'a SAM-owned worker');
+  assert.equal(findFloorWorker(st, 'j1'), st.generals.hephaestus.workers[0], 'a running worker still resolves');
+  assert.equal(findFloorWorker(st, 'nope'), null);
+  assert.equal(findFloorWorker(st, null), null);
+  assert.equal(findFloorWorker(null, 'jf'), null);
+  assert.equal(heroCaption(st, red), 'Hermes · failed');
+  assert.equal(heroCaption(st, sam), 'SAM · failed');
+  assert.deepEqual(lifecycleSteps('failed'), ['done', 'done', 'done', '', 'bad']);
 });
