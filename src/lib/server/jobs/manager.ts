@@ -6,7 +6,7 @@
  * observe the same job set across Next.js dev-mode module reloads.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -80,6 +80,68 @@ async function readExitSentinel(id: string): Promise<number | null> {
     return Number.isInteger(code) ? code : null;
   } catch {
     return null;
+  }
+}
+
+/* ========================================================================== */
+/* Headless (sam-job) unit liveness                                           */
+/* ========================================================================== */
+
+/**
+ * `sam-job` / `sam-dispatch` jobs run in a transient systemd user unit and
+ * write meta.json with a `unit` but no `pid`/`procStart`, so the pid check
+ * cannot see them. Their unit is the liveness handle instead.
+ */
+export type UnitState = 'active' | 'inactive' | 'unknown';
+
+/** Shape of a unit name we are willing to hand to systemctl. */
+const UNIT_NAME_RE = /^[A-Za-z0-9@._:-]+$/;
+
+export function isSafeUnitName(unit: unknown): unit is string {
+  if (typeof unit !== 'string' || !UNIT_NAME_RE.test(unit)) return false;
+  // A leading dash would be read as an option; a suffix other than the two we
+  // emit (or none at all) is not a unit of ours.
+  if (unit.startsWith('-')) return false;
+  const dot = unit.lastIndexOf('.');
+  return dot === -1 || unit.endsWith('.service') || unit.endsWith('.scope');
+}
+
+function queryUnitState(unit: string): Promise<UnitState> {
+  return new Promise((resolve) => {
+    execFile(
+      'systemctl',
+      ['--user', 'show', '-p', 'ActiveState', '--value', unit],
+      { timeout: 5_000 },
+      (err, stdout) => {
+        if (err) return resolve('unknown');
+        const state = String(stdout).trim();
+        if (state === 'inactive' || state === 'failed') return resolve('inactive');
+        if (['active', 'activating', 'deactivating', 'reloading'].includes(state)) return resolve('active');
+        resolve('unknown');
+      },
+    );
+  });
+}
+
+let unitStateFn: (unit: string) => Promise<UnitState> = queryUnitState;
+let unitPollMs = 5_000;
+
+/** Test-only: replace the systemd lookup and shorten the poll interval. */
+export function __setUnitProbeForTests(
+  fn: ((unit: string) => Promise<UnitState>) | null,
+  pollMs = 5_000,
+): void {
+  unitStateFn = fn ?? queryUnitState;
+  unitPollMs = pollMs;
+}
+
+/** Asks for a unit's state; a name that fails validation is never executed. */
+async function unitState(unit: unknown): Promise<UnitState> {
+  if (!isSafeUnitName(unit)) return 'unknown';
+  try {
+    return await unitStateFn(unit);
+  } catch {
+    return 'unknown';
   }
 }
 
@@ -655,6 +717,14 @@ class JobManager {
         continue;
       }
 
+      // A headless sam-job job has a unit instead of a pid. While that unit
+      // is active the job is alive: watch it, never file it as killed.
+      if (!record.pid && record.unit && (await unitState(record.unit)) === 'active') {
+        const watch = this.watchUnit(record, file).finally(() => this.unitWatches.delete(watch));
+        this.unitWatches.add(watch);
+        continue;
+      }
+
       // Process is gone. Before declaring it killed, ask the scope what
       // actually happened — a job that completed while sam-ui was down leaves
       // its exit code behind, and used to be libelled as killed regardless.
@@ -669,6 +739,44 @@ class JobManager {
       }
       record.endedAt = new Date().toISOString();
       await fsp.writeFile(file, JSON.stringify(record, null, 2));
+    }
+  }
+
+  private unitWatches = new Set<Promise<void>>();
+
+  /** Test-only: run the boot reconcile and wait for every unit watch to end. */
+  async __reconcileForTests(): Promise<void> {
+    await this.reconcileOrphans();
+    while (this.unitWatches.size > 0) await Promise.all([...this.unitWatches]);
+  }
+
+  /**
+   * Poll a headless job's unit until it is no longer active, then finalise —
+   * unless run.sh already did (re-read right before writing). The unit going
+   * away without run.sh recording an end means the exitcode file is the only
+   * truth left; absent that, the job genuinely died.
+   */
+  private async watchUnit(record: JobRecord, file: string) {
+    const unit = record.unit!;
+    while ((await unitState(unit)) === 'active') {
+      await new Promise((r) => setTimeout(r, unitPollMs));
+    }
+    try {
+      const current = JSON.parse(await fsp.readFile(file, 'utf-8')) as JobRecord;
+      if (current.status !== 'running') return;
+      const sentinel = await readExitSentinel(current.id);
+      if (sentinel !== null) {
+        current.status = 'exited';
+        current.exitCode = sentinel;
+        current.exitSource = 'sentinel';
+      } else {
+        current.status = 'killed';
+        current.exitSource = 'unknown';
+      }
+      current.endedAt = new Date().toISOString();
+      await fsp.writeFile(file, JSON.stringify(current, null, 2));
+    } catch {
+      // Pruned or unreadable — nothing to finalise.
     }
   }
 
