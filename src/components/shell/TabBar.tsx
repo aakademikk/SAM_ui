@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -33,6 +33,13 @@ export function TabBar() {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
 
+  // The sheet sits under the tab bar, so a tab tapped while it is open must
+  // close it: on any route change, and on a tap of the tab already showing
+  // (which changes no route). Review finding, 2026-10-04.
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [pathname]);
+
   return (
     <>
       <nav
@@ -49,6 +56,7 @@ export function TabBar() {
             <Link
               key={tab.id}
               href={tab.href}
+              onClick={() => setMoreOpen(false)}
               className={`flex flex-1 min-h-[44px] flex-col items-center justify-center gap-0.5 min-w-0 px-1 py-1
                 ${active
                   ? 'text-accent'
