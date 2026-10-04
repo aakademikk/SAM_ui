@@ -33,6 +33,8 @@ export interface JobRecord {
   pid?: number;
   /** /proc start-time ticks at spawn — guards against PID reuse across restarts. */
   procStart?: number;
+  /** systemd user unit of a headless sam-job job (no pid/procStart); its liveness handle. */
+  unit?: string;
   /**
    * Terminating signal (e.g. 'SIGTERM'), when the process was killed rather
    * than exiting on its own. Node reports `code: null` in that case, so without

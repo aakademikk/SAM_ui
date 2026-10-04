@@ -18,13 +18,13 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 type NotificationsModule = typeof import('./notifications.js');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'notifications-'));
+const tmp = tempDir('notifications-');
 const home = path.join(tmp, 'home');
 const logFile = path.join(tmp, 'push-log.jsonl');
 

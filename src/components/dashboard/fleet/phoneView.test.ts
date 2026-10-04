@@ -9,12 +9,11 @@
  */
 
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
 import { test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 // House rule: a fresh HOME before importing anything under test.
-process.env.HOME = fs.mkdtempSync(`${os.tmpdir()}/phoneview-home-`);
+process.env.HOME = tempDir('phoneview-home-');
 
 import type { FloorState, FloorWorker, GeneralId } from '../../../types/floor.js';
 import { DESKTOP_OPTIONS, PHONE_OPTIONS, buildScene, computeLayout, hitGeneral, phoneLabels, toX } from '../../floor/floorRender.js';

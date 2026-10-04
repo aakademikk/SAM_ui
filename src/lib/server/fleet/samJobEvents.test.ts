@@ -50,9 +50,9 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
 
@@ -109,7 +109,7 @@ interface Ctx {
 
 /** A fresh sandbox per case: its own HOME, job store, cwd and push stubs. */
 function makeCtx(): Ctx {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-job-events-'));
+  const tmp = tempDir('sam-job-events-');
   const home = path.join(tmp, 'home');
   const store = path.join(tmp, 'jobs');
   const cwd = path.join(tmp, 'cwd');

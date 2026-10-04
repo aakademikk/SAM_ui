@@ -10,9 +10,9 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 type FloorRoute = typeof import('./route.js');
 type AuthModule = typeof import('../../../../lib/server/auth/session.js');
@@ -23,7 +23,7 @@ type FloorState = import('../../../../types/floor.js').FloorState;
 // the route (and the floorState module it imports) is loaded — JOBS_ROOT in
 // floorState.ts and the session key path in auth/session.ts are both
 // resolved from os.homedir() at module load time.
-const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'floor-route-'));
+const tmpHome = tempDir('floor-route-');
 process.env.HOME = tmpHome;
 
 const JOBS_ROOT = path.join(tmpHome, '.sam', 'jobs');

@@ -18,6 +18,7 @@ import { jobsService, type JobEvent } from '@/lib/jobsService';
 import { AgentStreamParser, type AgentStreamState } from '@/lib/agentStream';
 import { MessageBlocks } from '@/components/chat/MessageBlocks';
 import { authService } from '@/lib/authService';
+import { FieldLabel } from '@/components/ui/FieldLabel';
 import { computeRunCost, formatCost, formatTokens } from '@/lib/costing';
 import { modelsForPersona } from '@/lib/fleetModels';
 
@@ -327,11 +328,13 @@ export default function FleetPage() {
           })}
         </div>
 
+        <div className="relative">
+        <FieldLabel htmlFor="fleet-brief" bg="bg-void-950">Brief</FieldLabel>
         <textarea
+          id="fleet-brief"
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
           disabled={running}
-          aria-label="Brief"
           placeholder={
             selected
               ? `Brief ${selected.name} — what's the job, what does done look like, what are the constraints?`
@@ -342,6 +345,7 @@ export default function FleetPage() {
                      text-base text-void-100 placeholder:text-dim-500 focus:border-accent
                      focus:outline-none disabled:opacity-50 resize-none"
         />
+        </div>
 
         <div className="flex items-center justify-between">
           <p className="text-[12px] text-dim-500">

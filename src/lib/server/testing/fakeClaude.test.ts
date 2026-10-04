@@ -10,9 +10,9 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 import { tierInfo } from '@/lib/server/chat/tiers';
 
@@ -25,7 +25,7 @@ test('the @/ alias resolves: tierInfo is importable and correct', () => {
 });
 
 test('fake claude, run as a turn, writes a transcript and streams stream-json', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-claude-turn-'));
+  const tmp = tempDir('fake-claude-turn-');
   const bin = writeFakeClaude(tmp);
 
   const configDir = path.join(tmp, 'claude-config');
@@ -102,7 +102,7 @@ test('fake claude, run as a turn, writes a transcript and streams stream-json', 
 });
 
 test('fake claude, given --resume, keys the transcript off the resume id, not a fresh one', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-claude-resume-'));
+  const tmp = tempDir('fake-claude-resume-');
   const bin = writeFakeClaude(tmp);
   const configDir = path.join(tmp, 'claude-config');
   const resumeId = 'ffffffff-1111-2222-3333-444444444444';
@@ -120,7 +120,7 @@ test('fake claude, given --resume, keys the transcript off the resume id, not a 
 });
 
 test('fake claude writes a memo when the prompt asks for one', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-claude-memo-'));
+  const tmp = tempDir('fake-claude-memo-');
   const bin = writeFakeClaude(tmp);
   const configDir = path.join(tmp, 'claude-config');
   const memoPath = path.join(tmp, 'memos', 'note.md');
@@ -141,7 +141,7 @@ test('fake claude writes a memo when the prompt asks for one', () => {
 });
 
 test('fake claude, in title mode, prints one JSON result line', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-claude-title-'));
+  const tmp = tempDir('fake-claude-title-');
   const bin = writeFakeClaude(tmp);
 
   const result = spawnSync(
@@ -165,7 +165,7 @@ test('fake claude, in title mode, prints one JSON result line', () => {
 });
 
 test('fake claude, in title mode, can be made to fail', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-claude-titlefail-'));
+  const tmp = tempDir('fake-claude-titlefail-');
   const bin = writeFakeClaude(tmp);
 
   const result = spawnSync(bin, ['-p', 'Give this chat a title', '--model', 'claude-haiku-4-5-20251001'], {
@@ -183,7 +183,7 @@ function delay(ms: number): Promise<void> {
 }
 
 test('fake claude, in stream-json mode, reads the prompt from stdin and folds a mid-delay side message into the first reply', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-claude-streamjson-'));
+  const tmp = tempDir('fake-claude-streamjson-');
   const bin = writeFakeClaude(tmp);
   const configDir = path.join(tmp, 'claude-config');
   const stdinLogPath = path.join(tmp, 'stdin-log.jsonl');
@@ -280,7 +280,7 @@ test('fake claude, in stream-json mode, reads the prompt from stdin and folds a 
 });
 
 test('fake claude, in stream-json mode, answers a side message that arrives inside the post-result linger window with its own result', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-claude-streamjson-linger-'));
+  const tmp = tempDir('fake-claude-streamjson-linger-');
   const bin = writeFakeClaude(tmp);
   const configDir = path.join(tmp, 'claude-config');
   const workCwd = path.join(tmp, 'work');
@@ -361,7 +361,7 @@ test('fake claude, in stream-json mode, answers a side message that arrives insi
 });
 
 test('fake claude, in stream-json mode, does not exit on its own after the first result while stdin stays open, and exits 0 once stdin closes', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-claude-streamjson-noexit-'));
+  const tmp = tempDir('fake-claude-streamjson-noexit-');
   const bin = writeFakeClaude(tmp);
   const configDir = path.join(tmp, 'claude-config');
   const workCwd = path.join(tmp, 'work');

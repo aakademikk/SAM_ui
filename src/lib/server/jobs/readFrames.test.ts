@@ -17,9 +17,9 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 // Route every ~/.sam path this test touches into a scratch HOME, set BEFORE
 // the module under test is imported — JOBS_ROOT in manager.ts is computed
@@ -27,7 +27,7 @@ import { test } from 'node:test';
 // import, not a static one), so `process.env.HOME` is guaranteed to land
 // before manager.ts's top-level `path.join(os.homedir(), ...)` runs; every
 // test below awaits `ready` first so none can race the import.
-const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'readframes-home-'));
+const tmpHome = tempDir('readframes-home-');
 process.env.HOME = tmpHome;
 
 let readFrames: typeof import('./manager.js').readFrames;

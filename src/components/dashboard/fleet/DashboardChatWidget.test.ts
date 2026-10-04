@@ -6,14 +6,12 @@
  */
 
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 import type { ChatSummary } from '../../../types/chat.js';
 
-process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'dashchat-home-'));
+process.env.HOME = tempDir('dashchat-home-');
 
 type Helpers = typeof import('./dashboardChat.js');
 let pickMostRecentChat: Helpers['pickMostRecentChat'];

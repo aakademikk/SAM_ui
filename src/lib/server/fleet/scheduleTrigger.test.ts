@@ -49,9 +49,9 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
 
@@ -59,7 +59,7 @@ import type { ScheduledJob } from '@/types/floor';
 
 // A fresh HOME before importing anything under test: floorState.ts resolves
 // `$HOME/.sam/jobs` at module load.
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-schedule-trigger-'));
+const tmp = tempDir('sam-schedule-trigger-');
 const home = path.join(tmp, 'home');
 const store = path.join(home, '.sam', 'jobs');
 fs.mkdirSync(store, { recursive: true });
@@ -265,6 +265,8 @@ test(
         SAM_PUSH_SUBS: pushSubs,
         SAM_PUSH_LOG: pushLog,
         PATH: process.env.PATH ?? '/usr/bin:/bin',
+        // A transient unit inherits nothing, and sam-dispatch execs the job so never removes its mktemp copy of the brief.
+        TMPDIR: tmp,
       };
       const fired = spawnSync(
         'systemd-run',

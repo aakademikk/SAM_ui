@@ -9,9 +9,9 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 // Route every ~/.sam path this test touches into a scratch HOME, set BEFORE
 // the module under test is imported — JOBS_ROOT in floorState.ts is computed
@@ -19,7 +19,7 @@ import { test } from 'node:test';
 // src/lib/server/jobs/manager.ts and its own tests. The import is dynamic so
 // process.env.HOME is guaranteed to land first; every test below awaits
 // `ready` before calling readFloorState().
-const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'floorstate-home-'));
+const tmpHome = tempDir('floorstate-home-');
 process.env.HOME = tmpHome;
 
 let readFloorState: typeof import('./floorState.js').readFloorState;
