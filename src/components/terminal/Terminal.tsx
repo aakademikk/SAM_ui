@@ -225,7 +225,7 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
                   timestamp: Date.now(),
                 });
               }}
-              className="shrink-0 px-2 py-1 text-[10px] bg-accent/10 border border-accent/20
+              className="shrink-0 px-2 py-1 text-[12px] bg-accent/10 border border-accent/20
                          rounded text-accent hover:bg-accent/20 transition-colors"
               title="Send to Chat for discussion"
             >
@@ -272,7 +272,8 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
               name="stdin"
               type="text"
               placeholder="stdin..."
-              className="flex-1 bg-transparent text-sm font-mono text-dim-100
+              aria-label="Terminal stdin input"
+              className="flex-1 bg-transparent text-base font-mono text-dim-100
                          placeholder-dim-500 focus:outline-none"
               autoComplete="off"
               spellCheck={false}
@@ -305,8 +306,9 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
             value={command}
             onChange={(e) => setCommand(e.target.value)}
             placeholder="Enter a command..."
+            aria-label="Terminal command"
             className="flex-1 bg-void-900 border border-void-600 rounded px-3 py-2
-                       text-void-100 font-mono text-sm
+                       text-void-100 font-mono text-base
                        focus:border-accent focus:outline-none
                        placeholder:text-dim-300"
             disabled={loading}
@@ -395,14 +397,20 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
             <p className="text-dim-400 text-sm">No jobs yet.</p>
           )}
           {jobs.map((j) => (
-            <button
+            // Non-interactive row container; "attach" and "kill" are two
+            // sibling <button>s rather than one nested inside the other —
+            // same house pattern ChatList.tsx's row uses (a <button> inside
+            // a <button> is invalid HTML and axe flags it as nested-interactive).
+            <div
               key={j.id}
-              type="button"
-              onClick={() => attachToJob(j.id)}
-              className="w-full text-left bg-void-900 border border-void-700 rounded p-3
+              className="flex items-stretch bg-void-900 border border-void-700 rounded
                          hover:border-accent/30 transition-colors"
             >
-              <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => attachToJob(j.id)}
+                className="flex-1 min-w-0 flex items-center justify-between gap-3 text-left p-3"
+              >
                 <code className="text-sm text-dim-100 truncate flex-1">{j.command}</code>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className={`text-xs px-1.5 py-0.5 rounded border ${
@@ -413,19 +421,21 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
                     {j.status} {j.exitCode !== null ? `(${j.exitCode})` : ''}
                   </span>
                   <span className="text-xs text-dim-300 font-mono">{j.id.slice(-8)}</span>
-                  {j.status === 'running' && (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); onKill(j.id); }}
-                      className="px-2 py-0.5 text-xs bg-red-900/30 border border-red-700/20
-                                 rounded text-red-400 hover:bg-red-900/50"
-                    >
-                      kill
-                    </button>
-                  )}
                 </div>
-              </div>
-            </button>
+              </button>
+              {j.status === 'running' && (
+                <div className="flex items-center pr-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => onKill(j.id)}
+                    className="flex min-h-11 min-w-11 items-center justify-center px-2 py-0.5 text-xs bg-red-900/30 border border-red-700/20
+                               rounded text-red-400 hover:bg-red-900/50"
+                  >
+                    kill
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       </div>

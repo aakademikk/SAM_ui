@@ -218,7 +218,7 @@ function Readout({
     <span className={cn('inline-flex min-w-0 items-center gap-1.5', className)}>
       <StatusDot tone={tone} size={6} pulse={tone === 'critical'} />
       <span
-        className="truncate text-[11px] font-medium"
+        className="truncate text-[12px] font-medium"
         style={{ color: TONE_COLOR[tone] }}
       >
         {word}
@@ -229,7 +229,7 @@ function Readout({
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h2 className="mb-1.5 font-mono text-[9.5px] font-semibold tracking-[0.16em] text-slate-500 uppercase">
+    <h2 className="mb-1.5 font-mono text-[12px] font-semibold tracking-[0.16em] text-dim-500 uppercase">
       {children}
     </h2>
   );
@@ -257,7 +257,7 @@ function Row({
       <span className="min-w-0 shrink-0 text-[12px] text-slate-400">{k}</span>
       <span className="flex min-w-0 items-center justify-end gap-2 text-right">
         {children}
-        {tag && <span className="tabular shrink-0 text-[10.5px] text-slate-600">{tag}</span>}
+        {tag && <span className="tabular shrink-0 text-[12px] text-dim-500">{tag}</span>}
       </span>
     </div>
   );
@@ -321,7 +321,7 @@ export default function StatusPage() {
             <Activity size={17} className="text-accent" />
             Status
           </h1>
-          <p className="mt-1 text-[11.5px] leading-relaxed text-dim-300">
+          <p className="mt-1 text-[12px] leading-relaxed text-dim-300">
             Is the box OK — outreach, watch, lead pipelines, services. Read-only glance,
             refreshed every minute.
           </p>
@@ -331,15 +331,15 @@ export default function StatusPage() {
             type="button"
             onClick={() => void load(false)}
             disabled={loading}
-            className="flex items-center gap-1.5 rounded-md border border-accent/30 bg-accent/12
-                       px-2.5 py-1 text-[10.5px] font-medium text-accent transition-colors
+            className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-md border border-accent/30 bg-accent/12
+                       px-2.5 py-1 text-[12px] font-medium text-accent transition-colors
                        hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
           {updatedAt && (
-            <span className="text-[10px] text-slate-600">
+            <span className="text-[12px] text-dim-500">
               <RelativeTime value={updatedAt} prefix="Updated " />
             </span>
           )}
@@ -347,13 +347,13 @@ export default function StatusPage() {
       </header>
 
       {error && (
-        <p className="rounded-md border border-red-700/30 bg-red-900/12 px-3 py-2 text-[11.5px] text-red-300">
+        <p className="rounded-md border border-red-700/30 bg-red-900/12 px-3 py-2 text-[12px] text-red-300">
           {error} — is ops-status.service running?
         </p>
       )}
 
       {loading && !payload ? (
-        <p className="text-[11.5px] text-dim-400">Reading box state…</p>
+        <p className="text-[12px] text-dim-400">Reading box state…</p>
       ) : payload ? (
         <>
           {/* ---- summary banner ---- */}
@@ -373,7 +373,7 @@ export default function StatusPage() {
                   : (payload.summary.label || payload.summary.state).toUpperCase()}
               </p>
               {payload.summary.state !== 'good' && payload.summary.label && (
-                <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                <p className="mt-0.5 truncate text-[12px] text-slate-400">
                   {payload.summary.label}
                 </p>
               )}
@@ -427,7 +427,7 @@ export default function StatusPage() {
             <SectionTitle>Outreach</SectionTitle>
             {outreachErr ? (
               <Card>
-                <p className="text-[11.5px] text-red-300">
+                <p className="text-[12px] text-red-300">
                   Outreach db error — {outreachErr.error}
                 </p>
               </Card>
@@ -435,14 +435,14 @@ export default function StatusPage() {
               <Card className="space-y-4">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <p className="mb-1 font-mono text-[9.5px] tracking-[0.14em] text-slate-500 uppercase">
+                    <p className="mb-1 font-mono text-[12px] tracking-[0.14em] text-dim-500 uppercase">
                       Leads in pool
                     </p>
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-3 border-b border-void-700 pb-1 font-mono text-[9px] tracking-[0.12em] text-slate-600 uppercase">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-3 border-b border-void-700 pb-1 font-mono text-[12px] tracking-[0.12em] text-dim-500 uppercase">
                       <span>sector</span>
-                      <span className="w-8 text-right">fresh</span>
-                      <span className="w-10 text-right">mid</span>
-                      <span className="w-10 text-right">active</span>
+                      <span className="w-10 text-right">fresh</span>
+                      <span className="w-12 text-right">mid</span>
+                      <span className="w-12 text-right">active</span>
                     </div>
                     {(outreach.perLane ?? []).map((l) => (
                       <div
@@ -450,37 +450,37 @@ export default function StatusPage() {
                         className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-3 border-b border-void-800 py-1 text-[12px]"
                       >
                         <span className="truncate text-slate-200 capitalize">{l.lane}</span>
-                        <span className="tabular w-8 text-right font-semibold text-slate-100">
+                        <span className="tabular w-10 text-right font-semibold text-slate-100">
                           {l.fresh}
                         </span>
-                        <span className="tabular w-10 text-right text-slate-400">
+                        <span className="tabular w-12 text-right text-slate-400">
                           {l.progressing}
                         </span>
-                        <span className="tabular w-10 text-right text-slate-400">
+                        <span className="tabular w-12 text-right text-slate-400">
                           {l.fresh + l.progressing}
                         </span>
                       </div>
                     ))}
                     <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-3 pt-1 text-[12px] font-bold">
                       <span className="text-slate-200">total</span>
-                      <span className="tabular w-8 text-right text-slate-100">
+                      <span className="tabular w-10 text-right text-slate-100">
                         {pool?.fresh ?? 0}
                       </span>
-                      <span className="tabular w-10 text-right text-slate-300">
+                      <span className="tabular w-12 text-right text-slate-300">
                         {pool?.followupsDue ?? 0}
                       </span>
-                      <span className="tabular w-10 text-right text-slate-100">
+                      <span className="tabular w-12 text-right text-slate-100">
                         {pool?.active ?? 0}
                       </span>
                     </div>
-                    <p className="mt-2 text-[10.5px] text-slate-600">
+                    <p className="mt-2 text-[12px] text-dim-500">
                       {pool?.remainingSends ?? 0} sends left in cadence · ~
                       {pool?.estSendDays ?? '–'} days at cap 43
                     </p>
                   </div>
 
                   <div>
-                    <p className="mb-1 font-mono text-[9.5px] tracking-[0.14em] text-slate-500 uppercase">
+                    <p className="mb-1 font-mono text-[12px] tracking-[0.14em] text-dim-500 uppercase">
                       Sends
                     </p>
                     <Row k="due today">
@@ -509,7 +509,7 @@ export default function StatusPage() {
                           {outreach.dueNext.map((d) => (
                             <span
                               key={d.date}
-                              className="rounded-[3px] border border-void-600 px-1.5 py-0.5 font-mono text-[10px] text-slate-300"
+                              className="rounded-[3px] border border-void-600 px-1.5 py-0.5 font-mono text-[12px] text-slate-300"
                             >
                               {shortDate(d.date)} · {d.count}
                             </span>
@@ -518,7 +518,7 @@ export default function StatusPage() {
                       </Row>
                     )}
                     {outreach.cap != null && (
-                      <p className="mt-1 text-[10px] text-slate-600">
+                      <p className="mt-1 text-[12px] text-dim-500">
                         cap {outreach.cap}
                         {outreach.cap === 60 ? ' (reverts 43 @ 13:00)' : ''}
                       </p>
@@ -528,19 +528,19 @@ export default function StatusPage() {
 
                 {wa && (
                   <div className="space-y-3 border-t border-void-700 pt-4">
-                    <p className="font-mono text-[9.5px] tracking-[0.14em] text-slate-500 uppercase">
+                    <p className="font-mono text-[12px] tracking-[0.14em] text-dim-500 uppercase">
                       WhatsApp lane
                     </p>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div>
-                        <p className="mb-1 font-mono text-[9.5px] tracking-[0.14em] text-slate-600 uppercase">
+                        <p className="mb-1 font-mono text-[12px] tracking-[0.14em] text-dim-500 uppercase">
                           pool by trade
                         </p>
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-3 border-b border-void-700 pb-1 font-mono text-[9px] tracking-[0.12em] text-slate-600 uppercase">
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-3 border-b border-void-700 pb-1 font-mono text-[12px] tracking-[0.12em] text-dim-500 uppercase">
                           <span>sector</span>
-                          <span className="w-8 text-right">new</span>
-                          <span className="w-10 text-right">live</span>
-                          <span className="w-10 text-right">done</span>
+                          <span className="w-10 text-right">new</span>
+                          <span className="w-12 text-right">live</span>
+                          <span className="w-12 text-right">done</span>
                         </div>
                         {(wa.perSector ?? []).map((l) => (
                           <div
@@ -548,24 +548,24 @@ export default function StatusPage() {
                             className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-3 border-b border-void-800 py-1 text-[12px]"
                           >
                             <span className="truncate text-slate-200 capitalize">{l.sector}</span>
-                            <span className="tabular w-8 text-right font-semibold text-slate-100">
+                            <span className="tabular w-10 text-right font-semibold text-slate-100">
                               {l.available}
                             </span>
-                            <span className="tabular w-10 text-right text-slate-400">
+                            <span className="tabular w-12 text-right text-slate-400">
                               {l.messaged}
                             </span>
-                            <span className="tabular w-10 text-right text-slate-500">
+                            <span className="tabular w-12 text-right text-dim-500">
                               {l.closed}
                             </span>
                           </div>
                         ))}
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-3 border-t border-void-600 pt-1 font-mono text-[10px] tracking-[0.12em] text-slate-500 uppercase">
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-3 border-t border-void-600 pt-1 font-mono text-[12px] tracking-[0.12em] text-dim-500 uppercase">
                           <span className="truncate">
                             total · {waTotals.available + waTotals.messaged + waTotals.closed}
                           </span>
-                          <span className="tabular w-8 text-right">{waTotals.available}</span>
-                          <span className="tabular w-10 text-right">{waTotals.messaged}</span>
-                          <span className="tabular w-10 text-right">{waTotals.closed}</span>
+                          <span className="tabular w-10 text-right">{waTotals.available}</span>
+                          <span className="tabular w-12 text-right">{waTotals.messaged}</span>
+                          <span className="tabular w-12 text-right">{waTotals.closed}</span>
                         </div>
                       </div>
 
@@ -600,7 +600,7 @@ export default function StatusPage() {
                               {wa.dueNext.map((d) => (
                                 <span
                                   key={d.date}
-                                  className="rounded-[3px] border border-void-600 px-1.5 py-0.5 font-mono text-[10px] text-slate-300"
+                                  className="rounded-[3px] border border-void-600 px-1.5 py-0.5 font-mono text-[12px] text-slate-300"
                                 >
                                   {shortDate(d.date)} · {d.count}
                                 </span>
@@ -608,7 +608,7 @@ export default function StatusPage() {
                             </span>
                           </Row>
                         )}
-                        <p className="mt-2 text-[10px] text-slate-600">
+                        <p className="mt-2 text-[12px] text-dim-500">
                           {wa.pool?.available ?? 0} in the pool, unmessaged — a chase date is
                           not a queue; read the row before sending
                         </p>
@@ -617,7 +617,7 @@ export default function StatusPage() {
 
                     {wa.pages && wa.pages.length > 0 && (
                       <div>
-                        <p className="mb-1 font-mono text-[9.5px] tracking-[0.14em] text-slate-600 uppercase">
+                        <p className="mb-1 font-mono text-[12px] tracking-[0.14em] text-dim-500 uppercase">
                           pages
                         </p>
                         {wa.pages.map((p) => (
@@ -629,15 +629,15 @@ export default function StatusPage() {
                             className={`flex items-baseline justify-between gap-3 border-b border-void-800 py-1 text-[12px] transition-colors ${
                               p.actionable > 0
                                 ? 'text-slate-200 hover:text-slate-50'
-                                : 'text-slate-500 hover:text-slate-400'
+                                : 'text-dim-500 hover:text-slate-400'
                             }`}
                           >
                             <span className="truncate">
-                              {p.label} <span className="text-slate-600">↗</span>
+                              {p.label} <span className="text-dim-500">↗</span>
                             </span>
                             <span
-                              className={`shrink-0 font-mono text-[10px] tracking-[0.1em] uppercase ${
-                                p.actionable > 0 ? 'text-slate-100' : 'text-slate-600'
+                              className={`shrink-0 font-mono text-[12px] tracking-[0.1em] uppercase ${
+                                p.actionable > 0 ? 'text-slate-100' : 'text-dim-500'
                               }`}
                             >
                               {p.state}
@@ -650,14 +650,14 @@ export default function StatusPage() {
                 )}
 
                 {outreach.whatsapp && !outreach.whatsapp.ok && (
-                  <p className="border-t border-void-700 pt-3 text-[11.5px] text-red-300">
+                  <p className="border-t border-void-700 pt-3 text-[12px] text-red-300">
                     WhatsApp db error — {outreach.whatsapp.error}
                   </p>
                 )}
               </Card>
             ) : (
               <Card>
-                <p className="text-[11.5px] text-slate-500 italic">No outreach data.</p>
+                <p className="text-[12px] text-dim-500 italic">No outreach data.</p>
               </Card>
             )}
           </section>
@@ -687,7 +687,7 @@ export default function StatusPage() {
               ))}
               {(!payload.batches || payload.batches.length === 0) && (
                 <Row k="Batches">
-                  <span className="text-[11px] text-slate-500 italic">none</span>
+                  <span className="text-[12px] text-dim-500 italic">none</span>
                 </Row>
               )}
             </Card>
@@ -714,7 +714,7 @@ export default function StatusPage() {
                   </Row>
                 ))
               ) : (
-                <p className="text-[11.5px] text-slate-500 italic">None tracked.</p>
+                <p className="text-[12px] text-dim-500 italic">None tracked.</p>
               )}
             </Card>
           </section>
@@ -743,7 +743,7 @@ export default function StatusPage() {
                         .filter((t) => t.next)
                         .map((t) => (
                           <Row key={t.name} k={`${t.name.replace('.timer', '')} → next`}>
-                            <span className="tabular text-[11.5px] text-slate-300">
+                            <span className="tabular text-[12px] text-slate-300">
                               {fmtNext(t.next)}
                             </span>
                           </Row>
@@ -752,13 +752,13 @@ export default function StatusPage() {
                   )}
                 </>
               ) : (
-                <p className="text-[11.5px] text-slate-500 italic">System state unavailable.</p>
+                <p className="text-[12px] text-dim-500 italic">System state unavailable.</p>
               )}
             </Card>
           </section>
 
           {/* ---- footer ---- */}
-          <p className="px-1 text-[10.5px] text-slate-600">
+          <p className="px-1 text-[12px] text-dim-500">
             {payload.system?.hostname || 'box'} · up {fmtUptime(payload.system?.uptimeSec)}
             {payload.system?.load ? ` · load ${payload.system.load.join(' ')}` : ''} · generated{' '}
             {new Date(payload.generatedAt).toLocaleTimeString('en-GB')}

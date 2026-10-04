@@ -91,8 +91,8 @@ const CSS = `
   box-shadow:0 24px 50px -30px rgba(0,0,0,.9),inset 0 1px 0 rgba(200,255,215,.05)}
 .dcw[data-variant=sheet]{padding:4px 0 0}
 .dcw-ph{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px}
-.dcw-pt{font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#98b6a6;white-space:nowrap}
-.dcw-pick{display:flex;align-items:center;gap:4px;min-width:0;max-width:62%;font-size:11px;color:#98b6a6;background:none;border:1px solid transparent;
+.dcw-pt{font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#98b6a6;white-space:nowrap}
+.dcw-pick{display:flex;align-items:center;gap:4px;min-width:0;max-width:62%;font-size:12px;color:#98b6a6;background:none;border:1px solid transparent;
   border-radius:7px;padding:2px 6px;cursor:pointer}
 .dcw-pick:hover,.dcw-pick[aria-expanded=true]{color:#e8f7ee;border-color:rgba(157,255,112,.16);background:rgba(157,255,112,.045)}
 .dcw-pick span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -107,34 +107,34 @@ const CSS = `
 .dcw-menu li button:hover{color:#e8f7ee;background:rgba(157,255,112,.045)}
 .dcw-menu li button[aria-current=true]{color:#3dff5a;background:rgba(61,255,90,.085)}
 .dcw-menu li b{flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dcw-menu li small{flex:none;font-size:10.5px;color:#5f7d6e}
+.dcw-menu li small{flex:none;font-size:12px;color:#5f7d6e}
 .dcw-menu li i{flex:none;width:6px;height:6px;border-radius:50%;background:#3dff5a}
-.dcw-menu p{margin:6px 8px;color:#5f7d6e;font-size:11.5px}
+.dcw-menu p{margin:6px 8px;color:#5f7d6e;font-size:12px}
 .dcw-msgs{display:flex;flex-direction:column;gap:6px;flex:1 1 auto;min-height:48px;max-height:190px;overflow:auto;scrollbar-width:thin;margin-bottom:10px;padding-right:2px}
 .fd[data-layout=drawer] .dcw-msgs{max-height:none}
 .dcw[data-variant=sheet] .dcw-msgs{max-height:46vh;max-height:46dvh}
 .dcw-msg{color:#98b6a6;white-space:pre-wrap;overflow-wrap:anywhere}
-.dcw-msg b{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#5f7d6e;font-weight:600;margin-bottom:1px}
+.dcw-msg b{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#5f7d6e;font-weight:600;margin-bottom:1px}
 .dcw-msg.sam{color:#e8f7ee}
 .dcw-msg.sam b{color:#3dff5a}
 .dcw-msg.err{color:#ff8a8a}
 .dcw-msg em{font-style:normal;color:#5f7d6e}
-.dcw-note{color:#5f7d6e;font-size:11.5px}
+.dcw-note{color:#5f7d6e;font-size:12px}
 .dcw-note a{color:#3dff5a;text-decoration:none}
-.dcw-err{margin:0 0 8px;color:#ff8a8a;font-size:11.5px}
+.dcw-err{margin:0 0 8px;color:#ff8a8a;font-size:12px}
 .dcw-err a{color:#3dff5a;text-decoration:none;margin-left:4px}
 .dcw-voice{display:flex;flex-direction:column;align-items:center;gap:6px;margin:0 0 10px}
 .dcw-voice .dcw-note button{font:inherit;color:#3dff5a;background:none;border:0;padding:0;cursor:pointer}
 .dcw-ask{display:flex;align-items:center;gap:6px;padding:4px 4px 4px 12px;border-radius:9px;border:1px solid rgba(157,255,112,.16)}
 .dcw-ask:focus-within{border-color:rgba(61,255,90,.34)}
-.dcw-ask input{flex:1;min-width:0;font:inherit;font-size:12.5px;color:#e8f7ee;background:transparent;border:0;outline:none;padding:5px 0}
+.dcw-ask input{flex:1;min-width:0;font:inherit;font-size:16px;color:#e8f7ee;background:transparent;border:0;outline:none;padding:5px 0}
 .dcw-ask input::placeholder{color:#5f7d6e}
 .dcw-ask button{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:7px;border:1px solid rgba(157,255,112,.075);
   background:none;color:#98b6a6;cursor:pointer}
 .dcw-ask button:hover:not(:disabled){color:#3dff5a;border-color:rgba(61,255,90,.34);background:rgba(61,255,90,.085)}
 .dcw-ask button:disabled{opacity:.4;cursor:default}
 .dcw-ask button[aria-pressed=true]{color:#3dff5a;border-color:rgba(61,255,90,.34);background:rgba(61,255,90,.085)}
-.dcw-foot{display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:10.5px;color:#5f7d6e}
+.dcw-foot{display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:12px;color:#5f7d6e}
 .dcw-foot a{color:#5f7d6e;text-decoration:none}
 .dcw-foot a:hover{color:#3dff5a}
 @media (prefers-reduced-motion: reduce){.dcw *{transition:none!important;animation:none!important}}

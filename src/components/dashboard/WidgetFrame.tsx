@@ -227,12 +227,12 @@ export function WidgetFrame({
         </span>
 
         <div className="flex min-w-0 flex-1 items-baseline gap-2">
-          <h2 className="truncate font-mono text-[11px] font-semibold tracking-[0.13em] text-slate-200 uppercase">
+          <h2 className="truncate font-mono text-[12px] font-semibold tracking-[0.13em] text-slate-200 uppercase">
             {title}
           </h2>
           {/* Subtitles only earn their space on two-column footprints. */}
           {subtitle && (size === 'md-wide' || size === 'lg') && (
-            <span className="truncate font-mono text-[9.5px] tracking-wider text-slate-500 uppercase">
+            <span className="truncate font-mono text-[12px] tracking-wider text-slate-500 uppercase">
               {subtitle}
             </span>
           )}
@@ -254,7 +254,7 @@ export function WidgetFrame({
               type="button"
               onClick={onRefresh}
               aria-label={`Refresh ${title}`}
-              className="rounded-[3px] p-1 text-dim-200 opacity-0 transition hover:bg-white/5 hover:text-slate-300 focus-visible:opacity-100 group-hover/widget:opacity-100"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-[3px] text-dim-200 opacity-0 transition hover:bg-white/5 hover:text-slate-300 focus-visible:opacity-100 group-hover/widget:opacity-100"
             >
               <RefreshCw size={12} className={cn(isLoading && 'animate-spin')} />
             </button>
@@ -269,7 +269,7 @@ export function WidgetFrame({
               aria-expanded={menuOpen}
               aria-haspopup="menu"
               className={cn(
-                'rounded-[3px] p-1 text-dim-200 transition hover:bg-white/5 hover:text-slate-300',
+                'flex min-h-11 min-w-11 items-center justify-center rounded-[3px] text-dim-200 transition hover:bg-white/5 hover:text-slate-300',
                 menuOpen ? 'bg-white/8 text-slate-200 opacity-100' : 'opacity-0 group-hover/widget:opacity-100',
               )}
             >
@@ -302,7 +302,7 @@ export function WidgetFrame({
                           setMenuOpen(false);
                         }}
                         className={cn(
-                          'flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left text-[11.5px] transition-colors',
+                          'flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left text-[12px] transition-colors',
                           active ? 'text-slate-100' : 'text-slate-400 hover:bg-white/6 hover:text-slate-200',
                         )}
                       >
@@ -323,7 +323,7 @@ export function WidgetFrame({
                         onRefresh();
                         setMenuOpen(false);
                       }}
-                      className="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left text-[11.5px] text-slate-400 transition-colors hover:bg-white/6 hover:text-slate-200"
+                      className="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left text-[12px] text-slate-400 transition-colors hover:bg-white/6 hover:text-slate-200"
                     >
                       <RefreshCw size={12} />
                       Refresh now
@@ -337,7 +337,7 @@ export function WidgetFrame({
                       setWidgetVisible(id, false);
                       setMenuOpen(false);
                     }}
-                    className="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left text-[11.5px] text-slate-400 transition-colors hover:bg-alarm-500/12 hover:text-alarm-300"
+                    className="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left text-[12px] text-slate-400 transition-colors hover:bg-alarm-500/12 hover:text-alarm-300"
                   >
                     <EyeOff size={12} />
                     Hide widget
@@ -377,7 +377,7 @@ export function WidgetFrame({
             <RelativeTime
               value={updatedAt}
               prefix="updated "
-              className="shrink-0 font-mono text-[9px] tracking-wider text-slate-600 lowercase"
+              className="shrink-0 font-mono text-[12px] tracking-wider text-dim-500 lowercase"
             />
           )}
         </footer>

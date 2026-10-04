@@ -249,15 +249,15 @@ export default function StageEventsModule({ state, maxEntries = 40, className }:
       }}
     >
       <header className="flex items-center justify-between px-3.5 pt-3 pb-2">
-        <span className="text-[11px] font-semibold tracking-[0.1em] uppercase" style={{ color: '#98b6a6' }}>
+        <span className="text-[12px] font-semibold tracking-[0.1em] uppercase" style={{ color: '#98b6a6' }}>
           Stage events
         </span>
-        <span className="text-[11px]" style={{ color: '#5f7d6e' }}>
+        <span className="text-[12px]" style={{ color: '#5f7d6e' }}>
           live
         </span>
       </header>
       {log.length === 0 ? (
-        <p className="px-3.5 pb-3 text-[11px]" style={{ color: '#5f7d6e' }}>
+        <p className="px-3.5 pb-3 text-[12px]" style={{ color: '#5f7d6e' }}>
           No stage events yet.
         </p>
       ) : (
@@ -265,7 +265,7 @@ export default function StageEventsModule({ state, maxEntries = 40, className }:
           {log.map((entry, i) => (
             <li
               key={`${entry.id}:${entry.at}:${i}`}
-              className="flex items-center gap-2 px-2 py-1 text-[11px]"
+              className="flex items-center gap-2 px-2 py-1 text-[12px]"
             >
               <i aria-hidden className="inline-block size-1.5 shrink-0 rounded-full" style={{ background: KIND_COLOUR[entry.kind] }} />
               <time className="shrink-0 tabular-nums" style={{ color: '#5f7d6e' }}>

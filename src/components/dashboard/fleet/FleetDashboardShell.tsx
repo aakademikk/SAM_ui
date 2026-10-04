@@ -410,11 +410,11 @@ function ChatSlotPlaceholder() {
   return (
     <section aria-label="Chat with SAM" className="fd-chat-slot">
       <header className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold tracking-[0.1em] uppercase" style={{ color: '#98b6a6' }}>
+        <span className="text-[12px] font-semibold tracking-[0.1em] uppercase" style={{ color: '#98b6a6' }}>
           Chat with SAM
         </span>
       </header>
-      <p className="mt-2 text-[11px]" style={{ color: '#5f7d6e' }}>
+      <p className="mt-2 text-[12px]" style={{ color: '#5f7d6e' }}>
         Chat is on the Chat page for now.
       </p>
     </section>

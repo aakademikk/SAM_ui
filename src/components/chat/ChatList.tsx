@@ -119,7 +119,7 @@ function ChatRow({
             )}
             <span className={`text-sm truncate ${active ? 'text-accent' : 'text-dim-100'}`}>{title}</span>
           </div>
-          <div className="flex items-center gap-2 text-[10px] text-dim-500">
+          <div className="flex items-center gap-2 text-[12px] text-dim-500">
             <span className="px-1.5 py-0.5 rounded bg-void-800 border border-void-700 text-dim-400">
               {TIER_LABEL[chat.tier]}
             </span>
@@ -190,7 +190,7 @@ function ChatRow({
           <button
             type="button"
             onClick={() => onOpen(chat.handedOffTo as string)}
-            className="flex items-center gap-1 text-[10px] text-dim-500 hover:text-accent transition-colors"
+            className="flex min-h-11 items-center gap-1 text-[12px] text-dim-500 hover:text-accent transition-colors"
           >
             <ArrowRightLeft size={10} /> Handed off — open new chat
           </button>
@@ -201,7 +201,7 @@ function ChatRow({
           <button
             type="button"
             onClick={() => onOpen(chat.handedOffFrom as string)}
-            className="flex items-center gap-1 text-[10px] text-dim-500 hover:text-accent transition-colors"
+            className="flex min-h-11 items-center gap-1 text-[12px] text-dim-500 hover:text-accent transition-colors"
           >
             <ArrowRightLeft size={10} /> Continued from an earlier chat
           </button>
@@ -209,7 +209,7 @@ function ChatRow({
       )}
 
       {actions.errorId === chat.id && actions.errorMessage && (
-        <p className="px-3 pb-2 -mt-1 text-[10px] text-red-400">{actions.errorMessage}</p>
+        <p className="px-3 pb-2 -mt-1 text-[12px] text-red-400">{actions.errorMessage}</p>
       )}
     </li>
   );
@@ -235,7 +235,7 @@ function ListControls({
         onChange={(e) => onQueryChange(e.target.value)}
         placeholder="Search titles"
         aria-label="Search chat titles"
-        className="w-full px-2 py-1.5 text-xs rounded border border-void-700 bg-void-950 text-dim-100
+        className="w-full px-2 py-1.5 text-base rounded border border-void-700 bg-void-950 text-dim-100
                    placeholder:text-dim-600 focus:outline-none focus:border-accent/60"
       />
       <div className="flex gap-1">
@@ -244,7 +244,7 @@ function ListControls({
             key={m}
             type="button"
             onClick={() => onModeChange(m)}
-            className={`flex-1 px-2 py-1 text-[11px] rounded transition-colors ${
+            className={`flex-1 px-2 py-1 text-[12px] rounded transition-colors ${
               mode === m ? 'bg-accent/15 text-accent' : 'text-dim-400 hover:text-dim-100 hover:bg-void-800'
             }`}
           >
@@ -274,16 +274,20 @@ function ListRows({
   archivedError: string | null;
 }) {
   if (mode === 'archived' && archivedLoading && chats.length === 0) {
-    return <p className="px-3 py-4 text-xs text-dim-500">Loading…</p>;
+    return (
+      <li className="px-3 py-4 text-xs text-dim-500">Loading…</li>
+    );
   }
   if (mode === 'archived' && archivedError) {
-    return <p className="px-3 py-4 text-xs text-red-400">{archivedError}</p>;
+    return (
+      <li className="px-3 py-4 text-xs text-red-400">{archivedError}</li>
+    );
   }
   if (chats.length === 0) {
     return (
-      <p className="px-3 py-4 text-xs text-dim-500">
+      <li className="px-3 py-4 text-xs text-dim-500">
         {mode === 'archived' ? 'Nothing archived.' : 'No chats yet.'}
-      </p>
+      </li>
     );
   }
   return (
@@ -461,7 +465,7 @@ export function ChatList({ chats, currentId, onOpen, onNew, open, onClose, onCha
               <button
                 type="button"
                 onClick={onNew}
-                className="flex items-center gap-1 text-[11px] text-dim-300 hover:text-accent transition-colors px-1.5 py-1 rounded"
+                className="flex items-center gap-1 text-[12px] text-dim-300 hover:text-accent transition-colors px-1.5 py-1 rounded"
               >
                 <Plus size={12} /> New
               </button>

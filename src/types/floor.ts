@@ -40,6 +40,32 @@ export interface FloorWorker {
   costUsd: number | null;
   startedAt: string | null;
   endedAt: string | null;
+  /**
+   * The most recent `action` event (Must 5) seen for this job, by file
+   * order — never invented when no `action` event exists yet (Must 6: "no
+   * action event yet" is omitted, never shown as unknown). Optional (not
+   * just nullable) so the many existing `FloorWorker` fixtures/constructors
+   * across the floor/phone/stage-events renderers — outside this ticket's
+   * Files list — don't all need touching just to add this one field;
+   * `floorState.ts`, the only producer this ticket owns, always sets it
+   * explicitly to a value or `null`, never leaves it `undefined`.
+   */
+  lastAction?: { description: string; at: string } | null;
+  /**
+   * `meta.json`'s own `summary` field (sam-job's `--summary`), verbatim —
+   * never invented, never derived from `command`. Optional (not just
+   * nullable), same reasoning as `lastAction`: the many existing
+   * `FloorWorker` fixtures/constructors outside this ticket's Files list
+   * don't all need touching just to add this field; `floorState.ts` always
+   * sets it explicitly to a value or `null`, never leaves it `undefined`.
+   */
+  summary?: string | null;
+  /**
+   * `meta.json`'s own `tier` field (ux-fixes T4's `sam-dispatch --tier`
+   * pass-through), verbatim — never guessed from `command`'s `--model`
+   * string. Same optional-not-just-nullable reasoning as `lastAction`.
+   */
+  tier?: string | null;
 }
 
 export interface FloorState {

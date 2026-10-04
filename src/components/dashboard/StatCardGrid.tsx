@@ -124,7 +124,7 @@ function HiddenWidgetsTray({ hidden }: { hidden: WidgetKind[] }) {
               type="button"
               onClick={() => setWidgetVisible(id, true)}
               title={descriptor.description}
-              className="group flex items-center gap-1.5 rounded-[4px] border border-void-400/60 bg-void-700/50 px-2 py-1 text-[10.5px] text-slate-400 transition-colors hover:border-[var(--sam-accent)]/50 hover:bg-void-600/60 hover:text-slate-100"
+              className="group flex items-center gap-1.5 rounded-[4px] border border-void-400/60 bg-void-700/50 px-2 py-1 text-[12px] text-slate-400 transition-colors hover:border-[var(--sam-accent)]/50 hover:bg-void-600/60 hover:text-slate-100"
             >
               <Icon size={11} />
               {descriptor.title}

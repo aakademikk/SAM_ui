@@ -91,7 +91,7 @@ export default function SchedulePanel({ jobs, onClose, className }: SchedulePane
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-[11px] font-semibold tracking-[0.12em] uppercase" style={{ color: C.accent }}>
+          <div className="text-[12px] font-semibold tracking-[0.12em] uppercase" style={{ color: C.accent }}>
             SAM · Clock ring
           </div>
           <h2 className="fd-fx-name mt-0.5 text-[26px] leading-tight font-semibold tracking-[-0.02em]">Schedule</h2>
@@ -104,7 +104,7 @@ export default function SchedulePanel({ jobs, onClose, className }: SchedulePane
           style={{ background: C.chip, borderColor: C.lineStrong, color: C.text }}
         >
           Back
-          <kbd className="rounded border px-1.5 py-px font-mono text-[11px]" style={{ borderColor: C.line, color: C.muted }}>
+          <kbd className="rounded border px-1.5 py-px font-mono text-[12px]" style={{ borderColor: C.line, color: C.muted }}>
             Esc
           </kbd>
         </button>
@@ -133,7 +133,7 @@ export default function SchedulePanel({ jobs, onClose, className }: SchedulePane
           </p>
 
           <div
-            className="grid gap-2 border-b pb-[5px] text-[11px] font-semibold tracking-[0.08em] uppercase"
+            className="grid gap-2 border-b pb-[5px] text-[12px] font-semibold tracking-[0.08em] uppercase"
             style={{ gridTemplateColumns: COLS, borderColor: C.line, color: C.faint }}
           >
             <span>Job</span>
@@ -165,7 +165,7 @@ function ScheduleRow({ job }: { job: ScheduledJob }) {
         <span className="block truncate font-semibold" style={{ color: live ? C.accent : failed ? C.bad : C.text }}>
           {job.name}
         </span>
-        <small className="block truncate text-[11px]" style={{ color: C.faint }}>
+        <small className="block truncate text-[12px]" style={{ color: C.faint }}>
           {job.schedulePlain}
         </small>
       </div>
@@ -191,7 +191,7 @@ function ScheduleRow({ job }: { job: ScheduledJob }) {
 function Badge({ label, colour, bg }: { label: string; colour: string; bg: string }) {
   return (
     <span
-      className="inline-flex items-center gap-[5px] rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-[0.06em] uppercase"
+      className="inline-flex items-center gap-[5px] rounded-full px-2 py-0.5 text-[12px] font-semibold tracking-[0.06em] uppercase"
       style={{ color: colour, background: bg }}
     >
       <i aria-hidden className="inline-block size-[5px] rounded-full" style={{ background: 'currentColor' }} />

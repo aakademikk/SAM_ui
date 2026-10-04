@@ -116,7 +116,7 @@ export default function NotificationsPage() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-sm font-medium text-void-100 truncate">{entry.title}</span>
-                  <span className="text-[10px] font-mono text-dim-500 shrink-0">
+                  <span className="text-[12px] font-mono text-dim-500 shrink-0">
                     {new Date(entry.ts).toLocaleString([], {
                       day: 'numeric',
                       month: 'short',

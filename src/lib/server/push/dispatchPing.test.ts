@@ -110,7 +110,7 @@ test(
 
     const r = spawnSync(
       DISPATCH_BIN,
-      ['--tier', 'haiku', '--brief', brief, '--cwd', cwd, '--name', 'mc-ping-test'],
+      ['--tier', 'haiku', '--brief', brief, '--cwd', cwd, '--name', `mcping-${process.pid}`],
       {
         cwd,
         encoding: 'utf8',

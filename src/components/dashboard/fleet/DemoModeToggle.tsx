@@ -27,7 +27,7 @@ export default function DemoModeToggle({ demo, onToggle, className }: DemoModeTo
           ? 'Demo mode: replaying invented demo jobs, no live data on screen. Click to return to the live fleet.'
           : 'Switch to demo mode: replays invented demo jobs on a loop, hides all live data.'
       }
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold tracking-[0.08em] uppercase transition-colors ${className ?? ''}`}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold tracking-[0.08em] uppercase transition-colors ${className ?? ''}`}
       style={
         demo
           ? { background: 'rgba(45,212,191,.16)', borderColor: 'rgba(45,212,191,.55)', color: '#2dd4bf' }

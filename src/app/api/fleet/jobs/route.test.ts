@@ -18,6 +18,7 @@ import { before, test } from 'node:test';
 
 type JobsRoute = typeof import('./route.js');
 type AuthModule = typeof import('../../../../lib/server/auth/session.js');
+type StoreModule = typeof import('../../../../lib/server/auth/store.js');
 type FleetPersonaJob = import('../../../../types/fleet.js').FleetPersonaJob;
 
 const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jobs-route-'));
@@ -51,6 +52,16 @@ before(async () => {
     exitCode: 0,
     createdAt: new Date().toISOString(),
     endedAt: new Date().toISOString(),
+  });
+
+  const store: StoreModule = await import('../../../../lib/server/auth/store.js');
+  await store.getCredentialStore().add({
+    credentialId: 'test-credential',
+    publicKey: new Uint8Array([1, 2, 3, 4]),
+    counter: 0,
+    transports: ['internal'],
+    deviceName: 'test',
+    createdAt: new Date().toISOString(),
   });
 
   const auth: AuthModule = await import('../../../../lib/server/auth/session.js');

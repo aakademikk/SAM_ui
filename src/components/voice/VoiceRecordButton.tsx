@@ -46,6 +46,17 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
   const [audioLevel, setAudioLevel] = useState(0);
   const [slideOffset, setSlideOffset] = useState(0);
   const [recordTime, setRecordTime] = useState(0);
+  const [isCoarsePointer, setIsCoarsePointer] = useState(false);
+
+  /* ── Touch vs. pointer wording (Must 28) ──────────────────────────────── */
+
+  useEffect(() => {
+    const mq = window.matchMedia('(pointer: coarse)');
+    const decide = () => setIsCoarsePointer(mq.matches);
+    decide();
+    mq.addEventListener('change', decide);
+    return () => mq.removeEventListener('change', decide);
+  }, []);
 
   const streamRef = useRef<MediaStream | null>(null);
   const micRef = useRef<MicStream | null>(null);
@@ -390,7 +401,7 @@ export function VoiceRecordButton({ onTranscribe }: VoiceRecordButtonProps) {
           ) : state === 'needsMic' ? (
             <>
               <Mic size={16} />
-              <span>Tap to enable mic</span>
+              <span>{isCoarsePointer ? 'Tap to enable mic' : 'Click to enable mic'}</span>
             </>
           ) : (
             <>

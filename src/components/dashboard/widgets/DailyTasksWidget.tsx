@@ -87,7 +87,7 @@ function TaskRow({ task, index, showMeta }: { task: DailyTask; index: number; sh
         </p>
 
         {showMeta && (
-          <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[9px] tracking-wider text-slate-600 uppercase">
+          <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[12px] tracking-wider text-slate-600 uppercase">
             <span>{task.tag}</span>
             {task.origin !== 'operator' && (
               <>
@@ -114,7 +114,7 @@ function TaskRow({ task, index, showMeta }: { task: DailyTask; index: number; sh
       {overdue && <Flame size={11} className="shrink-0 text-alarm-400" aria-label="Overdue" />}
 
       <span
-        className="shrink-0 font-mono text-[9px] tracking-wider uppercase"
+        className="shrink-0 font-mono text-[12px] tracking-wider uppercase"
         style={{ color: TONE_COLOR[PRIORITY_TONE[task.priority]] }}
       >
         {task.priority}
@@ -198,7 +198,7 @@ export function DailyTasksWidget({ size, index, dragHandleProps, isDragging, isO
               type="button"
               onClick={() => setHideDone((v) => !v)}
               className={cn(
-                'rounded-[3px] px-1.5 py-0.5 font-mono text-[9px] tracking-wider uppercase transition-colors',
+                'rounded-[3px] px-1.5 py-0.5 font-mono text-[12px] tracking-wider uppercase transition-colors',
                 hideDone
                   ? 'bg-[var(--sam-accent)]/18 text-[var(--sam-accent)]'
                   : 'text-slate-600 hover:text-slate-400',
@@ -212,7 +212,7 @@ export function DailyTasksWidget({ size, index, dragHandleProps, isDragging, isO
       footer={
         !profile.compact &&
         payload && (
-          <span className="truncate text-[10.5px] text-slate-500 italic">
+          <span className="truncate text-[12px] text-slate-500 italic">
             {nudge ?? `${payload.completedToday} done today · ${payload.streakDays}-day streak`}
           </span>
         )
@@ -228,11 +228,11 @@ export function DailyTasksWidget({ size, index, dragHandleProps, isDragging, isO
           </div>
 
           {visible[0] ? (
-            <p className="line-clamp-2 text-[11px] leading-relaxed text-slate-400">
+            <p className="line-clamp-2 text-[12px] leading-relaxed text-slate-400">
               {visible[0].title}
             </p>
           ) : (
-            <p className="text-[11px] text-slate-600 italic">{emptyState('tasks', 'sm', sarcasm)}</p>
+            <p className="text-[12px] text-slate-600 italic">{emptyState('tasks', 'sm', sarcasm)}</p>
           )}
 
           <div className="flex gap-1.5">
@@ -257,7 +257,7 @@ export function DailyTasksWidget({ size, index, dragHandleProps, isDragging, isO
               placeholder="Add a task…"
               aria-label="New task title"
               maxLength={200}
-              className="min-w-0 flex-1 bg-transparent text-[11.5px] text-slate-200 placeholder:text-slate-600 focus:outline-none"
+              className="min-w-0 flex-1 bg-transparent text-[12px] text-slate-200 placeholder:text-slate-600 focus:outline-none"
             />
             <button
               type="button"
@@ -268,7 +268,7 @@ export function DailyTasksWidget({ size, index, dragHandleProps, isDragging, isO
               }
               title="Cycle priority"
               aria-label={`Priority ${priority}, click to change`}
-              className="shrink-0 rounded-[3px] border px-1.5 py-[3px] font-mono text-[9px] tracking-wider uppercase transition-colors"
+              className="shrink-0 rounded-[3px] border px-1.5 py-[3px] font-mono text-[12px] tracking-wider uppercase transition-colors"
               style={{
                 color: TONE_COLOR[PRIORITY_TONE[priority]],
                 borderColor: `color-mix(in oklab, ${TONE_COLOR[PRIORITY_TONE[priority]]} 40%, transparent)`,
@@ -279,7 +279,7 @@ export function DailyTasksWidget({ size, index, dragHandleProps, isDragging, isO
             <button
               type="submit"
               disabled={!draft.trim()}
-              className="shrink-0 rounded-[3px] border border-[var(--sam-accent)]/35 bg-[var(--sam-accent)]/12 px-2 py-[3px] font-mono text-[9.5px] tracking-wider text-[var(--sam-accent)] uppercase transition-colors hover:bg-[var(--sam-accent)]/22 disabled:cursor-not-allowed disabled:opacity-35"
+              className="shrink-0 rounded-[3px] border border-[var(--sam-accent)]/35 bg-[var(--sam-accent)]/12 px-2 py-[3px] font-mono text-[12px] tracking-wider text-[var(--sam-accent)] uppercase transition-colors hover:bg-[var(--sam-accent)]/22 disabled:cursor-not-allowed disabled:opacity-35"
             >
               Add
             </button>

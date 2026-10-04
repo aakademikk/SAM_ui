@@ -28,8 +28,6 @@ export const viewport: Viewport = {
   colorScheme: 'dark',
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   viewportFit: 'cover',
   // Android-only: resize the LAYOUT viewport when the soft keyboard opens so the
   // composer and tab bar ride above it natively. Without this, the keyboard is
@@ -40,7 +38,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-ambient="toxic" suppressHydrationWarning>
+    <html lang="en-GB" data-ambient="toxic" suppressHydrationWarning>
       <head>
         {/* Apple PWA meta — Next.js appleWebApp above handles most, but these are the belt-and-suspenders */}
         <meta name="apple-mobile-web-app-capable" content="yes" />

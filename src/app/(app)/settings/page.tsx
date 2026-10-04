@@ -75,7 +75,7 @@ function ThemeSection() {
               key={level}
               type="button"
               onClick={() => setSarcasm(level)}
-              className={`px-3 py-1.5 rounded-lg border text-xs transition-colors ${
+              className={`inline-flex min-h-11 min-w-11 items-center justify-center px-3 py-1.5 rounded-lg border text-xs transition-colors ${
                 sarcasm === level
                   ? 'border-accent/50 bg-accent/10 text-accent'
                   : 'border-void-700 bg-void-900 text-dim-300 hover:border-void-600'
@@ -157,12 +157,13 @@ function VoiceSection() {
       <h2 className="text-sm font-semibold text-dim-200 uppercase tracking-wider">Voice</h2>
 
       <div className="space-y-2">
-        <label className="text-xs text-dim-300">TTS voice (Kokoro)</label>
+        <label htmlFor="settings-voice-kokoro" className="text-xs text-dim-300">TTS voice (Kokoro)</label>
         <select
+          id="settings-voice-kokoro"
           value={voiceId}
           onChange={(e) => setVoice(parseInt(e.target.value))}
           className="w-full bg-void-900 border border-void-600 rounded-lg px-3 py-2
-                     text-void-100 text-sm focus:border-accent focus:outline-none"
+                     text-void-100 text-base focus:border-accent focus:outline-none"
         >
           {VOICE_GROUPS.map((group) => (
             <optgroup key={group.label} label={group.label}>
@@ -186,14 +187,15 @@ function VoiceSection() {
       </div>
 
       <div className="pt-2 space-y-2">
-        <label className="text-xs text-dim-300">
+        <label htmlFor="settings-voice-edge" className="text-xs text-dim-300">
           TTS voice (Edge) — used for chat and push-to-talk
         </label>
         <select
+          id="settings-voice-edge"
           value={edgeVoiceId}
           onChange={(e) => setEdgeVoice(e.target.value)}
           className="w-full bg-void-900 border border-void-600 rounded-lg px-3 py-2
-                     text-void-100 text-sm focus:border-accent focus:outline-none"
+                     text-void-100 text-base focus:border-accent focus:outline-none"
         >
           {EDGE_VOICE_GROUPS.map((group) => (
             <optgroup key={group.label} label={group.label}>
@@ -274,14 +276,14 @@ function DeviceSection() {
           >
             <div>
               <p className="text-sm text-dim-100">{d.deviceName}</p>
-              <p className="text-[10px] text-dim-400 font-mono">
+              <p className="text-[12px] text-dim-400 font-mono">
                 {d.credentialId.slice(0, 20)}... · {new Date(d.createdAt).toLocaleDateString()}
               </p>
             </div>
             <button
               type="button"
               onClick={() => revoke(d.credentialId)}
-              className="px-3 py-1 text-xs bg-red-900/20 border border-red-700/30 rounded
+              className="inline-flex min-h-11 min-w-11 items-center justify-center px-3 py-1 text-xs bg-red-900/20 border border-red-700/30 rounded
                          text-red-400 hover:bg-red-900/40 transition-colors"
             >
               Revoke

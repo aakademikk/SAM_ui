@@ -29,8 +29,9 @@ function SyncBadge() {
 
   return (
     <span
-      className="hidden items-center gap-1.5 font-mono text-[9px] tracking-[0.14em] uppercase lg:inline-flex"
-      style={{ color: TONE_COLOR[tone] }}
+      className="hidden items-center gap-1.5 font-mono text-[12px] tracking-[0.14em] uppercase lg:inline-flex"
+      /* T29: the shared 'muted' tone (#64748b) is 4.16:1 on the dashboard void, so the idle state uses the repo's dim-500 text grey */
+      style={{ color: tone === 'muted' ? 'var(--color-dim-500)' : TONE_COLOR[tone] }}
       title={syncError ?? label}
     >
       <Icon size={11} className={cn(spinning && 'animate-spin')} />
@@ -56,7 +57,7 @@ function EstateChip({
     <div className="flex items-center gap-1.5 border-l border-void-500/60 pl-3 first:border-l-0 first:pl-0">
       <StatusDot tone={tone} pulse={pulse} size={5} />
       <span className="label">{label}</span>
-      <span className="tabular font-mono text-[11px] font-medium" style={{ color: TONE_COLOR[tone] }}>
+      <span className="tabular font-mono text-[12px] font-medium" style={{ color: TONE_COLOR[tone] }}>
         {value}
       </span>
     </div>
@@ -98,7 +99,7 @@ export function TopBar() {
           <h1 className="neon font-mono text-[13px] font-bold tracking-[0.34em] text-slate-100 uppercase">
             SAM
           </h1>
-          <p className="mt-0.5 hidden font-mono text-[8px] tracking-[0.16em] text-slate-600 uppercase sm:block">
+          <p className="mt-0.5 hidden font-mono text-[12px] tracking-[0.1em] text-dim-500 uppercase sm:block">
             core dashboard
           </p>
         </div>
@@ -115,14 +116,14 @@ export function TopBar() {
         <SyncBadge />
 
         <span
-          className="tabular hidden font-mono text-[11px] tracking-wider text-slate-400 sm:inline"
+          className="tabular hidden font-mono text-[12px] tracking-wider text-slate-400 sm:inline"
           suppressHydrationWarning
         >
           {mounted ? clock : '--:--:--'}
-          <span className="ml-1 text-[8.5px] text-slate-600">UTC</span>
+          <span className="ml-1 text-[12px] text-dim-500">UTC</span>
         </span>
 
-        <span className="hidden font-mono text-[9px] tracking-[0.14em] text-slate-600 uppercase lg:inline">
+        <span className="hidden font-mono text-[12px] tracking-[0.14em] text-dim-500 uppercase lg:inline">
           {operatorName}
         </span>
 

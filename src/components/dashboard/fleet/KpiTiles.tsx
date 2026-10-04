@@ -144,7 +144,7 @@ function Tile({
       }}
     >
       <span
-        className="text-[11px] font-semibold tracking-[0.1em] uppercase"
+        className="text-[12px] font-semibold tracking-[0.1em] uppercase"
         style={{ color: '#5f7d6e' }}
       >
         {label}
@@ -157,7 +157,7 @@ function Tile({
           {value}
         </b>
         {sub ? (
-          <small className="truncate text-[11px] font-medium" style={{ color: '#98b6a6' }}>
+          <small className="truncate text-[12px] font-medium" style={{ color: '#98b6a6' }}>
             {sub}
           </small>
         ) : null}

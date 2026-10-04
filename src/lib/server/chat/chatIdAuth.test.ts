@@ -21,6 +21,7 @@ import { before, test } from 'node:test';
 type ChatRoute = typeof import('../../../app/api/chats/[id]/route.js');
 type ChatStoreModule = typeof import('./chatStore.js');
 type AuthModule = typeof import('../auth/session.js');
+type AuthStoreModule = typeof import('../auth/store.js');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chat-id-auth-'));
 const home = path.join(tmp, 'home');
@@ -32,6 +33,16 @@ let sessionCookie = '';
 before(async () => {
   fs.mkdirSync(home, { recursive: true });
   process.env.HOME = home;
+
+  const authStore: AuthStoreModule = await import('../auth/store.js');
+  await authStore.getCredentialStore().add({
+    credentialId: 'test-credential',
+    publicKey: new Uint8Array([1, 2, 3, 4]),
+    counter: 0,
+    transports: ['internal'],
+    deviceName: 'test',
+    createdAt: new Date().toISOString(),
+  });
 
   const auth: AuthModule = await import('../auth/session.js');
   const cookies = await auth.createSessionCookies({ sub: 'test-credential', device: 'pc', iat: 0 });
