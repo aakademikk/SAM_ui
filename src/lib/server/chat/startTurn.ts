@@ -37,11 +37,14 @@ import { agentCwd } from './agentCwd';
 import { createChat, deleteChat, getChat, setRunningJob, touchChat } from './chatStore';
 import { registerSamuiSession } from './samuiSessions';
 import { acquireSessionLock, holdSessionLock, releaseSessionLock } from './sessionLock';
+import { forgetJob, markInternalJob, onResultSeen } from './sideMessage';
 import { deepseekTierAvailable, geminiTierAvailable, tierEnv, tierInfo } from './tiers';
+import { MAX_MESSAGE_CHARS, isResultLine, streamJsonUserLine } from './streamInput';
 import { fallbackTitle, queueTitle } from './titles';
+import { tagSideMessages } from './transcripts';
 import { pingOffScreenChat } from './turnPing';
 
-export const MAX_MESSAGE_CHARS = 8000;
+export { MAX_MESSAGE_CHARS };
 
 /* ========================================================================== */
 /* Exit hooks                                                                 */
@@ -288,14 +291,21 @@ export async function startTurn(input: StartTurnInput): Promise<StartTurnResult>
     }
   }
 
-  const args = [
-    '-p',
-    prompt,
-    '--output-format',
-    'stream-json',
-    // stream-json only emits the full event set in verbose mode.
-    '--verbose',
-  ];
+  // Max/Max2 streams the prompt in on stdin instead of argv (spec must-do 9:
+  // measured faster to first text than today's argv + closed-stdin path, see
+  // the spec's constraints). Every other tier keeps today's args and stdio
+  // byte-for-byte.
+  const streamsPrompt = tier === 'max' || tier === 'max2';
+  const args = streamsPrompt
+    ? ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose']
+    : [
+        '-p',
+        prompt,
+        '--output-format',
+        'stream-json',
+        // stream-json only emits the full event set in verbose mode.
+        '--verbose',
+      ];
 
   /* ---- Lock --------------------------------------------------------------- */
 
@@ -336,6 +346,33 @@ export async function startTurn(input: StartTurnInput): Promise<StartTurnResult>
   const internal = input.internal === true;
   let exited = false;
 
+  // Max/Max2 only: notify sideMessage.ts of every `result` line seen on
+  // stdout, so it can close stdin once the turn is truly done — but not
+  // while a side message is still in flight for this job (T5). A result line
+  // can land split across two output chunks, so a single line's worth of
+  // carry-over survives the split rather than ever missing it — missing it
+  // would leave stdin open and the process never exiting. Every result line
+  // is reported, not just the first: a late side message's second result
+  // must reschedule the close too. The manager only calls this with STDOUT
+  // chunks, so a stderr fragment can never be glued onto a result line here.
+  //
+  // `isResultLine` parses the line rather than checking a `{"type":"result"`
+  // prefix: the real CLI (2.1.x) does not print `type` first on its result
+  // line (`duration_api_ms` comes first), so a prefix check never matches it
+  // and stdin is never closed — the turn's process then never exits (T5-fix,
+  // SAM, live test 2026-10-03).
+  let carry = '';
+  const onOutputChunk = (chunk: Buffer, record: JobRecord) => {
+    const text = carry + chunk.toString('utf-8');
+    const lines = text.split('\n');
+    carry = lines.pop() ?? '';
+    for (const line of lines) {
+      if (isResultLine(line)) {
+        onResultSeen(record.id);
+      }
+    }
+  };
+
   let job: JobRecord;
   try {
     job = await getJobManager().createArgs(claudeBin(), args, {
@@ -354,13 +391,26 @@ export async function startTurn(input: StartTurnInput): Promise<StartTurnResult>
         // knows which chat to ping (T11).
         SAM_CHAT_ID: chatId,
       },
+      ...(streamsPrompt ? { stdin: 'pipe' as const, onOutputChunk } : {}),
       // The turn ends the moment the process closes: record it on the chat,
       // drop the lock so the next turn — from this device or another — can take
       // it immediately, run the exit hooks, then report the turn's third-party
       // spend to the estate ledger (a no-op for the max tiers).
       onExit: async (finished) => {
         exited = true;
+        if (streamsPrompt) forgetJob(finished.id);
         let chat: ChatRecord | null = null;
+        // Match this chat's side-message records against the now-final
+        // transcript BEFORE the chat stops being "running" and the lock is
+        // released, so no reload, title hook or next turn ever reads history
+        // with a late side message still untagged. Max/Max 2 only.
+        if (streamsPrompt) {
+          try {
+            tagSideMessages(chatId, finished.startedAt ?? undefined);
+          } catch (err) {
+            console.error('[chat] side-message tagging failed:', err);
+          }
+        }
         try {
           const current = getChat(chatId);
           if (current && current.runningJobId === finished.id) setRunningJob(chatId, null);
@@ -398,10 +448,19 @@ export async function startTurn(input: StartTurnInput): Promise<StartTurnResult>
     throw err;
   }
 
+  // Max/Max2: the prompt never went on argv, so it goes on stdin now that the
+  // process exists to read it. A turn that exited before this point (near-
+  // instant failure) just drops the write — writeStdin reports false and
+  // there is nothing left to prompt.
+  if (streamsPrompt) {
+    await getJobManager().writeStdin(job.id, streamJsonUserLine(prompt));
+  }
+
   // The job now exists — pin the lock to it and start its heartbeat, and mark
   // the chat running. A command that exits instantly may already have run
   // onExit; then neither is done, or they would outlive the turn.
   if (!exited) {
+    if (internal) markInternalJob(job.id);
     holdSessionLock(chatId, job.id);
     setRunningJob(chatId, job.id);
   }

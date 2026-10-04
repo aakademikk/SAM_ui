@@ -332,3 +332,102 @@ test('a pre-upgrade chat (registry id + transcript, no record) is adopted and re
   assert.equal(entry.CLAUDE_CONFIG_DIR, null);
   assert.equal(lastReply(legacyId), 'echo: carry on');
 });
+
+/* ========================================================================== */
+/* T4: Max/Max2 stream the prompt in; every other tier is untouched          */
+/* ========================================================================== */
+
+test('T4: a Max turn argv carries --input-format and no bare prompt; a Fast turn keeps today\'s argv byte-for-byte', async () => {
+  // deepseekTierAvailable() gates the fast tier on these two vars being set.
+  // claudeBin() still resolves to the fake regardless of tier, so this test
+  // never reaches a real DeepSeek endpoint — only startTurn's own
+  // configured-tier check reads them.
+  const savedBaseUrl = process.env.ANTHROPIC_BASE_URL;
+  const savedAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
+  process.env.ANTHROPIC_BASE_URL = 'http://127.0.0.1:9/fake-deepseek';
+  process.env.ANTHROPIC_AUTH_TOKEN = 'fake-token';
+  let fast: Awaited<ReturnType<StartTurnModule['startTurn']>>;
+  try {
+    fast = await st.startTurn({ message: 'fast tier message', tier: 'fast', device: 'phone' });
+    assertOk(fast);
+    await waitExit(fast.jobId);
+  } finally {
+    if (savedBaseUrl === undefined) delete process.env.ANTHROPIC_BASE_URL;
+    else process.env.ANTHROPIC_BASE_URL = savedBaseUrl;
+    if (savedAuthToken === undefined) delete process.env.ANTHROPIC_AUTH_TOKEN;
+    else process.env.ANTHROPIC_AUTH_TOKEN = savedAuthToken;
+  }
+  assertOk(fast);
+
+  const [fastEntry] = logFor(fast.chatId);
+  assert.ok(fastEntry, 'fake log has the fast-tier turn');
+  assert.deepEqual(fastEntry.argv.slice(0, 5), [
+    '-p',
+    'fast tier message',
+    '--output-format',
+    'stream-json',
+    '--verbose',
+  ]);
+
+  const max = await st.startTurn({ message: 'max tier message', tier: 'max', device: 'phone' });
+  assertOk(max);
+  await waitExit(max.jobId);
+  const [maxEntry] = logFor(max.chatId);
+  assert.ok(maxEntry, 'fake log has the max turn');
+  assert.deepEqual(maxEntry.argv.slice(0, 5), [
+    '-p',
+    '--input-format',
+    'stream-json',
+    '--output-format',
+    'stream-json',
+  ]);
+  assert.equal(maxEntry.argv.includes('max tier message'), false, 'the prompt is not on argv');
+  assert.equal(lastReply(max.chatId), 'echo: max tier message', 'the prompt still reached the model, via stdin');
+});
+
+test('check 9 (no side message): a finished Max turn leaves no process and no cgroup behind', async () => {
+  const r = await st.startTurn({ message: 'clean exit please', tier: 'max', device: 'phone' });
+  assertOk(r);
+  const exit = await waitExit(r.jobId);
+  assert.equal(exit.exitCode, 0);
+
+  const pid = exit.record.pid;
+  assert.ok(pid, 'the finished job recorded a pid');
+  assert.throws(
+    () => process.kill(pid, 0),
+    (err: unknown) => (err as NodeJS.ErrnoException).code === 'ESRCH',
+    'the scope leader process is still alive',
+  );
+
+  // Best-effort: only check the cgroup if the wrapper managed to record one
+  // and it is still resolvable on this box's cgroup v2 mount. A collected
+  // scope (file gone, or path gone) is just as good as an empty one.
+  const cgroupFile = path.join(home, '.sam', 'jobs', r.jobId, 'cgroup');
+  if (fs.existsSync(cgroupFile)) {
+    const raw = fs.readFileSync(cgroupFile, 'utf8').trim();
+    const rel = raw.split(':').slice(2).join(':');
+    if (rel) {
+      const procsFile = path.join('/sys/fs/cgroup', rel, 'cgroup.procs');
+      if (fs.existsSync(procsFile)) {
+        const procs = fs.readFileSync(procsFile, 'utf8').trim();
+        assert.equal(procs, '', 'a process from this turn is still in its scope cgroup');
+      }
+    }
+  }
+});
+
+test('check 10/11 regression: a second turn on a running Max chat is still refused while the first is in flight', async () => {
+  const first = await st.startTurn({ message: 'first, still running', tier: 'max', device: 'phone' });
+  assertOk(first);
+
+  const second = await st.startTurn({
+    message: 'too soon',
+    tier: 'max',
+    chatId: first.chatId,
+    device: 'pc',
+  });
+  assert.equal(second.ok, false);
+  assert.equal(!second.ok && second.status, 409);
+
+  await waitExit(first.jobId);
+});

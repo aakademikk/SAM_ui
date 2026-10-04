@@ -518,10 +518,20 @@ export async function readFrames(
 /* Job handle                                                                 */
 /* ========================================================================== */
 
+/** Where the job's stdout stands relative to line boundaries, so a marker
+ *  appended to the output log never lands inside a line a chunk split. */
+interface StdoutLineState {
+  /** True when the last stdout chunk did not end with a newline. */
+  midLine: boolean;
+  /** Marker lines waiting for the next stdout chunk that ends a line. */
+  deferred: string[];
+}
+
 interface RunningJob {
   record: JobRecord;
   process: ChildProcess;
   output: OutputWriter;
+  lineState: StdoutLineState;
 }
 
 export interface CreateArgsOptions {
@@ -541,6 +551,21 @@ export interface CreateArgsOptions {
    * where the cost is only knowable after the run.
    */
   onExit?: (record: JobRecord) => void | Promise<void>;
+  /**
+   * Whether the child's stdin is piped or left `/dev/null`. Defaults to
+   * `'ignore'`: see the comment on `createArgs`'s own `stdio` for why an open
+   * pipe the CLI never hears from costs ~2.9s a turn. Only a caller that
+   * actually intends to write to stdin (a chat turn streaming its prompt in)
+   * should pass `'pipe'`.
+   */
+  stdin?: 'pipe' | 'ignore';
+  /** Fired for every STDOUT chunk (never stderr), right after it's written to
+   *  the job's own output log — a side channel for a caller that needs to
+   *  react to the child's stdout live (e.g. detecting a `result` line to
+   *  close stdin), without duplicating the write/bookkeeping `attach` already
+   *  does. stderr is excluded so a stderr fragment can never be glued onto a
+   *  stdout line in the caller's own line buffer. */
+  onOutputChunk?: (chunk: Buffer, record: JobRecord) => void;
 }
 
 function mergeEnv(overrides?: Record<string, string | null>): NodeJS.ProcessEnv {
@@ -550,6 +575,13 @@ function mergeEnv(overrides?: Record<string, string | null>): NodeJS.ProcessEnv 
     else env[key] = value;
   }
   return env;
+}
+
+/** Test-only: awaited inside `deliverSideMessage` between the stdin write and
+ *  the marker write, so a test can make one delivery slow. */
+let deliverHook: ((markerLine: string) => Promise<void>) | null = null;
+export function __setDeliverHookForTests(hook: ((markerLine: string) => Promise<void>) | null): void {
+  deliverHook = hook;
 }
 
 /* ========================================================================== */
@@ -747,7 +779,7 @@ class JobManager {
       },
     );
 
-    return this.attach(record, child, output);
+    return this.attach(record, child, output, {});
   }
 
   /**
@@ -783,16 +815,18 @@ class JobManager {
       ],
       {
         shell: false,
-        // stdin is /dev/null here, not a pipe. Nothing writes to a createArgs
-        // job's stdin, and the CLI blocks on a pipe it never hears from: it
-        // warns at 3s and then proceeds, which costs ~2.9s a turn (measured
-        // 5.2s open-pipe vs 2.3s /dev/null, timing the CLI alone). The wait
-        // happens before a model is chosen, so it is the same on every tier.
+        // stdin is /dev/null here by default, not a pipe. Nothing writes to a
+        // createArgs job's stdin, and the CLI blocks on a pipe it never hears
+        // from: it warns at 3s and then proceeds, which costs ~2.9s a turn
+        // (measured 5.2s open-pipe vs 2.3s /dev/null, timing the CLI alone).
+        // The wait happens before a model is chosen, so it is the same on
+        // every tier. A caller that actually intends to write to stdin (a
+        // chat turn streaming its prompt in) passes `stdin: 'pipe'`.
         //
         // create() keeps its pipe on purpose: the Terminal is the only caller
         // that types into stdin (jobsService.sendInput), and a terminal job
         // with /dev/null stdin would silently swallow every keystroke.
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: [opts.stdin ?? 'ignore', 'pipe', 'pipe'],
         cwd: opts.cwd ?? os.homedir(),
         env: mergeEnv({
           ...(opts.env ?? {}),
@@ -802,7 +836,7 @@ class JobManager {
       },
     );
 
-    return this.attach(record, child, output, opts.onExit);
+    return this.attach(record, child, output, opts);
   }
 
   /** Allocate an ID, output writer and initial record. */
@@ -833,7 +867,7 @@ class JobManager {
     record: JobRecord,
     child: ChildProcess,
     output: OutputWriter,
-    onExit?: CreateArgsOptions['onExit'],
+    opts: CreateArgsOptions,
   ): Promise<JobRecord> {
     record.status = 'running';
     record.startedAt = new Date().toISOString();
@@ -847,16 +881,42 @@ class JobManager {
     // etc.) can finish during the first I/O and we must not miss the close
     // or data events.
 
-    const onData = async (chunk: Buffer) => {
-      const seq = await output.write(chunk);
-      if (seq > 0) {
-        record.lastSeq = seq;
-        record.outputBytes += chunk.length;
+    const lineState: StdoutLineState = { midLine: false, deferred: [] };
+
+    const onData = async (chunk: Buffer, isStdout: boolean) => {
+      // Every write is queued synchronously, in arrival order, so any deferred
+      // marker lands right after the chunk that completed the line.
+      const writes: Promise<number>[] = [output.write(chunk)];
+      const sizes: number[] = [chunk.length];
+      if (isStdout && chunk.length > 0) {
+        lineState.midLine = chunk[chunk.length - 1] !== 0x0a;
+        if (!lineState.midLine) {
+          for (const marker of lineState.deferred.splice(0)) {
+            const buf = Buffer.from(marker);
+            writes.push(output.write(buf));
+            sizes.push(buf.length);
+          }
+        }
       }
+      for (let i = 0; i < writes.length; i++) {
+        const seq = await writes[i];
+        if (seq > 0) {
+          record.lastSeq = seq;
+          record.outputBytes += sizes[i];
+        }
+      }
+      if (isStdout) opts.onOutputChunk?.(chunk, record);
     };
 
-    child.stdout?.on('data', onData);
-    child.stderr?.on('data', onData);
+    child.stdout?.on('data', (chunk: Buffer) => void onData(chunk, true));
+    child.stderr?.on('data', (chunk: Buffer) => void onData(chunk, false));
+
+    // Without this, a write after the child has closed its read end or
+    // exited (a side message landing in the instant after the turn ends)
+    // raises an EPIPE 'error' on this stream with no listener — an uncaught
+    // exception that crashes the whole sam-ui server. The caller learns of
+    // the failure from the write callback (see deliverSideMessage), not here.
+    child.stdin?.on('error', () => {});
 
     child.on('close', async (code, signal) => {
       // Drain queued output BEFORE the record says the job is finished. Marking
@@ -864,6 +924,12 @@ class JobManager {
       // `closed`, and leave the client finalising a transcript whose tail was
       // still being written — measured: the file stopped at line 2970 of 4000
       // while the record claimed lastSeq 299.
+      // A marker still waiting for a line boundary that never came goes in now,
+      // on a line of its own, so it is not lost.
+      for (const marker of lineState.deferred.splice(0)) {
+        await output.write((lineState.midLine ? '\n' : '') + marker).catch(() => 0);
+        lineState.midLine = false;
+      }
       await output.close();
       record.status = code === null ? 'killed' : 'exited';
       // Node reports `code: null` whenever a signal did the killing, so the
@@ -878,13 +944,14 @@ class JobManager {
       record.endedAt = new Date().toISOString();
       await this.writeMeta(record);
       this.jobs.delete(record.id);
+      this.stdinChains.delete(record.id);
       this.completedIds.push(record.id);
       this.prune();
 
-      if (onExit) {
+      if (opts.onExit) {
         // Detached and swallowed: the job is already done and recorded, so a
         // failing reporter must not surface as a job failure.
-        void Promise.resolve(onExit(record)).catch(() => {});
+        void Promise.resolve(opts.onExit(record)).catch(() => {});
       }
     });
 
@@ -896,7 +963,7 @@ class JobManager {
     // Now persist the initial meta (handlers are already armed).
     await this.writeMeta(record);
 
-    const running: RunningJob = { record, process: child, output };
+    const running: RunningJob = { record, process: child, output, lineState };
     this.jobs.set(record.id, running);
     this.prune();
 
@@ -997,6 +1064,61 @@ class JobManager {
 
     running.process.stdin?.write(input);
     return true;
+  }
+
+  /** Close a job's stdin, signalling EOF to the child. `false` if the job
+   *  isn't live in this process. */
+  closeStdin(id: string): boolean {
+    const running = this.jobs.get(id);
+    if (!running) return false;
+    try {
+      running.process.stdin?.end();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Per-job chain of pending stdin deliveries, so two calls for the same id
+   *  made without awaiting the first between them still write in the order
+   *  `deliverSideMessage` was *called*, never interleaved (check 12). */
+  private stdinChains = new Map<string, Promise<void>>();
+
+  /** Write a line to a job's stdin and append a marker line to its own output
+   *  log, as one ordered unit. `false` if the job is not live, not running,
+   *  or its stdin is not writable (e.g. a reattached job after a sam-ui
+   *  restart, which has no stdin handle in this process). */
+  async deliverSideMessage(id: string, stdinLine: string, markerLine: string): Promise<boolean> {
+    const prev = this.stdinChains.get(id) ?? Promise.resolve();
+    let ok = false;
+    const next = prev.then(async () => {
+      const running = this.jobs.get(id);
+      if (!running || running.record.status !== 'running' || !running.process.stdin?.writable) return;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          running.process.stdin!.write(stdinLine, (err) => (err ? reject(err) : resolve()));
+        });
+        await deliverHook?.(markerLine);
+        if (running.lineState.midLine) {
+          // The last stdout chunk ended part-way through a line: a marker
+          // written now would split it. The next chunk that ends a line (or
+          // the job's close) writes it.
+          running.lineState.deferred.push(markerLine);
+        } else {
+          const seq = await running.output.write(Buffer.from(markerLine));
+          if (seq > 0) {
+            running.record.lastSeq = seq;
+            running.record.outputBytes += markerLine.length;
+          }
+        }
+        ok = true;
+      } catch {
+        // ok stays false; the write failed (e.g. EPIPE) and no marker is appended
+      }
+    });
+    this.stdinChains.set(id, next.catch(() => {}));
+    await next;
+    return ok;
   }
 
   /** Get output frames from a sequence number. */

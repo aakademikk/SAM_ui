@@ -72,6 +72,9 @@ interface LogEntry {
   argv: string[];
   CLAUDE_CONFIG_DIR: string | null;
   SAM_CHAT_ID: string | null;
+  /** Stream-json turns (Max/Max2): the prompt as read from stdin, logged in
+   *  place of the now-absent argv prompt. */
+  stdinPrompt?: string;
 }
 
 /** Turn spawns only (T7's background title calls are left out). */
@@ -211,7 +214,7 @@ test('check 7b: handoff to max2 writes one memo and opens a linked chat on max2'
   // The memo turn ran in the old chat, on its own tier, with the exact line.
   const oldTurns = logFor(oldId);
   assert.equal(oldTurns.length, 2);
-  const memoPrompt = oldTurns[1].argv[oldTurns[1].argv.indexOf('-p') + 1];
+  const memoPrompt = oldTurns[1].stdinPrompt ?? oldTurns[1].argv[oldTurns[1].argv.indexOf('-p') + 1];
   assert.ok(memoPrompt.split('\n').includes(`Write the memo to: ${memoPath}`));
   assert.ok(oldTurns[1].argv.includes('--resume'));
   assert.equal(oldTurns[1].CLAUDE_CONFIG_DIR, null);

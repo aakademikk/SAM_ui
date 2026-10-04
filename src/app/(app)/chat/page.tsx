@@ -69,7 +69,15 @@ import {
   listChats as listChatsOnServer,
   openChat as openChatOnServer,
   sendFocus,
+  sendSideMessage,
 } from '@/lib/chatsService';
+import {
+  blockedSendError,
+  decideSendRoute,
+  handsFreeListens,
+  nextComposerText,
+  sideRouteTier,
+} from '@/lib/chatSideMessage';
 
 // MESSAGES_KEY, ACTIVE_KEY, SESSION_KEY and PENDING_KEY were the old
 // single-conversation globals; T14 replaced the first three with per-chat
@@ -1258,7 +1266,44 @@ function ChatPageInner() {
     // A turn is something said or something shown, so an empty box is only
     // fatal when there is nothing staged to carry it.
     const files = stagedRef.current;
-    if ((!message && files.length === 0) || running) return;
+    if (!message && files.length === 0) return;
+
+    if (running) {
+      // The same tier source the send box and hands-free use (sideRouteTier),
+      // read from the refs, not a render-time closure — this callback can be
+      // memoized across renders in which the on-screen chat changed.
+      const routeTier = sideRouteTier({
+        chatId: currentIdRef.current,
+        chatInfoTier: chatInfoRef.current?.tier,
+      });
+      const handoffWaiting = handoffWaitingFor !== null && handoffWaitingFor === currentIdRef.current;
+      const route = decideSendRoute({ running, tier: routeTier, handoffWaiting });
+      // The box was enabled for this send, so a refusal says why rather than
+      // swallowing Colin's (or a hands-free) message. Attachments are out of
+      // scope for this channel (see "Read before any ticket") — a staged file
+      // refuses a side-message send.
+      if (route === 'blocked') {
+        setError(blockedSendError({ handoffWaiting }));
+        return;
+      }
+      if (files.length > 0) {
+        setError('Files cannot go into a running turn. Remove them or wait for the answer.');
+        return;
+      }
+
+      const startedFrom = currentIdRef.current;
+      try {
+        await sendSideMessage(startedFrom, message);
+        setInput(nextComposerText(true, message));
+        setStagedBoth([]);
+        setAttachError(null);
+        setError(null);
+      } catch (err) {
+        setInput(nextComposerText(false, message));
+        setError(err instanceof Error ? err.message : 'Side message failed');
+      }
+      return;
+    }
 
     // `running` is a render-time closure, so a hands-free re-fire landing
     // before the next render could otherwise start two turns. The lock closes
@@ -1374,6 +1419,15 @@ function ChatPageInner() {
           setCurrentId(started.chatId);
           currentIdRef.current = started.chatId;
           setCurrentChatId(localStorage, started.chatId);
+          // The chat's tier is known from the started turn; record it on the
+          // chat info now (state and ref) so the send box, hands-free and
+          // send() all see the real tier at once instead of 'unknown' until
+          // the chat list next refreshes.
+          if (startedFrom === 'draft') {
+            const info: ChatInfo = { tier: started.tier.id, turns: 0 };
+            setChatInfo(info);
+            chatInfoRef.current = info;
+          }
         }
         // A brand-new chat won't be in the store's list until this turn's
         // startTurn.ts call creates it — refresh now rather than waiting out
@@ -1425,7 +1479,7 @@ function ChatPageInner() {
     } finally {
       sendLockRef.current = false;
     }
-  }, [running, tier, attachToRun, muted, speak, speakAck, setStagedBoth, refreshChats]);
+  }, [running, tier, handoffWaitingFor, attachToRun, muted, speak, speakAck, setStagedBoth, refreshChats]);
 
   /* ── Hands-free loop wiring ──────────────────────────────────────────── */
 
@@ -1727,6 +1781,11 @@ function ChatPageInner() {
   const currentTierDisplayChat: TierDisplayChat | null =
     currentId === 'draft' ? null : { id: currentId, tier: chatInfo?.tier ?? 'unknown' };
   const shownTier = displayTier(currentTierDisplayChat, tier);
+  // The send box and hands-free read the same tier source as send(), and a
+  // chat whose handoff is in progress takes no side messages.
+  const routeTierNow = sideRouteTier({ chatId: currentId, chatInfoTier: chatInfo?.tier });
+  const handoffWaitingNow = handoffWaitingFor !== null && handoffWaitingFor === currentId;
+  const sendRouteNow = decideSendRoute({ running, tier: routeTierNow, handoffWaiting: handoffWaitingNow });
 
   // Prefer the server's phase name while the parser is still in a pre-output
   // gap (starting/thinking); it names the delay truthfully and carries ms
@@ -2132,7 +2191,7 @@ function ChatPageInner() {
           {handsFree && !handsFreeFailed ? (
             <HandsFreeMic
               enabled={handsFree}
-              working={running}
+              working={!handsFreeListens({ running, tier: routeTierNow, handoffWaiting: handoffWaitingNow })}
               speaking={speaking !== null}
               onTranscribe={onHandsFreeTranscribe}
               onCancel={onHandsFreeCancel}
@@ -2213,16 +2272,28 @@ function ChatPageInner() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 // Enter sends, Shift+Enter inserts a newline. Guarded the same way
-                // as the submit button so an empty or mid-run composer never fires.
+                // as the submit button so an empty or mid-run composer never fires —
+                // on Max/Max 2, a running turn's 'side' route is allowed through,
+                // same as a click on the submit button.
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  if ((input.trim() || stagedRef.current.length > 0) && !running) void send(input);
+                  if (
+                    (input.trim() || stagedRef.current.length > 0) &&
+                    sendRouteNow !== 'blocked'
+                  )
+                    void send(input);
                 }
               }}
               placeholder={
-                running ? 'SAM is working…' : uploading ? 'Uploading…' : 'Type a message…'
+                sendRouteNow === 'blocked'
+                  ? 'SAM is working…'
+                  : sendRouteNow === 'side'
+                    ? 'Send into the running turn…'
+                    : uploading
+                      ? 'Uploading…'
+                      : 'Type a message…'
               }
-              disabled={running}
+              disabled={running && sendRouteNow === 'blocked'}
               rows={1}
               autoComplete="off"
               className="flex-1 bg-void-800 border border-void-600 rounded-2xl px-4 py-2.5
@@ -2232,7 +2303,7 @@ function ChatPageInner() {
             />
             <button
               type="submit"
-              disabled={(!input.trim() && staged.length === 0) || running}
+              disabled={(!input.trim() && staged.length === 0) || (running && sendRouteNow === 'blocked')}
               className="p-2.5 bg-accent/20 border border-accent/40 rounded-full
                          text-accent hover:bg-accent/30 disabled:opacity-30
                          transition-colors shrink-0"

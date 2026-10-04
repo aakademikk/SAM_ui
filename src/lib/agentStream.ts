@@ -80,6 +80,8 @@ function flattenResult(content: unknown): string {
 
 export class AgentStreamParser {
   private buffer = '';
+  /** True once an `assistant` text block has streamed since the last result. */
+  private textStreamedThisRound = false;
 
   readonly state: AgentStreamState = {
     blocks: [],
@@ -207,11 +209,24 @@ export class AgentStreamParser {
             kind: 'error',
             text: event.result?.slice(0, 500) ?? 'The agent reported an error.',
           });
-        } else if (event.result && !this.hasText()) {
+        } else if (event.result && !this.textStreamedThisRound) {
           // A single-shot run streams nothing — the whole reply arrives only in
           // the final result event. Without this the answer is dropped and the
           // chat reads "exited without producing a reply" despite a complete one.
+          // Guarding on this round's own streamed text (not `hasText()`) keeps a
+          // SECOND result's text from being dropped just because an earlier
+          // result already produced text — a late-arriving side message is
+          // answered by its own result event, with no assistant text before it.
           this.appendText('text', event.result);
+        }
+        this.textStreamedThisRound = false;
+        return;
+
+      case 'sam_side':
+        for (const block of event.message?.content ?? []) {
+          if (block.type === 'text' && block.text) {
+            this.state.blocks.push({ kind: 'side', text: block.text });
+          }
         }
         return;
 
@@ -224,6 +239,7 @@ export class AgentStreamParser {
   private applyContent(block: ContentBlock) {
     if (block.type === 'text' && block.text) {
       this.appendText('text', block.text);
+      this.textStreamedThisRound = true;
       this.state.phase = 'streaming';
       return;
     }
@@ -256,11 +272,6 @@ export class AgentStreamParser {
     target.status = block.is_error ? 'error' : 'ok';
     target.result = flattenResult(block.content);
     this.state.phase = 'thinking';
-  }
-
-  /** True once a non-empty answer block has been captured. */
-  private hasText(): boolean {
-    return this.state.blocks.some((b) => b.kind === 'text' && b.text.trim());
   }
 
   /** Merge into the previous block when it is the same kind, else start one. */
