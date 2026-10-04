@@ -23,6 +23,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 import {
   nextGateState,
@@ -34,7 +35,7 @@ import {
 type AuthModule = typeof import('./server/auth/session.js');
 type StoreModule = typeof import('./server/auth/store.js');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'auth-gate-'));
+const tmp = tempDir('auth-gate-');
 const home = path.join(tmp, 'home');
 
 let auth: AuthModule;

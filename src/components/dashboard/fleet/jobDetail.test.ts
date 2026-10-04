@@ -14,9 +14,9 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 import { formatCost } from '../../../lib/costing.js';
 
@@ -25,7 +25,7 @@ import { formatCost } from '../../../lib/costing.js';
 // manager.ts is computed from os.homedir() at module load time, same seam as
 // floorState.test.ts and readFrames.test.ts. The imports are dynamic so
 // process.env.HOME is guaranteed to land first.
-const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jobdetail-home-'));
+const tmpHome = tempDir('jobdetail-home-');
 process.env.HOME = tmpHome;
 
 let readFloorState: typeof import('../../../lib/server/fleet/floorState.js').readFloorState;

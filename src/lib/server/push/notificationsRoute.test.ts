@@ -10,15 +10,15 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 type NotificationsRoute = typeof import('../../../app/api/notifications/route.js');
 type AuthModule = typeof import('../auth/session.js');
 type AuthStoreModule = typeof import('../auth/store.js');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'notifications-route-'));
+const tmp = tempDir('notifications-route-');
 const home = path.join(tmp, 'home');
 const logFile = path.join(tmp, 'push-log.jsonl');
 

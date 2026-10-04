@@ -33,9 +33,9 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
 
@@ -59,7 +59,7 @@ interface Ctx {
 
 /** A fresh temp sandbox per case: its own cwd, stub sam-job and dispatch log. */
 function makeCtx(): Ctx {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-brief-'));
+  const tmp = tempDir('dispatch-brief-');
   const cwd = path.join(tmp, 'cwd');
   fs.mkdirSync(cwd, { recursive: true });
   const argvFile = path.join(tmp, 'argv.txt');
@@ -89,6 +89,8 @@ function runDispatch(
       timeout: 15_000,
       env: {
         ...process.env,
+        // sam-dispatch execs the job, so it never removes its mktemp work copy of the brief; keep it in the sandbox.
+        TMPDIR: ctx.tmp,
         SAM_JOB_BIN: ctx.jobBin,
         SAM_DISPATCH_LOG: ctx.dispatchLog,
         ARGV_FILE: ctx.argvFile,

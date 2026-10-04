@@ -15,16 +15,16 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 type FocusRoute = typeof import('../../../app/api/chats/focus/route.js');
 type FocusModule = typeof import('./focus.js');
 type AuthModule = typeof import('../auth/session.js');
 type AuthStoreModule = typeof import('../auth/store.js');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'focus-auth-'));
+const tmp = tempDir('focus-auth-');
 const home = path.join(tmp, 'home');
 
 let focusRoute: FocusRoute;

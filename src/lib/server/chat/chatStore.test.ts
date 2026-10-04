@@ -12,9 +12,8 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { mock, test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 let chatStore: typeof import('./chatStore.js');
 const ready = (async () => {
@@ -24,7 +23,7 @@ const ready = (async () => {
 /** Point HOME at a fresh temp dir and drop the cached store, so this test
  *  starts from an empty, private ~/.sam/samui-chats.json. */
 function freshHome(): void {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chatstore-home-'));
+  const tmp = tempDir('chatstore-home-');
   process.env.HOME = tmp;
   chatStore.__resetChatStoreForTests();
 }

@@ -20,11 +20,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 type AuthModule = typeof import('./session.js');
 type StoreModule = typeof import('./store.js');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'session-revoke-'));
+const tmp = tempDir('session-revoke-');
 const home = path.join(tmp, 'home');
 
 let auth: AuthModule;

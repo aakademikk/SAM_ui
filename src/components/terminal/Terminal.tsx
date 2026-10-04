@@ -13,6 +13,7 @@ import { jobsService, type JobEvent } from '@/lib/jobsService';
 import { useVisualViewport } from '@/components/shell/useVisualViewport';
 import { useDevDuplicateCheck } from '@/components/shell/useDevDuplicateCheck';
 import { KeyBar } from './KeyBar';
+import { FieldLabel } from '@/components/ui/FieldLabel';
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { authService } from '@/lib/authService';
 import { readMessage, sendMessage } from '@/lib/crossTab';
@@ -268,11 +269,12 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
             className="flex items-center gap-2 px-3 py-1.5 border-t border-void-700 bg-void-900 shrink-0"
           >
             <span className="text-dim-400 text-xs font-mono shrink-0">$</span>
+            <label htmlFor="terminal-stdin" className="text-dim-500 text-xs shrink-0">Input</label>
             <input
+              id="terminal-stdin"
               name="stdin"
               type="text"
               placeholder="stdin..."
-              aria-label="Terminal stdin input"
               className="flex-1 bg-transparent text-base font-mono text-dim-100
                          placeholder-dim-500 focus:outline-none"
               autoComplete="off"
@@ -300,14 +302,16 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
 
         {/* Quick launcher */}
         <form onSubmit={onSubmit} className="flex gap-2">
+          <div className="relative flex-1">
+          <FieldLabel htmlFor="terminal-command">Command</FieldLabel>
           <input
+            id="terminal-command"
             ref={inputRef}
             type="text"
             value={command}
             onChange={(e) => setCommand(e.target.value)}
             placeholder="Enter a command..."
-            aria-label="Terminal command"
-            className="flex-1 bg-void-900 border border-void-600 rounded px-3 py-2
+            className="block w-full bg-void-900 border border-void-600 rounded px-3 py-2
                        text-void-100 font-mono text-base
                        focus:border-accent focus:outline-none
                        placeholder:text-dim-300"
@@ -317,6 +321,7 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
             autoCorrect="off"
             spellCheck={false}
           />
+          </div>
           <button
             type="submit"
             disabled={loading || !command.trim()}

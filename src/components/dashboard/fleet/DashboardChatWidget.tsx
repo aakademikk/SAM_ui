@@ -43,6 +43,7 @@ import { AgentStreamParser, type AgentPhase } from '@/lib/agentStream';
 import { startAgentTurn, StepUpRequiredError } from '@/lib/chatAgentService';
 import { listChats, openChat as openChatOnServer, sendFocus } from '@/lib/chatsService';
 import { jobsService } from '@/lib/jobsService';
+import { closeKind, cutOffNotice, type CloseStatus } from '@/lib/chatClose';
 import { tryOsIntent } from '@/lib/osIntentRunner';
 import { primeSpeech, speakChunked, stopAllSpeech, type SpeechHandle } from '@/lib/speech';
 import { tabId } from '@/lib/tabId';
@@ -261,25 +262,21 @@ export default function DashboardChatWidget({
     const patch = (fn: (m: ChatMessage) => ChatMessage) =>
       setMessages((prev) => prev.map((m) => (m.id === run.assistantId ? fn(m) : m)));
 
-    const finalise = (exitCode: number | null, status: 'exited' | 'killed' | 'lost') => {
+    const finalise = (exitCode: number | null, status: CloseStatus) => {
       // A run for a chat the widget has since switched away from keeps going server-side; it must not touch this one.
       if (run.chatId !== currentIdRef.current) return;
-      const lost = status === 'lost';
-      // This widget never kills a job, so a 'killed' close means the service restarted under the run.
-      const interrupted = status === 'killed';
-      const state = parser.finish(exitCode, { suppressExitError: lost });
-      const blocks = lost
-        ? [...state.blocks, { kind: 'error' as const, text: 'Lost connection to this run.' }]
-        : interrupted
-          ? [...state.blocks, { kind: 'error' as const, text: 'This run was interrupted — the service restarted. Send your message again.' }]
-          : [...state.blocks];
+      // This widget never kills a job, so a 'killed' close means the service restarted under the run; an 'unauthorized'
+      // close means the session ended mid-turn. Neither is a finished answer (chatClose).
+      const notice = cutOffNotice(status, false);
+      const state = parser.finish(exitCode, { suppressExitError: closeKind(status, false).suppressExitError });
+      const blocks = notice ? [...state.blocks, notice] : [...state.blocks];
       const reply: ChatMessage = { id: run.assistantId, role: 'assistant', blocks, done: true };
       patch((m) => ({ ...m, blocks, sessionId: state.sessionId, usage: state.usage, durationMs: state.durationMs, done: true }));
       runningRef.current = false;
       setRunning(false);
       setPhase('done');
       activeRunRef.current = null;
-      if (!lost && !interrupted && handsFreeRef.current && !isMuted()) speakAnswer(messageLine(reply));
+      if (!notice && handsFreeRef.current && !isMuted()) speakAnswer(messageLine(reply));
     };
 
     streamRef.current = jobsService.stream(

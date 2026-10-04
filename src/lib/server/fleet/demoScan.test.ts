@@ -17,9 +17,9 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 type FloorRoute = typeof import('../../../app/api/fleet/floor/route.js');
 type ScheduleRoute = typeof import('../../../app/api/fleet/schedule/route.js');
@@ -29,7 +29,7 @@ type AuthModule = typeof import('../auth/session.js');
 type AuthStoreModule = typeof import('../auth/store.js');
 type DemoScanModule = typeof import('./demoScan.js');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'demoscan-'));
+const tmp = tempDir('demoscan-');
 const tmpHome = path.join(tmp, 'home');
 const vaultDir = path.join(tmp, 'vault');
 fs.mkdirSync(tmpHome, { recursive: true });

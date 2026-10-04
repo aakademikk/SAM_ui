@@ -14,16 +14,16 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 type ChatRoute = typeof import('../../../app/api/chats/[id]/route.js');
 type ChatStoreModule = typeof import('./chatStore.js');
 type AuthModule = typeof import('../auth/session.js');
 type AuthStoreModule = typeof import('../auth/store.js');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chat-id-auth-'));
+const tmp = tempDir('chat-id-auth-');
 const home = path.join(tmp, 'home');
 
 let chatRoute: ChatRoute;

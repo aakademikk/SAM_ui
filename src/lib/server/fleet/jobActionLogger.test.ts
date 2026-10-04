@@ -41,9 +41,9 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 const SCRIPT =
   process.env.SAM_JOB_ACTION_LOGGER_UNDER_TEST ||
@@ -51,7 +51,7 @@ const SCRIPT =
 
 /** A fresh temp sandbox per case, holding only this case's events file. */
 function makeTmp(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'job-action-logger-'));
+  return tempDir('job-action-logger-');
 }
 
 /** Runs the hook script with crafted stdin JSON and an explicit env, always

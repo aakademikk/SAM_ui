@@ -12,12 +12,11 @@
  */
 
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
 import { test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 // House rule: a fresh HOME before importing anything under test (this module reads no files, but the rule is cheap).
-process.env.HOME = fs.mkdtempSync(`${os.tmpdir()}/ringrender-home-`);
+process.env.HOME = tempDir('ringrender-home-');
 
 import type { FloorState, ScheduleCadence, ScheduledJob } from '../../types/floor.js';
 import {

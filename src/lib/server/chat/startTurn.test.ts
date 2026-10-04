@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
+import { settleBeforeRemoving, tempDir } from '@/lib/server/testing/tempDir';
 
 import { writeFakeClaude } from '@/lib/server/testing/fakeClaude';
 
@@ -26,7 +27,7 @@ type SessionsModule = typeof import('./samuiSessions.js');
 type ManagerModule = typeof import('../jobs/manager.js');
 type TurnExitEvent = import('./startTurn.js').TurnExitEvent;
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'start-turn-'));
+const tmp = tempDir('start-turn-');
 const home = path.join(tmp, 'home');
 const agentDir = path.join(tmp, 'agent-cwd');
 const max2Dir = path.join(tmp, 'claude-max2');
@@ -158,9 +159,11 @@ before(async () => {
   });
 });
 
+// Each finished turn fires a background title call and a ping that write into
+// this HOME a moment later; tempDir waits for them before removing it.
+settleBeforeRemoving(1_500);
 after(() => {
   manager?.getJobManager().stopSweep();
-  fs.rmSync(tmp, { recursive: true, force: true });
 });
 
 let chatA = '';

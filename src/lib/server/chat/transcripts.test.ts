@@ -11,9 +11,9 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 let transcripts: typeof import('./transcripts.js');
 const ready = (async () => {
@@ -35,7 +35,7 @@ const sideMessageLogReady = (async () => {
  *  `SAM_MAX2_CONFIG_DIR` is the one seam that still lets a test redirect it —
  *  point it inside this fixture's own home explicitly. */
 function freshHome(): string {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'transcripts-home-'));
+  const tmp = tempDir('transcripts-home-');
   process.env.HOME = tmp;
   delete process.env.SAM_AGENT_CWD;
   process.env.SAM_MAX2_CONFIG_DIR = path.join(tmp, '.claude-max2');

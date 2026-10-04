@@ -38,9 +38,9 @@
 import assert from 'node:assert/strict';
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
 
@@ -100,7 +100,7 @@ interface JobFixture {
  * (or no stages field at all when `stages` is null) and an empty
  * events.jsonl, exactly as T3 leaves a freshly-dispatched job. */
 function makeJobDir(stages: string[] | null): JobFixture {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-stage-job-'));
+  const dir = tempDir('sam-stage-job-');
   const meta: Record<string, unknown> = { id: path.basename(dir), status: 'running' };
   if (stages !== null) meta.stages = stages;
   fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
@@ -213,7 +213,7 @@ test(
   'a real job records dispatched, started, each stage event, and ended in order',
   { skip: SKIP_E2E, timeout: 40_000 },
   async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-stage-e2e-'));
+    const tmp = tempDir('sam-stage-e2e-');
     const home = path.join(tmp, 'home');
     const store = path.join(tmp, 'jobs');
     const cwd = path.join(tmp, 'cwd');

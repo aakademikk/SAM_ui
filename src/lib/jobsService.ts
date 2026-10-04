@@ -57,7 +57,8 @@ export type JobEvent =
   | { type: 'phase'; phase: string; ms: number }
   /** A resume landed past output the server no longer retains. */
   | { type: 'truncated'; from: number; to: number }
-  | { type: 'closed'; status: 'exited' | 'killed' | 'lost'; exitCode: number | null };
+  /** `unauthorized`: the session ended mid-stream — the job itself is untouched. */
+  | { type: 'closed'; status: 'exited' | 'killed' | 'lost' | 'unauthorized'; exitCode: number | null };
 
 /**
  * Open an SSE stream for a job. Pass a callback for each event.
@@ -227,11 +228,11 @@ function dispatchSSE(
     }
     case 'closed': {
       try {
-        const info = JSON.parse(data) as { status: string; exitCode: number | null };
+        const info = JSON.parse(data) as { status: string; exitCode?: number | null };
         onEvent({
           type: 'closed',
-          status: info.status as 'exited' | 'killed' | 'lost',
-          exitCode: info.exitCode,
+          status: info.status as 'exited' | 'killed' | 'lost' | 'unauthorized',
+          exitCode: info.exitCode ?? null,
         });
       } catch {
         onEvent({ type: 'closed', status: 'lost', exitCode: null });

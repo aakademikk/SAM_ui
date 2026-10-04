@@ -24,9 +24,9 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
 
@@ -48,7 +48,7 @@ const SKIP = boxOnlySkip('the real sam-push (staged send.next.mjs, else the live
  * than swallowed, so a future change to that path is caught. */
 const NO_VAPID_EXIT_CODE = 2;
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-push-'));
+const tmp = tempDir('sam-push-');
 const home = path.join(tmp, 'home');
 const subsFile = path.join(tmp, 'push-subs.json');
 const logFile = path.join(tmp, 'push-log.jsonl');

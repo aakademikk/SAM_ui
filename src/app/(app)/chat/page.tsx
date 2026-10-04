@@ -29,6 +29,8 @@ import { ChatList } from '@/components/chat/ChatList';
 import { displayTier, tierLocked, type TierDisplayChat, type TierLockChat } from '@/lib/chatTier';
 import { readMessage as readCrossTab } from '@/lib/crossTab';
 import { jobsService } from '@/lib/jobsService';
+import { FieldLabel } from '@/components/ui/FieldLabel';
+import { closeKind, cutOffNotice, type CloseStatus } from '@/lib/chatClose';
 import { ApiError } from '@/lib/dashboardService';
 import { authService } from '@/lib/authService';
 import { startAgentTurn, StepUpRequiredError } from '@/lib/chatAgentService';
@@ -783,47 +785,43 @@ function ChatPageInner() {
 
     const finalise = (
       exitCode: number | null,
-      status: 'exited' | 'killed' | 'lost',
+      status: CloseStatus,
     ) => {
       // A finalise for a chat Colin has since switched away from must not
       // patch the chat now on screen, speak over it, or steal its running
       // state — the job keeps going server-side regardless; its own active
       // run stays in storage for a later open to pick up (T17).
       if (run.chatId !== currentIdRef.current) return;
-      const lost = status === 'lost';
       // A stop we asked for (stop button or the stuck watchdog) has a
       // meaningless exit code — blaming it produces the confusing "exited with
-      // code unknown" on a turn we killed ourselves.
-      const selfStopped = status === 'killed' && stopInitiatedRef.current;
-      const state = parser.finish(exitCode, { suppressExitError: lost || selfStopped });
+      // code unknown" on a turn we killed ourselves. A 'killed' close we
+      // didn't initiate means the service restarted under this run; a signed-
+      // out close means the session ended mid-turn. Neither is a finished
+      // answer: each says what happened (chatClose) and is never auto-spoken.
+      const kind = closeKind(status, stopInitiatedRef.current);
+      const state = parser.finish(exitCode, { suppressExitError: kind.suppressExitError });
       const cost = computeCost(run.tier, state.usage, state.reportedCostUsd);
 
       clearActiveRun(localStorage, run.chatId);
       if (cost) setSessionCost((c) => c + cost.usd);
-      // A 'killed' close we didn't initiate means the service restarted under
-      // this run. The job is gone; don't reconnect and don't auto-speak a
-      // truncated answer — say what happened so it reads as an interruption,
-      // not a silent dead-end.
-      const interrupted = status === 'killed' && !stopInitiatedRef.current;
+      const notice = cutOffNotice(status, stopInitiatedRef.current);
 
       // Spoken text comes from the parser's final blocks directly, NOT from a
       // value written inside the setMessages updater below — React defers that
       // updater to the next render, so anything assigned in it would still be
       // unset here and auto-speak would silently never fire.
-      const spoken = lost || interrupted
+      const spoken = notice
         ? ''
         : spokenText({ id: run.assistantId, role: 'assistant', blocks: state.blocks, done: true });
       patch((m) => ({
         ...m,
-        blocks: lost
-          ? [...state.blocks, { kind: 'error' as const, text: 'Lost connection to this run.' }]
-          : interrupted
-            ? [...state.blocks, { kind: 'error' as const, text: 'This run was interrupted — the service restarted. Send your message again.' }]
-            : selfStopped
-              ? (state.blocks.some((b) => b.kind === 'text' || b.kind === 'tool')
-                  ? state.blocks
-                  : [{ kind: 'text' as const, text: 'Stopped.' }])
-              : [...state.blocks],
+        blocks: notice
+          ? [...state.blocks, notice]
+          : kind.selfStopped
+            ? (state.blocks.some((b) => b.kind === 'text' || b.kind === 'tool')
+                ? state.blocks
+                : [{ kind: 'text' as const, text: 'Stopped.' }])
+            : [...state.blocks],
         sessionId: state.sessionId,
         usage: state.usage,
         cost,
@@ -841,7 +839,7 @@ function ChatPageInner() {
       // The mobile sheet covered the chat to show the working; once the answer
       // is here, put it away. Manually-opened panels stay.
       if (isNarrowScreen() && autoOpenedRef.current) setWorkOpen(false);
-      if (!muted && !lost && !interrupted && spoken) void speak(run.assistantId, spoken);
+      if (!muted && spoken) void speak(run.assistantId, spoken);
     };
 
     streamRef.current = jobsService.stream(run.jobId, (event) => {
@@ -2269,7 +2267,10 @@ function ChatPageInner() {
             >
               <Paperclip size={16} />
             </button>
+            <div className="relative flex-1">
+            <FieldLabel htmlFor="chat-composer" bg="bg-void-800">Message SAM</FieldLabel>
             <textarea
+              id="chat-composer"
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -2296,15 +2297,15 @@ function ChatPageInner() {
                       ? 'Uploading…'
                       : 'Type a message…'
               }
-              aria-label="Message SAM"
               disabled={running && sendRouteNow === 'blocked'}
               rows={1}
               autoComplete="off"
-              className="flex-1 bg-void-800 border border-void-600 rounded-2xl px-4 py-2.5
+              className="block w-full bg-void-800 border border-void-600 rounded-2xl px-4 py-2.5
                          text-void-100 text-base placeholder:text-dim-500 leading-snug
                          resize-none overflow-y-auto max-h-20 sm:max-h-40
                          focus:border-accent focus:outline-none disabled:opacity-50"
             />
+            </div>
             <button
               type="submit"
               disabled={(!input.trim() && staged.length === 0) || (running && sendRouteNow === 'blocked')}

@@ -34,9 +34,9 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
 
@@ -95,7 +95,7 @@ test(
   'a job dispatched from chat X ends with a ping linked to /chat?c=X',
   { skip: SKIP || SKIP_PING, timeout: TIMEOUT_MS + 20_000 },
   async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-ping-'));
+    const tmp = tempDir('dispatch-ping-');
     const store = path.join(tmp, 'jobs');
     const cwd = path.join(tmp, 'cwd');
     const brief = path.join(tmp, 'brief.md');

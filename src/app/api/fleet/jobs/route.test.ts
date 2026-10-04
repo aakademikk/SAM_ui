@@ -12,16 +12,16 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
+import { tempDir } from '@/lib/server/testing/tempDir';
 
 type JobsRoute = typeof import('./route.js');
 type AuthModule = typeof import('../../../../lib/server/auth/session.js');
 type StoreModule = typeof import('../../../../lib/server/auth/store.js');
 type FleetPersonaJob = import('../../../../types/fleet.js').FleetPersonaJob;
 
-const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jobs-route-'));
+const tmpHome = tempDir('jobs-route-');
 process.env.HOME = tmpHome;
 
 const JOBS_ROOT = path.join(tmpHome, '.sam', 'jobs');
