@@ -162,7 +162,9 @@ Do not touch: `inferTier`, `firstUserMessage`, `turnStartTimestamps`, the transc
 Proof: `npm test` — the new `transcripts.test` case fails without the `tagSideMessages` call (the fixture splits into two turns) and passes with it.
 
 ## T9: Final verification — Colin and SAM confirm the rest by hand
-Status: TODO
+Status: IN PROGRESS 2026-10-04. Deployed `8fcf27a` 02:41 (health ok). Step 6: merged tree typecheck 0, lint clean, tests 347/2 skip/0 fail; live check 2 passes.
+Check 8 PASS (SAM, `/tmp/btw-latency.py`, CLI level, Haiku, 3 runs each, same machine): first text median 4.62 s argv (old) vs 2.78 s streamed (new).
+Check 14 (typed, laptop or phone): Colin's "test of btw" arrived mid-turn inside SAM's running turn on the live build. Still open: amber look (4), reload and second device (5), spoken hands-free (13/14), Colin's confirmation on both devices.
 Spec: all (checks 4, 5's browser half, 8, 14 specifically — these are deliberately not automated)
 Depends on: T4, T5, T6, T7, T8
 Blocked by: none
