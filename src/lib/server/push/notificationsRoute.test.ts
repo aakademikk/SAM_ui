@@ -16,6 +16,7 @@ import { before, test } from 'node:test';
 
 type NotificationsRoute = typeof import('../../../app/api/notifications/route.js');
 type AuthModule = typeof import('../auth/session.js');
+type AuthStoreModule = typeof import('../auth/store.js');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'notifications-route-'));
 const home = path.join(tmp, 'home');
@@ -35,6 +36,16 @@ before(async () => {
 
   const lines = Array.from({ length: 250 }, (_, i) => JSON.stringify(entry(`n_${i + 1}`, i + 1)));
   fs.writeFileSync(logFile, lines.join('\n') + '\n');
+
+  const authStore: AuthStoreModule = await import('../auth/store.js');
+  await authStore.getCredentialStore().add({
+    credentialId: 'test-credential',
+    publicKey: new Uint8Array([1, 2, 3, 4]),
+    counter: 0,
+    transports: ['internal'],
+    deviceName: 'test',
+    createdAt: new Date().toISOString(),
+  });
 
   const auth: AuthModule = await import('../auth/session.js');
   const cookies = await auth.createSessionCookies({ sub: 'test-credential', device: 'pc', iat: 0 });

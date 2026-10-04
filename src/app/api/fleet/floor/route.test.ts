@@ -16,6 +16,7 @@ import { before, test } from 'node:test';
 
 type FloorRoute = typeof import('./route.js');
 type AuthModule = typeof import('../../../../lib/server/auth/session.js');
+type StoreModule = typeof import('../../../../lib/server/auth/store.js');
 type FloorState = import('../../../../types/floor.js').FloorState;
 
 // Route every ~/.sam path this test touches into a scratch HOME, set BEFORE
@@ -64,6 +65,16 @@ before(async () => {
     createdAt: iso(-20_000),
     startedAt: iso(-10_000),
     endedAt: null,
+  });
+
+  const store: StoreModule = await import('../../../../lib/server/auth/store.js');
+  await store.getCredentialStore().add({
+    credentialId: 'test-credential',
+    publicKey: new Uint8Array([1, 2, 3, 4]),
+    counter: 0,
+    transports: ['internal'],
+    deviceName: 'test',
+    createdAt: new Date().toISOString(),
   });
 
   const auth: AuthModule = await import('../../../../lib/server/auth/session.js');

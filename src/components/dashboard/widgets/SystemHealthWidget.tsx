@@ -82,7 +82,7 @@ export function SystemHealthWidget({
       footer={
         !profile.compact &&
         scoreVerdict && (
-          <p className="truncate text-[10.5px] text-slate-500 italic" title={scoreVerdict}>
+          <p className="truncate text-[12px] text-slate-500 italic" title={scoreVerdict}>
             {scoreVerdict}
           </p>
         )
@@ -109,7 +109,7 @@ export function SystemHealthWidget({
               <div>
                 <div className="mb-1 flex items-baseline justify-between">
                   <span className="label">cpu</span>
-                  <span className="tabular font-mono text-[10px] text-slate-300">
+                  <span className="tabular font-mono text-[12px] text-slate-300">
                     {system.cpuPct.toFixed(0)}%
                   </span>
                 </div>
@@ -119,7 +119,7 @@ export function SystemHealthWidget({
               <div>
                 <div className="mb-1 flex items-baseline justify-between">
                   <span className="label">memory</span>
-                  <span className="tabular font-mono text-[10px] text-slate-300">
+                  <span className="tabular font-mono text-[12px] text-slate-300">
                     {system.memPct.toFixed(0)}%
                   </span>
                 </div>
@@ -131,7 +131,7 @@ export function SystemHealthWidget({
                   <div>
                     <div className="mb-1 flex items-baseline justify-between">
                       <span className="label">network</span>
-                      <span className="tabular font-mono text-[10px] text-slate-300">
+                      <span className="tabular font-mono text-[12px] text-slate-300">
                         {system.netMbps.toFixed(0)}Mb
                       </span>
                     </div>
@@ -141,7 +141,7 @@ export function SystemHealthWidget({
                   <div>
                     <div className="mb-1 flex items-baseline justify-between">
                       <span className="label">disk</span>
-                      <span className="tabular font-mono text-[10px] text-slate-300">
+                      <span className="tabular font-mono text-[12px] text-slate-300">
                         {system.diskPct.toFixed(0)}%
                       </span>
                     </div>
@@ -174,12 +174,12 @@ export function SystemHealthWidget({
                       pulse={service.state === 'down' || service.state === 'degraded'}
                       size={5}
                     />
-                    <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-slate-300">
+                    <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-slate-300">
                       {service.name}
                     </span>
                     <span
                       className={cn(
-                        'tabular shrink-0 font-mono text-[9.5px]',
+                        'tabular shrink-0 font-mono text-[12px]',
                         service.latencyMs > 120 ? 'text-ember-300' : 'text-slate-600',
                       )}
                     >

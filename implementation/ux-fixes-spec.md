@@ -1,5 +1,7 @@
 # SAM_ui: UX fixes, job summary and revoke fix
 
+Status: LOCKED 2026-10-03 (Colin: "yes"). Every OPEN resolved: 1 and 2 by Colin, 3 by SAM (Must 5). Amended 2026-10-03 18:55 at Colin's request ("can we have the taskbar collapsible on pc aswell"): Must 31 and check 25 added before any ticket was written.
+
 Grilled: 2026-10-03, SAM with Colin, against the findings in `02 - Atwood Systems/00_SAM_Control/SAM_ui_UX_Audit_2026-10-03.md` and the bar in `02 - Atwood Systems/30_Playbooks/UX_Design_Standards.md` §6. Colin's answers to the open points are recorded in that session and carried into this spec as locked decisions (§4).
 
 ## 1. Goal
@@ -56,12 +58,16 @@ SAM_ui passes the accessibility and mobile-ergonomics floor its own audit just f
 29. Status page and dashboard module labels meet 4.5:1 contrast against their background, including where the particle field sits behind them (the Status-page bright-blob case the audit measured at 2.69:1 is covered by Must 16).
 30. Terminal's nested-interactive card (an interactive element inside another interactive element, flagged by axe) is restructured so neither reads as nested to assistive tech.
 
+
+**Desktop sidebar collapse (Colin, 2026-10-03, added after lock)**
+
+31. On desktop widths, the left Sidebar (Dashboard, Terminal, Chat, Roleplay, Fleet, Status, Operations, Notifications, Settings) collapses to a slim icon rail and expands again from a toggle button, the same pattern as the chat list's existing collapse (`ChatList.tsx`, committed `fd18c0a`). The state is remembered across reloads. Collapsed, each icon keeps an accessible name and shows its label on hover and keyboard focus; the toggle and every rail icon are at least 44×44px; the main content widens to use the freed space. Phone layout is unaffected (it uses the tab bar, Must 7 to 10).
 ## 3. Won't do
 
 - No redesign of any page's layout — Status, Fleet, Operations, Terminal and Settings keep their current structure. Only contrast, labels, target size, text size, zoom and the particle backing change.
 - No change to `sam-dispatch`'s model/tier routing, ceiling rules or seat picking (the visual-upgrade spec's "Won't do" on this stands).
 - No AI-generated job summary text, and no per-job progress bar or percentage beyond "Stage n of m" (Must 1).
-- No new nav structure beyond the tab bar / More split (Must 7, 8) — the desktop Sidebar is untouched.
+- No new nav structure beyond the tab bar / More split (Must 7, 8) and the desktop Sidebar collapse (Must 31). The Sidebar's items and order are untouched.
 - No change to the 30-day session lifetime or the step-up window lengths (10 min platform / 12 h cross-platform) — only the revoke check added on top (Must 18, 19).
 - No speed/Lighthouse pass (UX_Design_Standards A9) — the audit itself notes every page's 3D particle canvas needs a real-phone run, not a headless one; out of scope here.
 - No keyboard-navigation pass (A7) or non-text contrast pass (A2) — the audit did not measure either; not in scope here.
@@ -109,9 +115,10 @@ SAM_ui passes the accessibility and mobile-ergonomics floor its own audit just f
 22. (Whole spec) `axe-core` reports 0 serious/critical violations across all 8 pages, logged in and out, at 390×844 — the audit's own A14 bar, now passing where it failed on 2026-10-03.
 23. (Whole spec) Typecheck, lint, the full test suite and `next build` pass; every existing page still loads after deploy; `/api/health` is ok; the existing `sam-dispatch`/delegation/run-end-order tests listed in §4 still pass.
 24. (Whole spec) Colin confirms on his phone and laptop: the tab bar reads right, the boot screen behaves, a real dispatch's job summary reads right including a live "Last:" line, and revoking a device on one of his own machines logs it out while he's watching.
+25. (Must 31) At 1440×900: the toggle collapses the Sidebar to an icon rail no wider than 72px and back; after a reload it is still in the state it was left in; collapsed, every rail item has an accessible name (axe 0 `link-name`/`button-name`), shows its label on hover and on keyboard focus, and measures ≥44×44px; the main content's width grows by the Sidebar's freed width; at 390×844 nothing changes.
 
 ## 6. Open questions
 
-1. OPEN: when a device is revoked mid-session, should it get an explicit sign-out — a redirect to the login screen with a message — or is it acceptable that its background polling (several of today's fetches already swallow a failed poll and silently keep the last good state) just stops updating until the person next does something that surfaces a 401? Must 18/19 make the revoke take effect at once either way; this only decides what that device's screen shows.
-2. OPEN: should an in-flight job or chat stream started from a now-revoked device be killed the moment it's revoked, or is it acceptable for it to run to completion server-side (new requests from that device fail immediately; the job itself isn't owned by any one device's session)?
+1. RESOLVED (Colin, 2026-10-03: "y"): explicit sign-out. On its next request after revocation, a revoked device's screen shows "This device has been signed out" and returns to the login screen; it never sits silently showing stale data. Build it as a must-do alongside Must 18 and 19, with a done-means check that the message appears within one poll interval of the revoke. (Original question, kept for the record: when a device is revoked mid-session, should it get an explicit sign-out — a redirect to the login screen with a message — or is it acceptable that its background polling (several of today's fetches already swallow a failed poll and silently keep the last good state) just stops updating until the person next does something that surfaces a 401? Must 18/19 make the revoke take effect at once either way; this only decides what that device's screen shows.)
+2. RESOLVED (Colin, 2026-10-03: "ok"): jobs started from a revoked device run to completion; any live stream or view to that device is cut at once (its requests fail from the moment of revocation, per Must 18 and 19). Colin can still kill an unrecognised job from the dashboard. Add a done-means check that an open job stream on the revoked device stops delivering within one poll interval while the job itself keeps running. (Original question: should an in-flight job or chat stream started from a now-revoked device be killed the moment it's revoked, or is it acceptable for it to run to completion server-side (new requests from that device fail immediately; the job itself isn't owned by any one device's session)?)
 3. RESOLVED (SAM, 2026-10-03): the hook writes the Bash call's own `description` and file paths, never the raw command text (Must 5), so command lines (where a secret could appear) never reach `events.jsonl`. Capped at 120 characters.

@@ -506,12 +506,31 @@ function drawCard(ctx: Ctx, c: Card, W: number, id: GeneralId, level: number) {
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
   ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
-  // name and jobs-today count
+  // name and jobs-today count. The name is never cut short while a smaller step of the type or the bust's soft edge can hold it
+  // (T32): the count sits beside the name only when the name at full size still fits there, otherwise it drops to the state row.
+  const nameFont = (px: number) => `600 ${px.toFixed(1)}px ${FONT}`;
+  const namePx = 13.5 * k, minNamePx = Math.min(12, namePx);
   ctx.font = `500 ${(11 * k).toFixed(1)}px ${FONT}`;
   const cw = ctx.measureText(c.count).width;
-  ctx.fillStyle = FAINT; ctx.textAlign = 'right'; ctx.fillText(c.count, x + c.w - pad - bustPad, y + 22 * k);
-  ctx.textAlign = 'left'; ctx.font = `600 ${(13.5 * k).toFixed(1)}px ${FONT}`; ctx.fillStyle = TEXT;
-  ctx.fillText(fitText(ctx, c.name, inner - bustPad - cw - 6 * k), x + pad, y + 22 * k);
+  ctx.font = nameFont(namePx);
+  const countBeside = ctx.measureText(c.name).width <= inner - bustPad - cw - 6 * k;
+  let nameTxt = c.name, namePxUsed = namePx;
+  if (!countBeside) {
+    // largest step (down to 12 px) that fits clear of the bust; failing that, the largest that fits the card's full inner width
+    let fit = false;
+    for (const room of [inner - bustPad, inner]) {
+      for (let px = namePx; px >= minNamePx - 0.01 && !fit; px -= 0.5) {
+        ctx.font = nameFont(Math.max(px, minNamePx));
+        if (ctx.measureText(c.name).width <= room) { namePxUsed = Math.max(px, minNamePx); fit = true; }
+      }
+      if (fit) break;
+    }
+    if (!fit) { namePxUsed = minNamePx; ctx.font = nameFont(namePxUsed); nameTxt = fitText(ctx, c.name, inner); } // genuinely too narrow: ellipsis
+  } else nameTxt = fitText(ctx, c.name, inner - bustPad - cw - 6 * k);
+  ctx.font = `500 ${(11 * k).toFixed(1)}px ${FONT}`;
+  if (countBeside) { ctx.fillStyle = FAINT; ctx.textAlign = 'right'; ctx.fillText(c.count, x + c.w - pad - bustPad, y + 22 * k); }
+  ctx.textAlign = 'left'; ctx.font = nameFont(namePxUsed); ctx.fillStyle = TEXT;
+  ctx.fillText(nameTxt, x + pad, y + 22 * k);
   // role
   ctx.letterSpacing = `${(0.09 * 11 * k).toFixed(2)}px`;
   ctx.font = `500 ${(11 * k).toFixed(1)}px ${FONT}`; ctx.fillStyle = FAINT;
@@ -526,7 +545,11 @@ function drawCard(ctx: Ctx, c: Card, W: number, id: GeneralId, level: number) {
     sx += 12 * k;
   }
   ctx.fillStyle = c.busy ? MUTED : FAINT;
-  ctx.fillText(fitText(ctx, c.state, x + c.w - pad - sx), sx, y + 54 * k);
+  // a count that did not fit beside the name takes the right end of this row (the bust ends above it); the state gives way to it
+  const stateRoom = x + c.w - pad - sx, countRoom = countBeside ? 0 : cw + 6 * k;
+  const countOnRow = !countBeside && stateRoom - countRoom >= Math.min(ctx.measureText(c.state).width, ctx.measureText('Working').width); // the state keeps at least its first word
+  ctx.fillText(fitText(ctx, c.state, countOnRow ? stateRoom - countRoom : stateRoom), sx, y + 54 * k);
+  if (countOnRow) { ctx.fillStyle = FAINT; ctx.textAlign = 'right'; ctx.fillText(c.count, x + c.w - pad, y + 54 * k); ctx.textAlign = 'left'; }
   // stage segments
   const n = Math.max(1, c.segs.length), gap = 3 * k, sw = (inner - gap * (n - 1)) / n, sy = y + 63 * k;
   c.segs.forEach((s, i) => {

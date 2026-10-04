@@ -72,8 +72,10 @@ test('readFloorState builds the floor honestly from fixture job directories', as
     { type: 'dispatched', at: iso(-3_600_000), stages: ['plan', 'build', 'verify'] },
     { type: 'started', at: iso(-3_599_000) },
     { type: 'stage-start', stage: 'plan', at: iso(-3_598_000) },
+    { type: 'action', at: iso(-3_550_000), description: 'Read the brief' },
     { type: 'stage-done', stage: 'plan', at: iso(-3_500_000) },
     { type: 'stage-start', stage: 'build', at: iso(-3_400_000) },
+    { type: 'action', at: iso(-3_300_000), description: 'Run the acceptance suite against the bad fixture' },
   ]);
 
   // --- Job B: sam-job-shaped, no General and no events — must show under
@@ -203,6 +205,13 @@ test('readFloorState builds the floor honestly from fixture job directories', as
   ]);
   assert.equal(state.generals.hephaestus.idle, false);
 
+  // Job A also carries two `action` events (Must 5, 6) — `lastAction` must
+  // expose the *last* one by file order, not the first, untouched.
+  assert.deepEqual(workerA?.lastAction, {
+    description: 'Run the acceptance suite against the bad fixture',
+    at: iso(-3_300_000),
+  });
+
   // Job B: no General, no events — under sam, no stages invented.
   const workerB = state.samWorkers.find((w) => w.jobId === 'job-no-general');
   assert.ok(workerB, 'job-no-general should appear under sam');
@@ -210,12 +219,24 @@ test('readFloorState builds the floor honestly from fixture job directories', as
   assert.equal(workerB?.stagesPlanned, null);
   assert.equal(workerB?.status, 'running');
 
-  // Job C: legacy `fleet:cerberus (...)` command, no events — under
-  // Cerberus, no stages.
+  // Job B has no events.jsonl at all — lastAction must be null, never
+  // invented (Must 6).
+  assert.equal(workerB?.lastAction, null);
+
+  // Job A sets `summary: null` explicitly and has no `tier` field at all
+  // (ux-fixes T8) — both must read as `null` on the worker, never `undefined`
+  // and never guessed from `command`.
+  assert.equal(workerA?.summary, null);
+  assert.equal(workerA?.tier, null);
+
+  // Job C: legacy `fleet:cerberus (...)` command, no events.jsonl at all —
+  // under Cerberus, no stages, and lastAction stays null for the same
+  // reason as job B (no `action` lines, not even an events file).
   const workerC = state.generals.cerberus.workers.find((w) => w.jobId === 'job-legacy-command');
   assert.ok(workerC, 'job-legacy-command should appear under cerberus');
   assert.equal(workerC?.stages, null);
   assert.equal(workerC?.stagesPlanned, null);
+  assert.equal(workerC?.lastAction, null);
   assert.equal(state.generals.cerberus.idle, false);
 
   // Jobs D1/D2: two separate FloorWorkers under the same General.
@@ -248,10 +269,68 @@ test('readFloorState builds the floor honestly from fixture job directories', as
   assert.ok(!flareIds.includes('job-flare-old'));
   assert.ok(!flareIds.includes('job-full-events'), 'an hour-old dispatch must not flare');
 
+  // job-flare-recent has a real events.jsonl, just with no `action` line in
+  // it — lastAction must still be null, not invented from the file merely
+  // existing (Must 6).
+  const workerFlareRecent = state.samWorkers.find((w) => w.jobId === 'job-flare-recent');
+  assert.ok(workerFlareRecent, 'job-flare-recent should appear under sam');
+  assert.equal(workerFlareRecent?.lastAction, null);
+
   // No cost is invented: none of these fixtures have a stdout.log with a
   // `result` event, so cost is honestly null throughout.
   for (const general of Object.values(state.generals)) {
     for (const worker of general.workers) assert.equal(worker.costUsd, null);
   }
   for (const worker of state.samWorkers) assert.equal(worker.costUsd, null);
+});
+
+test('readFloorState exposes meta.json\'s own summary/tier fields unchanged on FloorWorker (ux-fixes T8)', async () => {
+  await ready;
+
+  // sam-job/sam-dispatch-shaped: `summary` (live `sam-job --summary`) and
+  // `tier` (staged `sam-job.next --tier`, ux-fixes T4) set directly, no
+  // `fleet:<persona> (<model>) — <brief>` command convention at all — the
+  // exact shape that gave `JobDetailModule.tsx` nothing to resolve a real
+  // title/tier from before T8.
+  writeMeta('job-with-summary-tier', {
+    id: 'job-with-summary-tier',
+    command: 'claude -p "build the launch page" --model opus',
+    status: 'running',
+    exitCode: null,
+    createdAt: iso(-30_000),
+    startedAt: iso(-20_000),
+    endedAt: null,
+    outputBytes: 0,
+    unit: 'sam-job-summary-tier',
+    notify: false,
+    summary: 'Build the launch page',
+    general: 'hephaestus',
+    tier: 'opus',
+  });
+
+  // A job with no `summary`/`tier` field in meta.json at all (the legacy
+  // `fleet:` dispatch-route convention bypasses sam-job entirely) must read
+  // both as `null`, never `undefined` from this module's own output.
+  writeMeta('job-without-summary-tier', {
+    id: 'job-without-summary-tier',
+    command: 'fleet:calliope (sonnet) — write ad copy',
+    status: 'running',
+    exitCode: null,
+    createdAt: iso(-20_000),
+    startedAt: iso(-10_000),
+    endedAt: null,
+    lastSeq: 1,
+  });
+
+  const state = await readFloorState();
+
+  const withFields = state.generals.hephaestus.workers.find((w) => w.jobId === 'job-with-summary-tier');
+  assert.ok(withFields, 'job-with-summary-tier should appear under hephaestus');
+  assert.equal(withFields?.summary, 'Build the launch page');
+  assert.equal(withFields?.tier, 'opus');
+
+  const withoutFields = state.generals.calliope.workers.find((w) => w.jobId === 'job-without-summary-tier');
+  assert.ok(withoutFields, 'job-without-summary-tier should appear under calliope');
+  assert.equal(withoutFields?.summary, null);
+  assert.equal(withoutFields?.tier, null);
 });

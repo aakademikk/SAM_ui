@@ -138,7 +138,7 @@ export function Gauge({
           {safeValue.toFixed(safeValue >= 100 ? 0 : 1)}
         </span>
         {label && <span className="label mt-1.5">{label}</span>}
-        {sublabel && <span className="mt-1 text-[10px] text-slate-500">{sublabel}</span>}
+        {sublabel && <span className="mt-1 text-[12px] text-slate-500">{sublabel}</span>}
       </div>
     </div>
   );

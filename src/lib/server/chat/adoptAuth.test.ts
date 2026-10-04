@@ -26,6 +26,7 @@ type HandoffRoute = typeof import('../../../app/api/chats/[id]/handoff/route.js'
 type AgentRoute = typeof import('../../../app/api/chat/agent/route.js');
 type SessionsModule = typeof import('./samuiSessions.js');
 type ChatStoreModule = typeof import('./chatStore.js');
+type AuthStoreModule = typeof import('../auth/store.js');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'adopt-auth-'));
 const home = path.join(tmp, 'home');
@@ -71,6 +72,16 @@ before(async () => {
   process.env.SAM_CLAUDE_BIN = writeFakeClaude(path.join(tmp, 'bin'));
   process.env.FLEET_COST_URL = 'http://127.0.0.1:9/none';
   assert.equal(os.homedir(), home);
+
+  const authStore: AuthStoreModule = await import('../auth/store.js');
+  await authStore.getCredentialStore().add({
+    credentialId: 'test-credential',
+    publicKey: new Uint8Array([1, 2, 3, 4]),
+    counter: 0,
+    transports: ['internal'],
+    deviceName: 'test',
+    createdAt: new Date().toISOString(),
+  });
 
   const auth = await import('../auth/session.js');
   const cookies = await auth.createSessionCookies({ sub: 'test-credential', device: 'test-phone', iat: 0 });

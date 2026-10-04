@@ -74,10 +74,10 @@ export function DashboardShell() {
           */}
 
           <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 px-1 pb-4">
-            <span className="font-mono text-[9px] tracking-[0.16em] text-slate-700 uppercase">
+            <span className="font-mono text-[12px] tracking-[0.16em] text-slate-700 uppercase">
               SAM core dashboard · atwood systems
             </span>
-            <span className="font-mono text-[9px] tracking-[0.16em] text-slate-700 uppercase">
+            <span className="font-mono text-[12px] tracking-[0.16em] text-slate-700 uppercase">
               drag any widget to reorder
             </span>
           </footer>

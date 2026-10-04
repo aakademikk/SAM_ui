@@ -141,6 +141,8 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+let jobSeq = 0;
+
 /** Runs a real (but harmless) job via the resolved sam-job and waits for it
  * to finish. Returns the job's meta.json and parsed events.jsonl. */
 async function runJob(
@@ -148,7 +150,10 @@ async function runJob(
   jobArgs: string[],
   extraEnv: Record<string, string>,
 ): Promise<{ id: string; dir: string; meta: JobMeta; events: EventLine[] }> {
-  const r = spawnSync(JOB_BIN, jobArgs, {
+  // Unique --name: sam-job's systemd unit is `sam-job-<slug>-<epoch s>`, and the
+  // default slug is the command's first word, so parallel test files launching
+  // `true` in the same second would collide ("unit already exists").
+  const r = spawnSync(JOB_BIN, ['--name', `ev-${process.pid}-${jobSeq++}`, ...jobArgs], {
     cwd: ctx.cwd,
     encoding: 'utf8',
     timeout: 15_000,

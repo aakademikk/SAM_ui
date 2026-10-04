@@ -35,9 +35,6 @@ import type { VaultGraph } from '@/types/vaultGraph';
 // Long enough to actually watch the mesh assemble and read the readout. It is
 // skippable on any tap or key, so erring slow costs nothing.
 const BOOT_MS = 6000;
-// Reduced motion means *less movement*, not "blink and miss it". The readout is
-// information, so it still needs time to be read — this only trims the dwell.
-const REDUCED_BOOT_MS = 2600;
 const FADE_MS = 420;
 /** Beat spent on the finished visualiser before the overlay leaves. */
 const HOLD_MS = 900;
@@ -254,8 +251,17 @@ export function BootSequence({ onDone, once = false, visualiser = 'classic' }: B
     const reduced =
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    durationRef.current = reduced ? REDUCED_BOOT_MS : BOOT_MS;
 
+    if (reduced) {
+      // Reduced motion means skip the animation outright, not just shorten
+      // it — straight to the dashboard, same as an already-booted session.
+      setActive(false);
+      doneRef.current = true;
+      onDoneRef.current?.();
+      return;
+    }
+
+    durationRef.current = BOOT_MS;
     setActive(true);
   }, [once]);
 
@@ -390,7 +396,7 @@ export function BootSequence({ onDone, once = false, visualiser = 'classic' }: B
         />
 
         <p
-          className="relative mt-4 font-mono text-[10px] tracking-[0.42em]"
+          className="relative mt-4 font-mono text-[12px] tracking-[0.34em]"
           style={{
             color: online ? '#b0ffbe' : 'rgba(140,255,160,0.8)',
             opacity: wordmarkIn ? 1 : 0,
@@ -419,7 +425,7 @@ export function BootSequence({ onDone, once = false, visualiser = 'classic' }: B
               return (
                 <li
                   key={line.key}
-                  className="flex items-baseline gap-2 font-mono text-[10px] tracking-[0.16em]"
+                  className="flex items-baseline gap-2 font-mono text-[12px] leading-snug tracking-[0.12em]"
                   style={{
                     opacity: shown ? 1 : 0,
                     transform: shown ? 'translateY(0)' : 'translateY(5px)',
@@ -470,13 +476,16 @@ export function BootSequence({ onDone, once = false, visualiser = 'classic' }: B
                 }}
               />
             </div>
-            <span className="font-mono text-[10px] tabular-nums tracking-[0.2em] text-flux-300/80">
+            <span className="font-mono text-[12px] tabular-nums tracking-[0.16em] text-flux-300/80">
               {String(pct).padStart(3, '0')}%
             </span>
           </div>
 
-          <p className="mt-4 text-center font-mono text-[8px] tracking-[0.34em] text-void-300">
+          <p className="mt-3 text-center font-mono text-[12px] tracking-[0.22em] text-void-300">
             ATWOOD SYSTEMS · CORE DASHBOARD
+          </p>
+          <p className="mt-1 text-center font-mono text-[12px] tracking-[0.18em] text-dim-400">
+            TAP ANYWHERE TO SKIP
           </p>
         </div>
       </div>

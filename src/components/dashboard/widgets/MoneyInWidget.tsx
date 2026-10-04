@@ -64,7 +64,7 @@ function EntryRow({ entry, index, showSource }: { entry: MoneyEntry; index: numb
           {entry.label}
         </p>
         {(showSource || entry.source || entry.recurring) && (
-          <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[9px] tracking-wider text-slate-600 uppercase">
+          <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[12px] tracking-wider text-slate-600 uppercase">
             <span>{formatDate(entry.date)}</span>
             {entry.recurring && (
               <>
@@ -165,7 +165,7 @@ export function MoneyInWidget({ size, index, dragHandleProps, isDragging, isOver
       footer={
         !profile.compact &&
         payload && (
-          <span className="truncate text-[10.5px] text-slate-500 italic">
+          <span className="truncate text-[12px] text-slate-500 italic">
             {hasPrevMonth
               ? `vs ${pounds(payload.totalLastMonth)} last month`
               : payload.entries.length === 0
@@ -185,11 +185,11 @@ export function MoneyInWidget({ size, index, dragHandleProps, isDragging, isOver
           </div>
 
           {entries[0] ? (
-            <p className="line-clamp-2 text-[11px] leading-relaxed text-slate-400">
+            <p className="line-clamp-2 text-[12px] leading-relaxed text-slate-400">
               {entries[0].label} · {pounds(entries[0].amount)}
             </p>
           ) : (
-            <p className="text-[11px] text-slate-600 italic">Nothing logged yet.</p>
+            <p className="text-[12px] text-slate-600 italic">Nothing logged yet.</p>
           )}
 
           <div className="flex gap-1.5">
@@ -220,14 +220,14 @@ export function MoneyInWidget({ size, index, dragHandleProps, isDragging, isOver
           >
             <div className="flex items-center gap-2">
               <div className="flex shrink-0 items-center gap-1 rounded-[3px] border border-void-500/50 bg-void-900/60 px-2 focus-within:border-[var(--sam-accent)]/50">
-                <span className="font-mono text-[10px] text-slate-500">£</span>
+                <span className="font-mono text-[12px] text-slate-500">£</span>
                 <input
                   value={amount}
                   onChange={(event) => setAmount(event.target.value.replace(/[^\d]/g, ''))}
                   placeholder="1200"
                   aria-label="Amount in pounds"
                   inputMode="numeric"
-                  className="w-[4.5ch] bg-transparent py-1 text-[11.5px] text-slate-100 tabular placeholder:text-slate-600 focus:outline-none"
+                  className="w-[4.5ch] bg-transparent py-1 text-[12px] text-slate-100 tabular placeholder:text-slate-600 focus:outline-none"
                 />
               </div>
               <input
@@ -236,7 +236,7 @@ export function MoneyInWidget({ size, index, dragHandleProps, isDragging, isOver
                 placeholder="What landed, e.g. 4edge deposit"
                 aria-label="Income label"
                 maxLength={120}
-                className="min-w-0 flex-1 bg-transparent text-[11.5px] text-slate-200 placeholder:text-slate-600 focus:outline-none"
+                className="min-w-0 flex-1 bg-transparent text-[12px] text-slate-200 placeholder:text-slate-600 focus:outline-none"
               />
               <button
                 type="button"
@@ -248,7 +248,7 @@ export function MoneyInWidget({ size, index, dragHandleProps, isDragging, isOver
                     : 'Mark as monthly recurring income'
                 }
                 className={cn(
-                  'flex shrink-0 items-center gap-1 rounded-[3px] border px-1.5 py-[3px] font-mono text-[9.5px] tracking-wider uppercase transition-colors',
+                  'flex shrink-0 items-center gap-1 rounded-[3px] border px-1.5 py-[3px] font-mono text-[12px] tracking-wider uppercase transition-colors',
                   recurring
                     ? 'border-[var(--sam-accent)]/50 bg-[var(--sam-accent)]/18 text-[var(--sam-accent)]'
                     : 'border-void-500/50 text-slate-600 hover:border-void-500/70 hover:text-slate-400',
@@ -260,7 +260,7 @@ export function MoneyInWidget({ size, index, dragHandleProps, isDragging, isOver
               <button
                 type="submit"
                 disabled={!canAdd}
-                className="shrink-0 rounded-[3px] border border-[var(--sam-accent)]/35 bg-[var(--sam-accent)]/12 px-2 py-[3px] font-mono text-[9.5px] tracking-wider text-[var(--sam-accent)] uppercase transition-colors hover:bg-[var(--sam-accent)]/22 disabled:cursor-not-allowed disabled:opacity-35"
+                className="shrink-0 rounded-[3px] border border-[var(--sam-accent)]/35 bg-[var(--sam-accent)]/12 px-2 py-[3px] font-mono text-[12px] tracking-wider text-[var(--sam-accent)] uppercase transition-colors hover:bg-[var(--sam-accent)]/22 disabled:cursor-not-allowed disabled:opacity-35"
               >
                 Add
               </button>
@@ -272,7 +272,7 @@ export function MoneyInWidget({ size, index, dragHandleProps, isDragging, isOver
                   onChange={(event) => setDate(event.target.value)}
                   type="date"
                   aria-label={recurring ? 'First payment date' : 'Date received'}
-                  className="rounded-[3px] border border-void-500/50 bg-void-900/60 px-1.5 py-[3px] font-mono text-[9.5px] tracking-wider text-slate-400 focus:border-[var(--sam-accent)]/50 focus:outline-none"
+                  className="rounded-[3px] border border-void-500/50 bg-void-900/60 px-1.5 py-[3px] font-mono text-[12px] tracking-wider text-slate-400 focus:border-[var(--sam-accent)]/50 focus:outline-none"
                 />
                 <input
                   value={source}
@@ -280,7 +280,7 @@ export function MoneyInWidget({ size, index, dragHandleProps, isDragging, isOver
                   placeholder="Source (optional) — Atwood, day job, trading…"
                   aria-label="Income source"
                   maxLength={60}
-                  className="min-w-0 flex-1 bg-transparent text-[11px] text-slate-400 placeholder:text-slate-600 focus:outline-none"
+                  className="min-w-0 flex-1 bg-transparent text-[12px] text-slate-400 placeholder:text-slate-600 focus:outline-none"
                 />
               </div>
             ) : null}
@@ -319,7 +319,7 @@ export function MoneyInWidget({ size, index, dragHandleProps, isDragging, isOver
                   hasPrevMonth ? (
                     <Delta value={payload.monthDeltaPct} />
                   ) : (
-                    <span className="text-[11px] text-slate-600 italic">n/a</span>
+                    <span className="text-[12px] text-slate-600 italic">n/a</span>
                   )
                 }
                 align="right"

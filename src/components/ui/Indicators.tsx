@@ -84,7 +84,7 @@ export function Pill({ children, tone = 'accent', className, solid = false }: Pi
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-[3px] px-1.5 py-[3px] font-mono text-[9.5px] leading-none tracking-[0.12em] uppercase whitespace-nowrap',
+        'inline-flex items-center gap-1 rounded-[3px] px-1.5 py-[3px] font-mono text-[12px] leading-none tracking-[0.06em] uppercase whitespace-nowrap',
         className,
       )}
       style={
@@ -187,7 +187,7 @@ export function Delta({ value, invert = false, suffix = '%', className, digits =
 
   return (
     <span
-      className={cn('tabular inline-flex items-center gap-0.5 text-[11px] font-medium', className)}
+      className={cn('tabular inline-flex items-center gap-0.5 text-[12px] font-medium', className)}
       style={{ color: TONE_COLOR[tone] }}
     >
       <Icon size={12} strokeWidth={2.5} />
@@ -243,7 +243,7 @@ export function Stat({ label, value, hint, tone, className, align = 'left' }: St
       >
         {value}
       </span>
-      {hint && <span className="text-[10.5px] leading-tight text-slate-500">{hint}</span>}
+      {hint && <span className="text-[12px] leading-tight text-slate-500">{hint}</span>}
     </div>
   );
 }
@@ -256,7 +256,7 @@ export function EmptyState({ message, icon }: { message: string; icon?: ReactNod
   return (
     <div className="flex h-full min-h-24 flex-col items-center justify-center gap-2 px-6 text-center">
       {icon && <div className="text-dim-200 opacity-60">{icon}</div>}
-      <p className="max-w-[34ch] text-[11.5px] leading-relaxed text-slate-500 italic">{message}</p>
+      <p className="max-w-[34ch] text-[12px] leading-relaxed text-slate-500 italic">{message}</p>
     </div>
   );
 }
@@ -264,12 +264,12 @@ export function EmptyState({ message, icon }: { message: string; icon?: ReactNod
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="flex h-full min-h-24 flex-col items-center justify-center gap-3 px-6 text-center">
-      <p className="max-w-[36ch] text-[11.5px] leading-relaxed text-alarm-300/90 italic">{message}</p>
+      <p className="max-w-[36ch] text-[12px] leading-relaxed text-alarm-300/90 italic">{message}</p>
       {onRetry && (
         <button
           type="button"
           onClick={onRetry}
-          className="rounded-[3px] border border-alarm-400/40 bg-alarm-500/10 px-2.5 py-1 font-mono text-[10px] tracking-[0.14em] text-alarm-300 uppercase transition-colors hover:bg-alarm-500/20"
+          className="rounded-[3px] border border-alarm-400/40 bg-alarm-500/10 px-2.5 py-1 font-mono text-[12px] tracking-[0.14em] text-alarm-300 uppercase transition-colors hover:bg-alarm-500/20"
         >
           Retry
         </button>

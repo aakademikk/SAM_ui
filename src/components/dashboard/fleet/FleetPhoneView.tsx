@@ -82,26 +82,28 @@ const CSS = `
   padding-bottom:calc(84px + env(safe-area-inset-bottom));font-size:12.5px;line-height:1.35}
 .fp *,.fp *::before,.fp *::after{box-sizing:border-box}
 .fp-top{position:sticky;top:0;z-index:10}
-.fp-top>header{margin:0;position:relative;top:auto;border-radius:0;border-bottom:1px solid ${LINE};gap:10px;padding-left:14px;padding-right:12px;
+.fp-top>header{margin:0;position:relative;top:auto;border-radius:0;border-bottom:1px solid ${LINE};gap:5px;padding-left:12px;padding-right:10px;
   background:rgba(3,12,8,.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 /* Must 3c, check 32: the top bar keeps its health chip, sync badge and UTC clock on the phone too (TopBar hides them under sm/md/lg) */
 .fp-top>header [class~="md:flex"]{display:flex;flex:0 0 auto}
-.fp-top>header [class~="lg:inline-flex"]{display:inline-flex;letter-spacing:.04em}
+.fp-top>header [class~="lg:inline-flex"]{display:inline-flex;letter-spacing:0;gap:4px}
 .fp-top>header [class~="sm:inline"]{display:inline;letter-spacing:0}
-.fp-top>header>div:last-child{gap:10px}
+.fp-top>header>div:last-child{gap:6px}
+.fp-top>header .label{letter-spacing:.03em}
+.fp-top>header h1{letter-spacing:.1em}
 .fp-hero{position:relative;height:100dvh;overflow:hidden;border-bottom:1px solid ${LINE};background:#020805}
 .fp-cap{position:absolute;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:space-between;gap:8px;
-  font-size:11.5px;color:#98b6a6;pointer-events:none}
+  font-size:12px;color:#98b6a6;pointer-events:none}
 .fp-cap .c{display:flex;align-items:center;gap:7px;padding:5px 10px;border-radius:999px;background:rgba(5,19,13,.85);border:1px solid ${LINE};
   backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:78%}
 .fp-cap .c i{width:6px;height:6px;border-radius:50%;background:#3dff5a;flex:none;box-shadow:0 0 6px #3dff5a}
 .fp-cap .c span{overflow:hidden;text-overflow:ellipsis}
-.fp-cap .hint{font-size:10.5px;color:#5f7d6e;white-space:nowrap}
+.fp-cap .hint{font-size:12px;color:#5f7d6e;white-space:nowrap}
 .fp-tiles{display:flex;align-items:center;gap:8px;padding:12px 12px 0}
 .fp-tiles>section{gap:8px;flex:1 1 auto;min-width:0}
 .fp-tiles>section>div{border-radius:10px;padding:9px 11px}
 /* e-phone.html .tile: a 9.5 px label over a 17 px figure, no sub-line */
-.fp-tiles>section>div>span:first-child{font-size:9.5px;letter-spacing:.08em}
+.fp-tiles>section>div>span:first-child{font-size:12px;letter-spacing:.08em}
 .fp-tiles>section>div b{font-size:17px}
 .fp-tiles>section>div small{display:none}
 .fp-stack{display:flex;flex-direction:column;gap:12px;padding:12px}
@@ -109,7 +111,7 @@ const CSS = `
 .fp-job{border-radius:14px;padding:14px 15px;background:${PANEL_BG};border:1px solid ${PANEL_BORDER}}
 .fp-job>section{background:none!important;border:0!important;border-radius:0!important;padding:0!important}
 .fp-life{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,1fr);position:relative}
-.fp-life li{position:relative;text-align:center;font-size:10px;color:#5f7d6e;padding-top:16px}
+.fp-life li{position:relative;text-align:center;font-size:12px;color:#5f7d6e;padding-top:16px}
 .fp-life li i{position:absolute;top:3px;left:50%;width:9px;height:9px;margin-left:-4.5px;border-radius:50%;border:1.5px solid ${LINE_STRONG};background:#030a07;z-index:1;transition:all .3s}
 .fp-life li::before{content:"";position:absolute;top:7px;left:-50%;right:50%;height:1.5px;background:${LINE_STRONG}}
 .fp-life li:first-child::before{display:none}
@@ -120,7 +122,7 @@ const CSS = `
 .fp-life li.now i{border-color:#3dff5a;background:#3dff5a;box-shadow:0 0 0 4px rgba(61,255,90,.085),0 0 12px #3dff5a}
 .fp-life li.bad{color:#ff7a70;font-weight:600}
 .fp-life li.bad i{border-color:#ff7a70;background:#ff7a70}
-.fp-sec{display:flex;justify-content:space-between;margin:14px 0 8px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#5f7d6e;font-weight:600}
+.fp-sec{display:flex;justify-content:space-between;margin:14px 0 8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#5f7d6e;font-weight:600}
 .fp-sec span+span{letter-spacing:.02em;text-transform:none;font-weight:500}
 .fp-stages{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 .fp-stages li{display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:7px;color:#5f7d6e;font-size:12px;transition:background .3s,color .3s}
@@ -130,13 +132,15 @@ const CSS = `
 .fp-stages li.done i{background:#9dff70;border-color:#9dff70}
 .fp-stages li.now{color:#e8f7ee;background:rgba(61,255,90,.085)}
 .fp-stages li.now i{background:#3dff5a;border-color:#3dff5a;box-shadow:0 0 10px #3dff5a}
-.fp-note{margin:10px 0 0;font-size:11.5px;color:#5f7d6e}
+.fp-note{margin:10px 0 0;font-size:12px;color:#5f7d6e}
 /* the Ask SAM bar is solid, so the panels never show through it; the page ends with room to scroll the last panel clear */
 .fp-ask{position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom) + var(--fp-ask-offset,0px));z-index:10;display:flex;align-items:center;gap:10px;
-  padding:12px 14px;border-radius:14px;background:#06140e;border:1px solid ${LINE_STRONG};color:#5f7d6e;font:inherit;font-size:14px;text-align:left;cursor:pointer;
+  padding:12px 14px;border-radius:14px;background:#06140e;border:1px solid ${LINE_STRONG};color:#98b6a6;font:inherit;font-size:14px;text-align:left;cursor:pointer;
   box-shadow:0 0 0 14px #030a07,0 -10px 24px 8px #030a07}
+/* the app's fixed bottom tab bar (z-50, 3.5rem, md:hidden) sits over the bottom 56px of the viewport below 768px; lift the bar clear of it so the whole button is tappable (T29) */
+@media (max-width:767px){.fp-ask{--fp-ask-offset:3.5rem}}
 .fp-ask i{width:22px;height:22px;border-radius:7px;background:rgba(61,255,90,.085);border:1px solid rgba(61,255,90,.34);flex:none}
-.fp-ask b{margin-left:auto;font-size:11px;font-weight:600;color:#3dff5a}
+.fp-ask b{margin-left:auto;font-size:12px;font-weight:600;color:#3dff5a}
 .fp-ask:focus-visible{outline:1px solid rgba(61,255,90,.34);outline-offset:2px}
 .fp-chat-slot header{display:flex;align-items:center;justify-content:space-between;margin:14px 0 0}
 /* T18: a transparent, keyboard-reachable hit target over the clock ring (the mockup's .ring-hit) */
@@ -335,7 +339,7 @@ function ChatSlotPlaceholder({ onClose }: { onClose: () => void }) {
   return (
     <section aria-label="Chat with SAM" className="fp-chat-slot">
       <header>
-        <span className="text-[11px] font-semibold tracking-[0.1em] uppercase" style={{ color: '#98b6a6' }}>
+        <span className="text-[12px] font-semibold tracking-[0.1em] uppercase" style={{ color: '#98b6a6' }}>
           Chat with SAM
         </span>
         <button
@@ -348,7 +352,7 @@ function ChatSlotPlaceholder({ onClose }: { onClose: () => void }) {
           Back
         </button>
       </header>
-      <p className="mt-2 text-[11px]" style={{ color: '#5f7d6e' }}>
+      <p className="mt-2 text-[12px]" style={{ color: '#5f7d6e' }}>
         Chat is on the Chat page for now.
       </p>
     </section>

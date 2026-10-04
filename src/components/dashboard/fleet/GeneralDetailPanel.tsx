@@ -202,7 +202,7 @@ export default function GeneralDetailPanel({ general, state, onClose, demo = fal
 
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-[11px] font-semibold tracking-[0.12em] uppercase" style={{ color: C.accent }}>
+          <div className="text-[12px] font-semibold tracking-[0.12em] uppercase" style={{ color: C.accent }}>
             General · {s.role}
           </div>
           <h2 className="fd-fx-name mt-0.5 text-[26px] leading-tight font-semibold tracking-[-0.02em]">{s.name}</h2>
@@ -215,7 +215,7 @@ export default function GeneralDetailPanel({ general, state, onClose, demo = fal
           style={{ background: C.chip, borderColor: C.lineStrong, color: C.text }}
         >
           Back
-          <kbd className="rounded border px-1.5 py-px font-mono text-[11px]" style={{ borderColor: C.line, color: C.muted }}>
+          <kbd className="rounded border px-1.5 py-px font-mono text-[12px]" style={{ borderColor: C.line, color: C.muted }}>
             Esc
           </kbd>
         </button>
@@ -271,7 +271,7 @@ export default function GeneralDetailPanel({ general, state, onClose, demo = fal
                     }}
                   />
                   <span className="min-w-0 flex-1 truncate">{view.name === 'unknown' ? `Job ${w.jobId.slice(0, 8)}` : view.name}</span>
-                  <em className="shrink-0 text-[11px] not-italic" style={{ color: now ? C.accent : C.faint }}>
+                  <em className="shrink-0 text-[12px] not-italic" style={{ color: now ? C.accent : C.faint }}>
                     {view.modelTier === 'unknown' ? view.statusLabel : `${view.modelTier} · ${view.statusLabel}`}
                     {view.stagesLabel === 'no stage data' ? '' : ` · ${view.stagesLabel}`} · {view.elapsed}
                   </em>
@@ -298,7 +298,7 @@ export default function GeneralDetailPanel({ general, state, onClose, demo = fal
                 >
                   <span className="min-w-0">
                     <span className="block truncate">{briefOf(j.command) ?? `Job ${j.id.slice(0, 8)}`}</span>
-                    <small className="mt-px block truncate text-[11px]" style={{ color: C.faint }}>
+                    <small className="mt-px block truncate text-[12px]" style={{ color: C.faint }}>
                       {hhmmUtc(j.createdAt)}
                       {j.model ? ` · ${j.model}` : ''}
                       {dur ? ` · ${dur}` : ''}
@@ -306,7 +306,7 @@ export default function GeneralDetailPanel({ general, state, onClose, demo = fal
                     </small>
                   </span>
                   <span
-                    className="inline-flex shrink-0 items-center gap-[5px] rounded-full px-2 py-0.5 text-[11px] font-semibold tracking-[0.06em] uppercase"
+                    className="inline-flex shrink-0 items-center gap-[5px] rounded-full px-2 py-0.5 text-[12px] font-semibold tracking-[0.06em] uppercase"
                     style={{ color: ok ? C.ok : C.bad, background: ok ? C.okBg : C.badBg }}
                   >
                     <i aria-hidden className="inline-block size-[5px] rounded-full" style={{ background: 'currentColor' }} />
@@ -325,7 +325,7 @@ export default function GeneralDetailPanel({ general, state, onClose, demo = fal
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <span className="mb-[3px] block truncate text-[11px] tracking-[0.08em] uppercase" style={{ color: C.faint }}>
+      <span className="mb-[3px] block truncate text-[12px] tracking-[0.08em] uppercase" style={{ color: C.faint }}>
         {label}
       </span>
       <b className="block truncate text-[15px] font-semibold tabular-nums">{value}</b>
@@ -336,7 +336,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 function SectionHead({ title }: { title: string }) {
   return (
     <div
-      className="mt-3.5 mb-2 text-[11px] font-semibold tracking-[0.1em] uppercase"
+      className="mt-3.5 mb-2 text-[12px] font-semibold tracking-[0.1em] uppercase"
       style={{ color: C.faint }}
     >
       {title}

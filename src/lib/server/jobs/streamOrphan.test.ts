@@ -30,6 +30,7 @@ import { after, before, test } from 'node:test';
 type StreamRoute = typeof import('../../../app/api/jobs/[id]/stream/route.js');
 type ManagerModule = typeof import('./manager.js');
 type AuthModule = typeof import('../auth/session.js');
+type AuthStoreModule = typeof import('../auth/store.js');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'stream-orphan-'));
 const home = path.join(tmp, 'home');
@@ -41,6 +42,16 @@ let sessionCookie = '';
 before(async () => {
   fs.mkdirSync(home, { recursive: true });
   process.env.HOME = home;
+
+  const authStore: AuthStoreModule = await import('../auth/store.js');
+  await authStore.getCredentialStore().add({
+    credentialId: 'test-credential',
+    publicKey: new Uint8Array([1, 2, 3, 4]),
+    counter: 0,
+    transports: ['internal'],
+    deviceName: 'test',
+    createdAt: new Date().toISOString(),
+  });
 
   const auth: AuthModule = await import('../auth/session.js');
   const cookies = await auth.createSessionCookies({ sub: 'test-credential', device: 'test-pc', iat: 0 });

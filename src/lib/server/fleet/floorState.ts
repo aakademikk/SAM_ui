@@ -69,6 +69,10 @@ interface StoredMeta {
   /** Written by `sam-dispatch` (Must 16a) — an array, or a `--stages` comma string. */
   stages?: unknown;
   origin?: string;
+  /** `sam-job --summary` (live today) — the job's own one-line title, verbatim. */
+  summary?: string | null;
+  /** `sam-dispatch --tier` → `sam-job --tier` (ux-fixes T4, staged) — the dispatched tier, verbatim. */
+  tier?: string | null;
 }
 
 /** One line of a job's `events.jsonl` (Must 16b–16d). */
@@ -79,6 +83,8 @@ interface EventLine {
   at?: string;
   /** Carried on the `dispatched` event only — the planned stage list. */
   stages?: unknown;
+  /** Carried on the `action` event only (Must 5) — the worker's one-line description. */
+  description?: string;
 }
 
 interface JobResult {
@@ -183,6 +189,9 @@ async function readJob(id: string): Promise<JobResult | null> {
   let exitCode: number | null = meta.exitCode ?? null;
   let stages: FloorStage[] | null = null;
   let dispatchedEvent: EventLine | undefined;
+  // Never invented (Must 6): stays null unless a well-formed `action` line
+  // is actually found below.
+  let lastAction: { description: string; at: string } | null = null;
 
   if (events) {
     dispatchedEvent = events.find((e) => e.type === 'dispatched');
@@ -190,6 +199,20 @@ async function readJob(id: string): Promise<JobResult | null> {
     // Last 'ended' line wins — there should only ever be one, but a stray
     // duplicate must not be read as "still running".
     const ended = [...events].reverse().find((e) => e.type === 'ended');
+
+    // Most recent 'action' line wins (Must 5, 6) — events are read in file
+    // order, so the last one seen in a reverse scan is simply the last one
+    // written. A malformed line (missing description/at) is skipped rather
+    // than surfaced as a half-true "Last:".
+    const lastActionEvent = [...events]
+      .reverse()
+      .find(
+        (e): e is EventLine & { description: string; at: string } =>
+          e.type === 'action' && typeof e.description === 'string' && typeof e.at === 'string',
+      );
+    if (lastActionEvent) {
+      lastAction = { description: lastActionEvent.description, at: lastActionEvent.at };
+    }
 
     if (started?.at) startedAt = started.at;
 
@@ -234,6 +257,12 @@ async function readJob(id: string): Promise<JobResult | null> {
     costUsd: costed.costUsd,
     startedAt,
     endedAt,
+    lastAction,
+    // Never invented: a job with no `summary`/`tier` field in meta.json
+    // (e.g. the legacy `fleet:` dispatch-route convention, which bypasses
+    // sam-job entirely) reports `null`, not `undefined`.
+    summary: typeof meta.summary === 'string' ? meta.summary : null,
+    tier: typeof meta.tier === 'string' ? meta.tier : null,
   };
 
   const reachedDoneToday =

@@ -298,6 +298,18 @@ export async function GET(
         // clears the interval. Without this, that straggler still does two disk
         // reads for a stream nobody is listening to.
         if (finished) return;
+        // Re-check auth on every tick, not just at connect time. The job
+        // itself keeps running server-side (it isn't owned by any device's
+        // session) — only this device's *view* of it must cut off once its
+        // credential is revoked, within one poll interval rather than up to
+        // the cookie's full remaining lifetime (spec open question 2).
+        const stillValid = await requireSession(request);
+        if (stillValid instanceof Response) {
+          enqueue(`event: closed\n`);
+          enqueue(`data: ${JSON.stringify({ status: 'unauthorized' })}\n\n`);
+          finish();
+          return;
+        }
         try {
           const current = await manager.get(id);
           if (!current) {

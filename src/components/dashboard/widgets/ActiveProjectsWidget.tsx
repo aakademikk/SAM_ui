@@ -59,7 +59,7 @@ function ProjectRow({ project, detailed, index }: { project: Project; detailed: 
 
         <Pill tone={tone}>{PHASE_LABEL[project.phase]}</Pill>
 
-        <span className="tabular w-9 shrink-0 text-right font-mono text-[10.5px] text-slate-300">
+        <span className="tabular w-9 shrink-0 text-right font-mono text-[12px] text-slate-300">
           {(project.progress * 100).toFixed(0)}%
         </span>
       </div>
@@ -73,7 +73,7 @@ function ProjectRow({ project, detailed, index }: { project: Project; detailed: 
         label={`${project.name} progress`}
       />
 
-      <div className="mt-1.5 flex items-center gap-2 font-mono text-[9.5px] tracking-wider text-slate-600 uppercase">
+      <div className="mt-1.5 flex items-center gap-2 font-mono text-[12px] tracking-wider text-slate-600 uppercase">
         <span className="truncate">{project.client}</span>
 
         {detailed && (
@@ -107,7 +107,7 @@ function ProjectRow({ project, detailed, index }: { project: Project; detailed: 
       </div>
 
       {detailed && (
-        <div className="mt-1 flex items-center gap-2 font-mono text-[9px] tracking-wider text-slate-600 uppercase">
+        <div className="mt-1 flex items-center gap-2 font-mono text-[12px] tracking-wider text-slate-600 uppercase">
           <span>owner {project.owner}</span>
           <span className="text-dim-200">·</span>
           <RelativeTime value={project.lastDeploy} prefix="deployed " />
@@ -173,7 +173,7 @@ export function ActiveProjectsWidget({
       headerRight={stats.blockers > 0 && <Pill tone="critical">{stats.blockers} blocked</Pill>}
       footer={
         !profile.compact && (
-          <span className="font-mono text-[9.5px] tracking-wider text-slate-600 uppercase">
+          <span className="font-mono text-[12px] tracking-wider text-slate-600 uppercase">
             avg completion {(stats.avgProgress * 100).toFixed(0)}% · Atwood Systems
           </span>
         )

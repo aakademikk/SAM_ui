@@ -138,10 +138,10 @@ export default function SpendByHourModule({
       }}
     >
       <header className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold tracking-[0.1em] uppercase" style={{ color: '#98b6a6' }}>
+        <span className="text-[12px] font-semibold tracking-[0.1em] uppercase" style={{ color: '#98b6a6' }}>
           Spend
         </span>
-        <span className="text-[11px]" style={{ color: '#5f7d6e' }}>
+        <span className="text-[12px]" style={{ color: '#5f7d6e' }}>
           by persona · last 7 days
         </span>
       </header>
@@ -151,7 +151,7 @@ export default function SpendByHourModule({
       </b>
 
       {bars.length === 0 ? (
-        <p className="mt-2 text-[11px]" style={{ color: '#5f7d6e' }}>
+        <p className="mt-2 text-[12px]" style={{ color: '#5f7d6e' }}>
           No fleet spend yet.
         </p>
       ) : (
@@ -165,7 +165,7 @@ export default function SpendByHourModule({
               />
             ))}
           </div>
-          <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+          <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px]">
             {bars.map((bar, i) => (
               <li key={bar.persona} className="flex items-center gap-1" style={{ color: '#98b6a6' }}>
                 <i aria-hidden className="inline-block size-1.5 rounded-full" style={{ background: BAR_COLOURS[i % BAR_COLOURS.length] }} />
@@ -173,7 +173,7 @@ export default function SpendByHourModule({
               </li>
             ))}
           </ul>
-          <p className="mt-1 text-[11px]" style={{ color: '#5f7d6e' }}>
+          <p className="mt-1 text-[12px]" style={{ color: '#5f7d6e' }}>
             {formatCost(personaTotalUsd)} across fleet jobs
             {spend?.claude ? ` · ${formatCost(spend.claude.costUsd)} Claude Code sessions` : ''}
           </p>

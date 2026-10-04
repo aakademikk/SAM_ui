@@ -339,11 +339,12 @@
 
   .label {
     font-family: var(--font-mono);
-    font-size: 9.5px;
+    font-size: 12px;
     line-height: 1;
     letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: rgb(226 232 240 / 0.42);
+    /* T29: was slate-200 at 42% alpha (3.48:1 on the dashboard void). The opaque dim-500 text grey clears 4.5:1 on every void surface. */
+    color: var(--color-dim-500);
   }
 
   .glow-dot {

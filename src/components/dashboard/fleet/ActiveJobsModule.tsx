@@ -108,15 +108,15 @@ export default function ActiveJobsModule({
       }}
     >
       <header className="flex items-center justify-between px-3.5 pt-3 pb-2">
-        <span className="text-[11px] font-semibold tracking-[0.1em] uppercase" style={{ color: '#98b6a6' }}>
+        <span className="text-[12px] font-semibold tracking-[0.1em] uppercase" style={{ color: '#98b6a6' }}>
           Active jobs
         </span>
-        <span className="text-[11px]" style={{ color: '#5f7d6e' }}>
+        <span className="text-[12px]" style={{ color: '#5f7d6e' }}>
           {entries.length} live
         </span>
       </header>
       {entries.length === 0 ? (
-        <p className="px-3.5 pb-3 text-[11px]" style={{ color: '#5f7d6e' }}>
+        <p className="px-3.5 pb-3 text-[12px]" style={{ color: '#5f7d6e' }}>
           No jobs queued or running.
         </p>
       ) : (
@@ -140,7 +140,7 @@ export default function ActiveJobsModule({
                       {generalLabel(entry.general)}
                     </span>
                     <span
-                      className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold"
+                      className="flex shrink-0 items-center gap-1.5 text-[12px] font-semibold"
                       style={{ color: STATUS_COLOUR[entry.worker.status] }}
                     >
                       <i
@@ -151,7 +151,7 @@ export default function ActiveJobsModule({
                       {statusLabel(entry.worker.status)}
                     </span>
                   </span>
-                  <span className="truncate text-[11px]" style={{ color: '#5f7d6e' }}>
+                  <span className="truncate text-[12px]" style={{ color: '#5f7d6e' }}>
                     {entry.worker.jobId}
                   </span>
                 </button>

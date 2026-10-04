@@ -1774,7 +1774,8 @@ function ChatPageInner() {
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
       {/* Status bar — tier is a capability and a cost, so it stays visible.
           Sticky pins it to the top of the screen if the page itself scrolls. */}
-      <div className="sticky top-0 z-20 flex items-center gap-2 px-3 py-1.5 border-b border-void-800 bg-void-900/85 backdrop-blur-md shrink-0">
+      <header className="sticky top-0 z-20 flex items-center gap-2 px-3 py-1.5 border-b border-void-800 bg-void-900/85 backdrop-blur-md shrink-0">
+        <h1 className="sr-only">Chat</h1>
         <button
           type="button"
           onClick={() => setListOpen(true)}
@@ -1789,7 +1790,7 @@ function ChatPageInner() {
           type="button"
           onClick={toggleTier}
           disabled={tierIsLocked}
-          className={`flex items-center justify-center gap-1.5 w-20 shrink-0 text-xs px-2 py-1 rounded border
+          className={`flex items-center justify-center gap-1.5 w-20 shrink-0 text-xs px-2 py-3.5 rounded border
                       transition-colors disabled:opacity-40 ${
             shownTier === 'Unknown'
               ? 'text-dim-400 bg-void-800/40 border-void-700'
@@ -1849,7 +1850,7 @@ function ChatPageInner() {
               setHandoffPickerOpen(true);
             }}
             disabled={running || handoffBusy || handoffWaitingFor !== null}
-            className="flex items-center gap-1 text-[11px] text-dim-300 hover:text-dim-100 disabled:opacity-40
+            className="flex items-center gap-1 text-[12px] text-dim-300 hover:text-dim-100 disabled:opacity-40
                        disabled:cursor-not-allowed transition-colors px-1.5 py-1 rounded shrink-0"
             title="Hand off to a new chat on another tier."
           >
@@ -1859,17 +1860,17 @@ function ChatPageInner() {
         )}
 
         {handoffWaitingFor === currentId && (
-          <span className="text-[11px] text-dim-400 italic">Writing handoff memo…</span>
+          <span className="text-[12px] text-dim-400 italic">Writing handoff memo…</span>
         )}
 
         {chatInfo?.handoffError && handoffWaitingFor === null && (
-          <span className="text-[11px] text-red-400" title={chatInfo.handoffError}>
+          <span className="text-[12px] text-red-400" title={chatInfo.handoffError}>
             Handoff failed
           </span>
         )}
 
         {sessionCost > 0 && (
-          <span className="text-[11px] text-dim-400 font-mono" title="Session spend">
+          <span className="text-[12px] text-dim-400 font-mono" title="Session spend">
             {formatCost(sessionCost)}
           </span>
         )}
@@ -1880,7 +1881,7 @@ function ChatPageInner() {
           <button
             type="button"
             onClick={newConversation}
-            className="text-[11px] text-dim-400 hover:text-dim-200 transition-colors px-1.5"
+            className="text-[12px] text-dim-400 hover:text-dim-200 transition-colors px-1.5"
           >
             New
           </button>
@@ -1914,7 +1915,7 @@ function ChatPageInner() {
         >
           {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
         </button>
-      </div>
+      </header>
 
       {/* Handoff tier picker — same modal styling as ChatList's delete
           confirm, so this stays in the app's existing look. */}
@@ -1965,10 +1966,12 @@ function ChatPageInner() {
       {/* Messages */}
       <div ref={messagesRef} className="chat-messages flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-4">
         {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center space-y-3 py-20">
-            <Cpu size={32} className="text-accent/40" />
-            <h2 className="text-lg font-bold text-dim-200">SAM</h2>
-            <p className="text-sm text-dim-400">IS EVERYWHERE</p>
+          <div className="flex flex-col items-center justify-center h-full text-center py-20">
+            <div className="glass-strong flex flex-col items-center gap-3 rounded-2xl px-10 py-8">
+              <Cpu size={32} className="text-accent/40" />
+              <h2 className="text-lg font-bold text-dim-200">SAM</h2>
+              <p className="text-sm text-dim-400">IS EVERYWHERE</p>
+            </div>
           </div>
         )}
 
@@ -1994,7 +1997,7 @@ function ChatPageInner() {
                 <button
                   type="button"
                   onClick={() => openWork(msg.id)}
-                  className={`mt-1.5 flex items-center gap-1.5 text-[11px] font-medium transition-colors ${
+                  className={`mt-1.5 flex items-center gap-1.5 text-[12px] font-medium transition-colors ${
                     selected ? 'text-accent' : 'text-dim-300 hover:text-dim-100'
                   }`}
                 >
@@ -2016,13 +2019,13 @@ function ChatPageInner() {
                   </button>
                   <span className="flex-1" />
                   {msg.usage && (
-                    <span className="text-[10px] text-dim-500 font-mono">
+                    <span className="text-[12px] text-dim-500 font-mono">
                       {formatTokens(msg.usage.inputTokens + msg.usage.cacheReadTokens)} in
                     </span>
                   )}
                   {msg.cost && (
                     <span
-                      className="text-[10px] text-dim-500 font-mono"
+                      className="text-[12px] text-dim-500 font-mono"
                       title={msg.cost.basis === 'computed'
                         ? 'Computed from token counts'
                         : 'Reported by the CLI'}
@@ -2031,7 +2034,7 @@ function ChatPageInner() {
                     </span>
                   )}
                   {msg.durationMs !== undefined && (
-                    <span className="text-[10px] text-dim-500 font-mono">
+                    <span className="text-[12px] text-dim-500 font-mono">
                       {(msg.durationMs / 1000).toFixed(1)}s
                     </span>
                   )}
@@ -2055,7 +2058,7 @@ function ChatPageInner() {
               <button
                 type="button"
                 onClick={stop}
-                className="ml-1 flex items-center gap-1 text-[10px] text-dim-400
+                className="ml-1 flex items-center gap-1 text-[12px] text-dim-400
                            hover:text-red-400 transition-colors"
               >
                 <Square size={9} /> stop
@@ -2112,18 +2115,18 @@ function ChatPageInner() {
                    px-3 py-2.5 md:px-6 md:py-3 space-y-2"
       >
         {handsFree && !handsFreeFailed && (
-          <p className="text-center text-[11px] tracking-wide text-accent">
+          <p className="text-center text-[12px] tracking-wide text-accent">
             Hands-free — speak, or tap to stop.
           </p>
         )}
         {wokenByVoice && handsFreeFailed && (
-          <p className="text-center text-[11px] tracking-wide text-accent">
+          <p className="text-center text-[12px] tracking-wide text-accent">
             Woken by voice — hold the mic to speak.
           </p>
         )}
 
         {audioBlocked && !muted && (
-          <p className="text-center text-[11px] text-dim-400">
+          <p className="text-center text-[12px] text-dim-400">
             Your browser blocked autoplay — tap the speaker on a reply to hear it.
           </p>
         )}
@@ -2222,17 +2225,19 @@ function ChatPageInner() {
               placeholder={
                 running ? 'SAM is working…' : uploading ? 'Uploading…' : 'Type a message…'
               }
+              aria-label="Message SAM"
               disabled={running}
               rows={1}
               autoComplete="off"
               className="flex-1 bg-void-800 border border-void-600 rounded-2xl px-4 py-2.5
-                         text-void-100 text-sm placeholder:text-dim-500 leading-snug
+                         text-void-100 text-base placeholder:text-dim-500 leading-snug
                          resize-none overflow-y-auto max-h-20 sm:max-h-40
                          focus:border-accent focus:outline-none disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={(!input.trim() && staged.length === 0) || running}
+              aria-label="Send message"
               className="p-2.5 bg-accent/20 border border-accent/40 rounded-full
                          text-accent hover:bg-accent/30 disabled:opacity-30
                          transition-colors shrink-0"

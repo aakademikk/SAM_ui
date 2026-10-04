@@ -1,0 +1,54 @@
+{
+  "_comment": [
+    "ux-fixes T6 (spec must-do 5; check 4). This is NOT live config — it is",
+    "the exact object to paste into the `hooks.PostToolUse` array of BOTH",
+    "`/home/col/.claude/settings.json` and `/home/col/.claude-max2/settings.json`,",
+    "alongside their existing PostToolUse entries (mirror-error-ledger.sh,",
+    "check-priorities-drift.sh). This file is never read by Claude Code",
+    "itself and is not merged automatically — Colin pastes it by hand on his",
+    "own go, same as the visual-upgrade build's other staged tool changes.",
+    "",
+    "Install step (do this BEFORE pasting the snippet below into either",
+    "settings.json):",
+    "  cp /home/col/.claude/hooks/job-action-logger.next.sh /home/col/.claude/hooks/job-action-logger.sh",
+    "  chmod 770 /home/col/.claude/hooks/job-action-logger.sh",
+    "",
+    "One copy only. Checked live on 2026-10-03 while building this ticket:",
+    "`/home/col/.claude-max2/` has NO hooks/ directory of its own (unlike",
+    "`agents` and `skills`, which are symlinks back to `/home/col/.claude/`,",
+    "there isn't even a `hooks` symlink) — and the max2 seat's own",
+    "settings.json already references its hook commands with the literal",
+    "path `bash ~/.claude/hooks/<script>.sh` (e.g. block-secret-reads.sh,",
+    "mirror-error-ledger.sh), which resolves to `/home/col/.claude/hooks/`",
+    "on both seats because HOME is shared. So the new `.sh` lives in exactly",
+    "one place, and the snippet's command line below is correct verbatim for",
+    "both settings.json files — no `.claude-max2/hooks/` copy is needed.",
+    "",
+    "Do NOT edit either live settings.json as part of this ticket (T6) — this",
+    "file only stages the snippet for Colin's own paste-in on his go.",
+    "",
+    "The matcher below covers every tool this hook knows how to describe",
+    "(Bash/Edit/Write/Read/Glob/Grep); anything else falls through to the",
+    "script's own `*) description=\"$tool\"` fallback rather than being",
+    "excluded by the matcher, so widening this matcher later needs no script",
+    "change. Do not remove or reorder either seat's existing PostToolUse",
+    "entries when pasting this one in — append it to the array.",
+    "",
+    "Re-checked 2026-10-04 after another session added a `modelPicker` row",
+    "(Sonnet 5.5) to both settings.json files at 23:49: that row is a",
+    "separate top-level key; both seats' `hooks.PostToolUse` arrays are",
+    "unchanged (mirror-error-ledger.sh, check-priorities-drift.sh), so this",
+    "snippet still applies as written. Paste into the CURRENT file, never",
+    "over a copy of an older one."
+  ],
+  "snippet": {
+    "matcher": "Bash|Edit|Write|Read|Glob|Grep",
+    "hooks": [
+      {
+        "type": "command",
+        "command": "bash ~/.claude/hooks/job-action-logger.sh",
+        "statusMessage": "Logging job action..."
+      }
+    ]
+  }
+}

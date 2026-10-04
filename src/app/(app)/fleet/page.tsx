@@ -252,14 +252,14 @@ export default function FleetPage() {
             <Wallet size={12} className="text-accent" />
             <span className="font-mono text-void-100">{formatCost(totalSpend)}</span>
           </div>
-          <span className="text-[10px] text-dim-500">total spend (7d)</span>
-          <span className="block text-[9px] text-dim-500">
+          <span className="text-[12px] text-dim-500">total spend (7d)</span>
+          <span className="block text-[12px] text-dim-500">
             fleet {formatCost(fleetCost)} · sessions {formatTokens(claudeTokens)}
           </span>
           {/* Silent model substitution would otherwise only show up as spend
               drifting from expectation, which is exactly what nobody checks. */}
           {(spend?.modelMismatches ?? 0) > 0 && (
-            <span className="block text-[10px] text-amber-400">
+            <span className="block text-[12px] text-amber-400">
               {spend?.modelMismatches} run
               {spend?.modelMismatches === 1 ? '' : 's'} served a different model
             </span>
@@ -321,7 +321,7 @@ export default function FleetPage() {
                 }`}
               >
                 <span className="font-semibold">{m.label}</span>
-                <span className="block text-[9px] text-dim-500">{m.hint}</span>
+                <span className="block text-[12px] text-dim-500">{m.hint}</span>
               </button>
             );
           })}
@@ -331,6 +331,7 @@ export default function FleetPage() {
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
           disabled={running}
+          aria-label="Brief"
           placeholder={
             selected
               ? `Brief ${selected.name} — what's the job, what does done look like, what are the constraints?`
@@ -338,12 +339,12 @@ export default function FleetPage() {
           }
           rows={3}
           className="w-full bg-void-950 border border-void-600 rounded-lg px-3 py-2
-                     text-sm text-void-100 placeholder:text-dim-500 focus:border-accent
+                     text-base text-void-100 placeholder:text-dim-500 focus:border-accent
                      focus:outline-none disabled:opacity-50 resize-none"
         />
 
         <div className="flex items-center justify-between">
-          <p className="text-[10px] text-dim-500">
+          <p className="text-[12px] text-dim-500">
             {selected?.description.slice(0, 90)}{selected && selected.description.length > 90 ? '…' : ''}
           </p>
           <button
@@ -388,8 +389,8 @@ export default function FleetPage() {
             <span className="text-xs font-semibold text-dim-100 uppercase tracking-wide">
               {replayLabel?.persona || selectedPersona || 'run'}
             </span>
-            <span className="text-[10px] font-mono text-dim-500">{replayLabel?.model || model}</span>
-            {replayLabel && <span className="text-[10px] font-mono text-dim-500">replayed</span>}
+            <span className="text-[12px] font-mono text-dim-500">{replayLabel?.model || model}</span>
+            {replayLabel && <span className="text-[12px] font-mono text-dim-500">replayed</span>}
             <span className="flex-1" />
             {running && (
               <>
@@ -400,7 +401,7 @@ export default function FleetPage() {
                 <button
                   type="button"
                   onClick={handleStop}
-                  className="flex items-center gap-1 text-[10px] text-dim-400
+                  className="flex items-center gap-1 text-[12px] text-dim-400
                              hover:text-red-400 transition-colors"
                 >
                   <Square size={9} /> stop
@@ -419,7 +420,7 @@ export default function FleetPage() {
           </div>
 
           {streamState.done && (
-            <div className="px-3 py-2.5 border-t border-void-700 bg-void-950/40 grid grid-cols-2 md:grid-cols-5 gap-2 text-[10px]">
+            <div className="px-3 py-2.5 border-t border-void-700 bg-void-950/40 grid grid-cols-2 md:grid-cols-5 gap-2 text-[12px]">
               {shownCost && (
                 <div title={shownCost.basis === 'computed' ? 'Computed from DeepSeek rates' : 'CLI-reported'}>
                   <p className="text-dim-500 uppercase tracking-wide">Cost</p>
@@ -482,7 +483,7 @@ export default function FleetPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-bold text-void-100 uppercase tracking-wide">{p.name}</span>
                   <span
-                    className={`flex items-center gap-1 text-[10px] font-mono ${
+                    className={`flex items-center gap-1 text-[12px] font-mono ${
                       entry?.jobs ? 'text-emerald-400' : 'text-dim-500'
                     }`}
                   >
@@ -492,19 +493,19 @@ export default function FleetPage() {
                 </div>
                 <p className="text-xs text-dim-400 mt-1 line-clamp-2">{p.description}</p>
                 <div className="flex flex-wrap gap-1 mt-2">
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-void-950 border border-void-700 text-dim-300">
+                  <span className="text-[12px] font-mono px-1.5 py-0.5 rounded bg-void-950 border border-void-700 text-dim-300">
                     {p.model}
                   </span>
                   {p.tools.map((t) => (
                     <span
                       key={t}
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-void-950 border border-void-700 text-dim-400"
+                      className="text-[12px] font-mono px-1.5 py-0.5 rounded bg-void-950 border border-void-700 text-dim-400"
                     >
                       {t}
                     </span>
                   ))}
                 </div>
-                <span className="mt-2 flex items-center gap-0.5 text-[10px] text-dim-500 group-hover:text-accent transition-colors">
+                <span className="mt-2 flex items-center gap-0.5 text-[12px] text-dim-500 group-hover:text-accent transition-colors">
                   view runs
                   <ChevronRight
                     size={11}
@@ -523,7 +524,7 @@ export default function FleetPage() {
           <h2 className="text-sm font-semibold text-dim-200 uppercase tracking-wider">
             Claude sessions (7d)
           </h2>
-          <p className="text-[10px] text-dim-500 -mt-1">
+          <p className="text-[12px] text-dim-500 -mt-1">
             Pro is flat — sessions show tokens; only DeepSeek turns are priced.
           </p>
           <div className="rounded-xl border border-void-700 divide-y divide-void-700 overflow-hidden">
@@ -532,7 +533,7 @@ export default function FleetPage() {
               .map(([name, p]) => (
                 <div key={name} className="flex items-center justify-between px-3 py-2 bg-void-900/60">
                   <span className="text-xs font-medium text-dim-100">{name}</span>
-                  <span className="text-[10px] font-mono text-dim-500">
+                  <span className="text-[12px] font-mono text-dim-500">
                     {p.sessions} session{p.sessions > 1 ? 's' : ''} · {formatTokens(p.tokens)}
                     {p.costUsd > 0 ? ` · ${formatCost(p.costUsd)}` : ''}
                   </span>
@@ -547,7 +548,7 @@ export default function FleetPage() {
         <section className="space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-dim-200 uppercase tracking-wider">Recent runs</h2>
-            <span className="text-[10px] text-dim-500">click a run to reopen its output</span>
+            <span className="text-[12px] text-dim-500">click a run to reopen its output</span>
           </div>
           <div className="rounded-xl border border-void-700 divide-y divide-void-700 overflow-hidden">
             {recentJobs.map((job) => {
@@ -572,11 +573,11 @@ export default function FleetPage() {
                     }`}
                   />
                   <span className="text-xs font-medium text-dim-100 shrink-0">{persona}</span>
-                  {jobModel && <span className="text-[10px] font-mono text-dim-500 shrink-0">{jobModel}</span>}
+                  {jobModel && <span className="text-[12px] font-mono text-dim-500 shrink-0">{jobModel}</span>}
                   <span className="flex-1 text-xs text-dim-400 truncate">
                     {job.command.replace(/^fleet:[a-z0-9_-]+ \([a-z]+\) — /, '')}
                   </span>
-                  <span className="text-[10px] font-mono text-dim-500 shrink-0">
+                  <span className="text-[12px] font-mono text-dim-500 shrink-0">
                     {new Date(job.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                   <ChevronRight size={12} className="text-dim-500 shrink-0" />

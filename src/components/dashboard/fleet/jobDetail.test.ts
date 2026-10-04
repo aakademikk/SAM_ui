@@ -32,11 +32,13 @@ let readFloorState: typeof import('../../../lib/server/fleet/floorState.js').rea
 let costFleetJob: typeof import('../../../lib/server/fleet/jobCosts.js').costFleetJob;
 let formatJobDetail: typeof import('./JobDetailModule.js').formatJobDetail;
 let formatElapsed: typeof import('./JobDetailModule.js').formatElapsed;
+let formatAge: typeof import('./JobDetailModule.js').formatAge;
+let briefFromCommand: typeof import('./JobDetailModule.js').briefFromCommand;
 
 const ready = (async () => {
   ({ readFloorState } = await import('../../../lib/server/fleet/floorState.js'));
   ({ costFleetJob } = await import('../../../lib/server/fleet/jobCosts.js'));
-  ({ formatJobDetail, formatElapsed } = await import('./JobDetailModule.js'));
+  ({ formatJobDetail, formatElapsed, formatAge, briefFromCommand } = await import('./JobDetailModule.js'));
 })();
 
 const JOBS_ROOT = path.join(tmpHome, '.sam', 'jobs');
@@ -167,7 +169,7 @@ test('formatJobDetail reports "no stage data" for a job with no planned stages (
   assert.equal(view.stagesLabel, 'no stage data');
 });
 
-test('formatJobDetail counts stages done out of planned, in event order (Must 14)', async () => {
+test('formatJobDetail numbers the current stage (second running, first done reads "Stage 2 of 3")', async () => {
   await ready;
 
   const id = 'job-with-stages';
@@ -202,10 +204,10 @@ test('formatJobDetail counts stages done out of planned, in event order (Must 14
   assert.ok(worker);
 
   const view = formatJobDetail(worker!);
-  assert.equal(view.stagesLabel, '1 / 3');
+  assert.equal(view.stagesLabel, 'Stage 2 of 3');
 });
 
-test('formatJobDetail falls back to "unknown" name and model tier with no resolved meta, and uses meta when given', async () => {
+test('formatJobDetail shows "unknown" name and tier when the worker has neither summary/tier nor a legacy fallback', async () => {
   await ready;
 
   const id = 'job-meta-fallback';
@@ -222,19 +224,260 @@ test('formatJobDetail falls back to "unknown" name and model tier with no resolv
   const state = await readFloorState();
   const worker = state.samWorkers.find((w) => w.jobId === id);
   assert.ok(worker, 'a job with no General and no fleet: command groups under sam');
+  assert.equal(worker!.summary, null);
+  assert.equal(worker!.tier, null);
 
   const bare = formatJobDetail(worker!);
   assert.equal(bare.name, 'unknown');
   assert.equal(bare.modelTier, 'unknown');
   assert.equal(bare.general, 'SAM');
 
-  const withMeta = formatJobDetail(worker!, { name: 'Tidy the vault', modelTier: 'sonnet' });
-  assert.equal(withMeta.name, 'Tidy the vault');
-  assert.equal(withMeta.modelTier, 'sonnet');
+  // An empty legacy lookup (no brief, no model) changes nothing.
+  const emptyMeta = formatJobDetail(worker!, { name: null, modelTier: null });
+  assert.equal(emptyMeta.name, 'unknown');
+  assert.equal(emptyMeta.modelTier, 'unknown');
+});
+
+test('formatJobDetail resolves name/tier from the legacy fleet: fallback when the worker has no summary/tier (ux-fixes T35)', async () => {
+  await ready;
+
+  const id = 'job-legacy-fallback';
+  const command = 'fleet:hermes (Sonnet) — draft the outreach list';
+  writeMeta(id, {
+    id,
+    command,
+    status: 'running',
+    exitCode: null,
+    createdAt: iso(-20_000),
+    startedAt: iso(-10_000),
+    endedAt: null,
+    lastSeq: 1,
+  });
+
+  const state = await readFloorState();
+  const worker = state.generals.hermes.workers.find((w) => w.jobId === id);
+  assert.ok(worker);
+  assert.equal(worker!.summary, null);
+  assert.equal(worker!.tier, null);
+
+  // The same shape the Fleet jobs lookup hands back: brief parsed from the
+  // command, model from the job record.
+  assert.equal(briefFromCommand(command), 'draft the outreach list');
+  const view = formatJobDetail(worker!, { name: briefFromCommand(command), modelTier: 'Sonnet' });
+  assert.equal(view.name, 'draft the outreach list');
+  assert.equal(view.modelTier, 'Sonnet');
+});
+
+test('formatJobDetail: the worker\'s own summary/tier win over the legacy fallback (ux-fixes T35)', async () => {
+  await ready;
+
+  const id = 'job-new-fields-win';
+  writeMeta(id, {
+    id,
+    command: 'fleet:hermes (Haiku) — old brief',
+    status: 'running',
+    exitCode: null,
+    createdAt: iso(-20_000),
+    startedAt: iso(-10_000),
+    endedAt: null,
+    unit: 'sam-job-new-fields-win',
+    notify: false,
+    summary: 'Real title',
+    general: 'hermes',
+    tier: 'opus',
+  });
+
+  const state = await readFloorState();
+  const worker = state.generals.hermes.workers.find((w) => w.jobId === id);
+  assert.ok(worker);
+  const view = formatJobDetail(worker!, { name: 'old brief', modelTier: 'Haiku' });
+  assert.equal(view.name, 'Real title');
+  assert.equal(view.modelTier, 'opus');
+
+  // Partial: summary present, tier absent -> tier falls back, name does not.
+  const partial = formatJobDetail({ ...worker!, tier: null }, { name: 'old brief', modelTier: 'Haiku' });
+  assert.equal(partial.name, 'Real title');
+  assert.equal(partial.modelTier, 'Haiku');
+});
+
+function stageWorker(id: string, events: Array<Record<string, unknown>>) {
+  return (async () => {
+    writeMeta(id, {
+      id,
+      command: 'claude -p "plan, build, verify"',
+      status: 'running',
+      exitCode: null,
+      createdAt: iso(-60_000),
+      startedAt: iso(-50_000),
+      endedAt: null,
+      unit: `sam-job-${id}`,
+      notify: false,
+      summary: null,
+      general: 'hermes',
+    });
+    fs.writeFileSync(
+      path.join(jobDir(id), 'events.jsonl'),
+      events.map((l) => JSON.stringify(l)).join('\n') + '\n',
+    );
+    const state = await readFloorState();
+    const worker = state.generals.hermes.workers.find((w) => w.jobId === id);
+    assert.ok(worker);
+    return worker!;
+  })();
+}
+
+test('formatJobDetail reads "Stage 1 of 3" as soon as the first stage is running (check 3)', async () => {
+  await ready;
+  const worker = await stageWorker('job-stage-first-running', [
+    { type: 'dispatched', at: iso(-60_000), stages: ['plan', 'build', 'verify'] },
+    { type: 'started', at: iso(-50_000) },
+    { type: 'stage-start', stage: 'plan', at: iso(-2_000) },
+  ]);
+  assert.equal(formatJobDetail(worker).stagesLabel, 'Stage 1 of 3');
+});
+
+test('formatJobDetail reads "Stage 3 of 3" once every stage is done', async () => {
+  await ready;
+  const worker = await stageWorker('job-stage-all-done', [
+    { type: 'dispatched', at: iso(-60_000), stages: ['plan', 'build', 'verify'] },
+    { type: 'started', at: iso(-50_000) },
+    { type: 'stage-start', stage: 'plan', at: iso(-45_000) },
+    { type: 'stage-done', stage: 'plan', at: iso(-40_000) },
+    { type: 'stage-start', stage: 'build', at: iso(-35_000) },
+    { type: 'stage-done', stage: 'build', at: iso(-30_000) },
+    { type: 'stage-start', stage: 'verify', at: iso(-25_000) },
+    { type: 'stage-done', stage: 'verify', at: iso(-20_000) },
+  ]);
+  assert.equal(formatJobDetail(worker).stagesLabel, 'Stage 3 of 3');
+});
+
+test('formatJobDetail resolves a real title and tier from the worker\'s own summary/tier fields (ux-fixes T8, must-do 1/2)', async () => {
+  await ready;
+
+  const id = 'job-sam-dispatch-shaped';
+  // A sam-dispatch-shaped job: no `fleet:<persona> (<model>) — <brief>`
+  // command convention at all (the exact shape that fell through to
+  // "unknown" before T8) — `summary`/`tier`/`general` set directly, the way
+  // live `sam-job --summary` and staged `sam-job.next --tier` write them.
+  writeMeta(id, {
+    id,
+    command: 'claude -p "build the thing" --model sonnet',
+    status: 'running',
+    exitCode: null,
+    createdAt: iso(-20_000),
+    startedAt: iso(-10_000),
+    endedAt: null,
+    unit: 'sam-job-sam-dispatch-shaped',
+    notify: false,
+    summary: 'Build the thing',
+    general: 'hephaestus',
+    tier: 'sonnet',
+  });
+
+  const state = await readFloorState();
+  const worker = state.generals.hephaestus.workers.find((w) => w.jobId === id);
+  assert.ok(worker);
+  assert.equal(worker!.summary, 'Build the thing');
+  assert.equal(worker!.tier, 'sonnet');
+
+  const view = formatJobDetail(worker!);
+  assert.equal(view.name, 'Build the thing');
+  assert.equal(view.modelTier, 'sonnet');
+});
+
+test('formatJobDetail renders a "Last:" line from the worker\'s lastAction (T7), aged in plain relative time', async () => {
+  await ready;
+
+  const id = 'job-with-last-action';
+  writeMeta(id, {
+    id,
+    command: 'claude -p "plan, build, verify"',
+    status: 'running',
+    exitCode: null,
+    createdAt: iso(-180_000),
+    startedAt: iso(-170_000),
+    endedAt: null,
+    unit: 'sam-job-with-last-action',
+    notify: false,
+    summary: null,
+    general: 'hermes',
+  });
+  fs.writeFileSync(
+    path.join(jobDir(id), 'events.jsonl'),
+    [
+      { type: 'dispatched', at: iso(-180_000), stages: ['plan', 'build'] },
+      { type: 'started', at: iso(-170_000) },
+      { type: 'action', at: iso(-120_000), description: 'Read the brief' },
+      { type: 'action', at: iso(-60_000), description: 'Wrote the draft' },
+    ]
+      .map((l) => JSON.stringify(l))
+      .join('\n') + '\n',
+  );
+
+  const state = await readFloorState();
+  const worker = state.generals.hermes.workers.find((w) => w.jobId === id);
+  assert.ok(worker);
+  assert.deepEqual(worker!.lastAction, { description: 'Wrote the draft', at: iso(-60_000) });
+
+  const view = formatJobDetail(worker!);
+  assert.equal(view.last, 'Last: Wrote the draft · 1 min ago');
+  assert.ok(!/\d{2}:\d{2}/.test(view.last!), 'no mm:ss in the age');
+});
+
+test('formatJobDetail omits the "Last:" line (null, never "unknown") when no action event exists', async () => {
+  await ready;
+
+  const id = 'job-no-action-yet';
+  writeMeta(id, {
+    id,
+    command: 'claude -p "no actions logged yet"',
+    status: 'running',
+    exitCode: null,
+    createdAt: iso(-20_000),
+    startedAt: iso(-10_000),
+    endedAt: null,
+    unit: 'sam-job-no-action-yet',
+    notify: false,
+    summary: null,
+    general: 'prometheus',
+  });
+
+  const state = await readFloorState();
+  const worker = state.generals.prometheus.workers.find((w) => w.jobId === id);
+  assert.ok(worker);
+  assert.equal(worker!.lastAction, null);
+
+  const view = formatJobDetail(worker!);
+  assert.equal(view.last, null);
 });
 
 test('formatElapsed renders mm:ss under an hour and h:mm:ss past it', () => {
   assert.equal(formatElapsed(0), '00:00');
   assert.equal(formatElapsed(65_000), '01:05');
   assert.equal(formatElapsed(3_661_000), '1:01:01');
+});
+
+test('formatAge renders plain relative time: seconds, minutes, hours (no mm:ss)', () => {
+  assert.equal(formatAge(40_000), '40 s');
+  assert.equal(formatAge(5 * 60_000 + 6_000), '5 min');
+  assert.equal(formatAge(2 * 3_600_000 + 10 * 60_000), '2 h');
+  assert.equal(formatAge(-5_000), '0 s');
+});
+
+test('formatJobDetail "Last:" line reads "40 s ago" / "5 min ago" / "2 h ago"', async () => {
+  await ready;
+  const base = Date.parse('2026-10-04T12:00:00.000Z');
+  const mk = (ageMs: number) =>
+    formatJobDetail(
+      {
+        jobId: 'j', general: 'hermes', status: 'running', elapsedMs: 0, costUsd: null,
+        summary: null, tier: null, stages: null, stagesPlanned: null,
+        lastAction: { description: 'Ran tests', at: new Date(base - ageMs).toISOString() },
+      } as unknown as Parameters<typeof formatJobDetail>[0],
+      null,
+      base,
+    ).last;
+  assert.equal(mk(40_000), 'Last: Ran tests · 40 s ago');
+  assert.equal(mk(5 * 60_000 + 6_000), 'Last: Ran tests · 5 min ago');
+  assert.equal(mk(2 * 3_600_000), 'Last: Ran tests · 2 h ago');
 });

@@ -16,6 +16,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
+import { getCredentialStore } from './store';
+
 /* ========================================================================== */
 /* Key management — persisted to disk so sessions survive restarts              */
 /* ========================================================================== */
@@ -162,6 +164,13 @@ async function sign(payload: SessionPayload, maxAge: number): Promise<string> {
 async function verify(token: string): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, getKey(), { algorithms: ['HS256'] });
+    // The JWT's signature and expiry being valid isn't enough: `sub` is the
+    // credential's credentialId, and that credential may have been revoked
+    // (Settings → Revoke → DELETE /api/auth/devices → CredentialStore.remove)
+    // since this token was minted. A stateless JWT can't carry that, so this
+    // asks the credential store directly — fail closed if it's gone.
+    const credential = await getCredentialStore().findByCredentialId(payload.sub as string);
+    if (!credential) return null;
     return {
       sub: payload.sub as string,
       device: payload.device as string,

@@ -29,8 +29,8 @@ function Toggle({
       className="flex w-full items-center justify-between gap-3 rounded-[4px] px-2 py-1.5 text-left transition-colors hover:bg-white/5"
     >
       <span className="min-w-0">
-        <span className="block text-[11.5px] text-slate-300">{label}</span>
-        {hint && <span className="block text-[10px] text-slate-600">{hint}</span>}
+        <span className="block text-[12px] text-slate-300">{label}</span>
+        {hint && <span className="block text-[12px] text-slate-600">{hint}</span>}
       </span>
       <span
         className={cn(
@@ -94,7 +94,7 @@ export function ControlDeck() {
         aria-label="Console settings"
         aria-expanded={open}
         className={cn(
-          'rounded-[4px] border border-void-400/60 p-1.5 text-slate-400 transition-colors',
+          'inline-flex min-h-11 min-w-11 items-center justify-center rounded-[4px] border border-void-400/60 p-1.5 text-slate-400 transition-colors',
           open ? 'border-[var(--sam-accent)]/50 bg-white/6 text-slate-100' : 'hover:bg-white/5 hover:text-slate-200',
         )}
       >
@@ -117,7 +117,7 @@ export function ControlDeck() {
                 value={operatorName}
                 onChange={(event) => setOperatorName(event.target.value)}
                 maxLength={40}
-                className="glass-sunken w-full rounded-[4px] border border-void-400/60 px-2 py-1.5 text-[11.5px] text-slate-200 focus:border-[var(--sam-accent)]/50 focus:outline-none"
+                className="glass-sunken w-full rounded-[4px] border border-void-400/60 px-2 py-1.5 text-[12px] text-slate-200 focus:border-[var(--sam-accent)]/50 focus:outline-none"
               />
             </label>
 
@@ -153,7 +153,7 @@ export function ControlDeck() {
             <div className="mb-3">
               <div className="mb-1.5 flex items-baseline justify-between">
                 <span className="label">background intensity</span>
-                <span className="tabular font-mono text-[9.5px] text-slate-500">
+                <span className="tabular font-mono text-[12px] text-slate-500">
                   {(backgroundIntensity * 100).toFixed(0)}%
                 </span>
               </div>
@@ -168,7 +168,7 @@ export function ControlDeck() {
                 className="h-1 w-full cursor-pointer appearance-none rounded-full bg-void-500 accent-[var(--sam-accent)]"
               />
               {backgroundIntensity < 0.03 && (
-                <p className="mt-1 text-[10px] text-slate-600 italic">
+                <p className="mt-1 text-[12px] text-slate-600 italic">
                   Renderer offline. Your GPU thanks you.
                 </p>
               )}
@@ -185,7 +185,7 @@ export function ControlDeck() {
                     onClick={() => setSarcasm(level)}
                     aria-pressed={sarcasm === level}
                     className={cn(
-                      'rounded-[3px] border px-1 py-1 font-mono text-[9px] tracking-wider uppercase transition-colors',
+                      'rounded-[3px] border px-1 py-1 font-mono text-[12px] tracking-wider uppercase transition-colors',
                       sarcasm === level
                         ? 'border-[var(--sam-accent)]/55 bg-[var(--sam-accent)]/18 text-[var(--sam-accent)]'
                         : 'border-void-400/60 text-slate-500 hover:text-slate-300',
@@ -232,7 +232,7 @@ export function ControlDeck() {
                 resetLayout();
                 setOpen(false);
               }}
-              className="flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-[11.5px] text-slate-400 transition-colors hover:bg-alarm-500/12 hover:text-alarm-300"
+              className="flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-[12px] text-slate-400 transition-colors hover:bg-alarm-500/12 hover:text-alarm-300"
             >
               <RotateCcw size={12} />
               Reset dashboard layout

@@ -235,7 +235,9 @@ test(
 
     const r = spawnSync(
       JOB_BIN,
-      ['--general', 'cerberus', '--stages', 'Scan,Report', '--', 'bash', '-c', cmd],
+      // Unique --name: the default slug ("bash") would collide on the unit name
+      // with any other job launched in the same second.
+      ['--name', `stage-${process.pid}`, '--general', 'cerberus', '--stages', 'Scan,Report', '--', 'bash', '-c', cmd],
       {
         cwd,
         encoding: 'utf8',

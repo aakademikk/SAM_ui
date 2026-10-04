@@ -111,10 +111,10 @@ export default function FleetStatusModule({
       }}
     >
       <header className="flex items-center justify-between px-3.5 pt-3 pb-2">
-        <span className="text-[11px] font-semibold tracking-[0.1em] uppercase" style={{ color: '#98b6a6' }}>
+        <span className="text-[12px] font-semibold tracking-[0.1em] uppercase" style={{ color: '#98b6a6' }}>
           Fleet status
         </span>
-        <span className="text-[11px]" style={{ color: '#5f7d6e' }}>
+        <span className="text-[12px]" style={{ color: '#5f7d6e' }}>
           {busyCount} busy · {idleCount} idle
         </span>
       </header>
@@ -130,12 +130,12 @@ export default function FleetStatusModule({
                 <span className="truncate text-[12.5px] font-semibold" style={{ color: '#e8f7ee' }}>
                   {row.name}
                 </span>
-                <small className="truncate text-[11px]" style={{ color: '#5f7d6e' }}>
+                <small className="truncate text-[12px]" style={{ color: '#5f7d6e' }}>
                   {row.sub}
                 </small>
               </span>
               <span
-                className="shrink-0 text-[11px] font-semibold"
+                className="shrink-0 text-[12px] font-semibold"
                 style={{ color: row.busy ? '#3dff5a' : '#5f7d6e' }}
               >
                 {row.busy ? `Working · ${row.liveCount}` : 'Idle'}

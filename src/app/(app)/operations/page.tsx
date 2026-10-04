@@ -120,7 +120,7 @@ function OperationCard({
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-void-100">{operation.name}</h2>
             {operation.summary && (
-              <p className="mt-0.5 text-[11.5px] text-dim-300">{operation.summary}</p>
+              <p className="mt-0.5 text-[12px] text-dim-300">{operation.summary}</p>
             )}
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -129,7 +129,7 @@ function OperationCard({
               onClick={() => onLaunch(operation)}
               disabled={disabled || launching}
               className="flex items-center gap-1.5 rounded-md border border-accent/30
-                         bg-accent/12 px-3 py-1.5 text-[11px] font-medium text-accent
+                         bg-accent/12 px-3 py-1.5 text-[12px] font-medium text-accent
                          transition-colors hover:bg-accent/20
                          disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -140,7 +140,7 @@ function OperationCard({
               type="button"
               onClick={toggleAddVar}
               className="flex items-center gap-1 rounded-md border border-void-600
-                         px-2.5 py-1 text-[10.5px] text-dim-200 transition-colors
+                         px-2.5 py-1 text-[12px] text-dim-200 transition-colors
                          hover:border-void-500 hover:text-void-100"
             >
               <Plus size={11} />
@@ -150,24 +150,24 @@ function OperationCard({
         </div>
 
         {/* The code word, quoted exactly as the vault defines it. */}
-        <p className="mt-2.5 font-mono text-[10.5px] text-dim-400">
+        <p className="mt-2.5 font-mono text-[12px] text-dim-400">
           &ldquo;{operation.trigger}&rdquo;
         </p>
 
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-          <span className="rounded-[3px] bg-void-800 px-1.5 py-0.5 font-mono text-[9px] tracking-wider text-dim-200 uppercase">
+          <span className="rounded-[3px] bg-void-800 px-1.5 py-0.5 font-mono text-[12px] tracking-wider text-dim-200 uppercase">
             {operation.persona ?? 'no persona'}
           </span>
-          <span className="rounded-[3px] bg-void-800 px-1.5 py-0.5 font-mono text-[9px] tracking-wider text-dim-200 uppercase">
+          <span className="rounded-[3px] bg-void-800 px-1.5 py-0.5 font-mono text-[12px] tracking-wider text-dim-200 uppercase">
             {operation.steps.length} steps
           </span>
           {gates > 0 && (
-            <span className="rounded-[3px] bg-amber-500/12 px-1.5 py-0.5 font-mono text-[9px] tracking-wider text-amber-300 uppercase">
+            <span className="rounded-[3px] bg-amber-500/12 px-1.5 py-0.5 font-mono text-[12px] tracking-wider text-amber-300 uppercase">
               {gates} human gate{gates === 1 ? '' : 's'}
             </span>
           )}
           <span
-            className={`rounded-[3px] px-1.5 py-0.5 font-mono text-[9px] tracking-wider uppercase ${
+            className={`rounded-[3px] px-1.5 py-0.5 font-mono text-[12px] tracking-wider uppercase ${
               operation.runs.length > 0
                 ? 'bg-void-800 text-dim-200'
                 : 'bg-void-800 text-dim-400'
@@ -182,7 +182,7 @@ function OperationCard({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-1.5 border-t border-void-800 px-4 py-2
-                   text-[10.5px] text-dim-300 transition-colors hover:text-void-100"
+                   text-[12px] text-dim-300 transition-colors hover:text-void-100"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         {open ? 'Hide' : 'Show'} pipeline
@@ -191,7 +191,7 @@ function OperationCard({
       {open && (
         <div className="border-t border-void-800 px-4 py-3 space-y-3">
           {operation.purpose && (
-            <p className="text-[11.5px] leading-relaxed text-dim-200">{operation.purpose}</p>
+            <p className="text-[12px] leading-relaxed text-dim-200">{operation.purpose}</p>
           )}
 
           <ol className="space-y-2">
@@ -199,7 +199,7 @@ function OperationCard({
               <li key={step.index} className="flex gap-2.5">
                 <span
                   className={`mt-[1px] flex size-[18px] shrink-0 items-center justify-center rounded-[3px]
-                              font-mono text-[9.5px] ${
+                              font-mono text-[12px] ${
                                 step.gate
                                   ? 'bg-amber-500/15 text-amber-300'
                                   : 'bg-void-800 text-dim-300'
@@ -208,16 +208,16 @@ function OperationCard({
                   {step.index}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[11.5px] font-medium text-void-100">
+                  <p className="text-[12px] font-medium text-void-100">
                     {step.title}
                     {step.gate && (
-                      <span className="ml-1.5 font-mono text-[9px] tracking-wider text-amber-300 uppercase">
+                      <span className="ml-1.5 font-mono text-[12px] tracking-wider text-amber-300 uppercase">
                         human gate
                       </span>
                     )}
                   </p>
                   {step.detail && (
-                    <p className="mt-0.5 text-[11px] leading-relaxed text-dim-300">{step.detail}</p>
+                    <p className="mt-0.5 text-[12px] leading-relaxed text-dim-300">{step.detail}</p>
                   )}
                 </div>
               </li>
@@ -225,28 +225,28 @@ function OperationCard({
           </ol>
 
           {operation.defaults && (
-            <p className="text-[11px] leading-relaxed text-dim-400 italic">
+            <p className="text-[12px] leading-relaxed text-dim-400 italic">
               Defaults to confirm: {operation.defaults}
             </p>
           )}
 
           <div>
-            <p className="font-mono text-[9px] tracking-wider text-dim-400 uppercase">
+            <p className="font-mono text-[12px] tracking-wider text-dim-400 uppercase">
               Variables
             </p>
 
             {operation.variables.length === 0 && !addingVar ? (
-              <p className="mt-1 text-[11px] text-dim-400 italic">
+              <p className="mt-1 text-[12px] text-dim-400 italic">
                 None — a launch passes only the steps above.
               </p>
             ) : (
               <ul className="mt-1 space-y-1">
                 {operation.variables.map((v) => (
                   <li key={v.key} className="flex items-center gap-2">
-                    <span className="shrink-0 font-mono text-[10.5px] text-void-100">
+                    <span className="shrink-0 font-mono text-[12px] text-void-100">
                       {v.key}
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-[10.5px] text-dim-300">
+                    <span className="min-w-0 flex-1 truncate text-[12px] text-dim-300">
                       {v.value}
                     </span>
                     <button
@@ -270,7 +270,7 @@ function OperationCard({
                   onChange={(e) => setVarKey(e.target.value)}
                   placeholder="name"
                   className="min-w-0 flex-1 rounded-[3px] border border-void-700 bg-void-900/60 px-2 py-1
-                             font-mono text-[10.5px] text-void-100 placeholder:text-dim-400
+                             font-mono text-[12px] text-void-100 placeholder:text-dim-400
                              focus:border-accent/50 focus:outline-none"
                 />
                 <input
@@ -278,14 +278,14 @@ function OperationCard({
                   onChange={(e) => setVarValue(e.target.value)}
                   placeholder="value"
                   className="min-w-0 flex-1 rounded-[3px] border border-void-700 bg-void-900/60 px-2 py-1
-                             font-mono text-[10.5px] text-void-100 placeholder:text-dim-400
+                             font-mono text-[12px] text-void-100 placeholder:text-dim-400
                              focus:border-accent/50 focus:outline-none"
                 />
                 <button
                   type="submit"
                   disabled={savingVars || !varKey.trim()}
                   className="shrink-0 rounded-[3px] border border-accent/30 bg-accent/12 px-2.5 py-1
-                             text-[10.5px] text-accent transition-colors hover:bg-accent/20
+                             text-[12px] text-accent transition-colors hover:bg-accent/20
                              disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {savingVars ? 'Saving…' : 'Add'}
@@ -293,25 +293,25 @@ function OperationCard({
               </form>
             )}
 
-            {varError && <p className="mt-1 text-[10.5px] text-red-300">{varError}</p>}
-            <p className="mt-1.5 text-[10px] leading-relaxed text-dim-400">
+            {varError && <p className="mt-1 text-[12px] text-red-300">{varError}</p>}
+            <p className="mt-1.5 text-[12px] leading-relaxed text-dim-400">
               Handed to the agent verbatim in its brief. Stored plaintext in the vault note — keep
               credentials out.
             </p>
           </div>
 
           <div>
-            <p className="flex items-center gap-1.5 font-mono text-[9px] tracking-wider text-dim-400 uppercase">
+            <p className="flex items-center gap-1.5 font-mono text-[12px] tracking-wider text-dim-400 uppercase">
               <History size={10} /> Run log
             </p>
             {operation.runs.length === 0 ? (
-              <p className="mt-1 text-[11px] text-dim-400 italic">
+              <p className="mt-1 text-[12px] text-dim-400 italic">
                 Never run. The first launch writes the first entry.
               </p>
             ) : (
               <ul className="mt-1 space-y-1">
                 {operation.runs.slice(0, 5).map((run, i) => (
-                  <li key={i} className="text-[11px] leading-relaxed text-dim-300">
+                  <li key={i} className="text-[12px] leading-relaxed text-dim-300">
                     {run.text}
                   </li>
                 ))}
@@ -431,7 +431,7 @@ export default function OperationsPage() {
           <Radio size={17} className="text-accent" />
           Operations
         </h1>
-        <p className="mt-1 text-[11.5px] leading-relaxed text-dim-300">
+        <p className="mt-1 text-[12px] leading-relaxed text-dim-300">
           Code-word pipelines defined in the vault. A launch dispatches the mapped General with the
           operation&rsquo;s own step list as its brief — it works the steps and stops at every human
           gate. It is not an unattended pipeline engine.
@@ -439,28 +439,28 @@ export default function OperationsPage() {
       </header>
 
       {authError && (
-        <p className="rounded-md border border-void-700 bg-void-900/60 px-3 py-2 text-[11.5px] text-dim-200">
+        <p className="rounded-md border border-void-700 bg-void-900/60 px-3 py-2 text-[12px] text-dim-200">
           {authError}
         </p>
       )}
 
       {!loading && !authError && !available && (
-        <p className="flex items-start gap-2 rounded-md border border-amber-700/30 bg-amber-900/12 px-3 py-2 text-[11.5px] text-amber-200">
+        <p className="flex items-start gap-2 rounded-md border border-amber-700/30 bg-amber-900/12 px-3 py-2 text-[12px] text-amber-200">
           <AlertTriangle size={13} className="mt-[1px] shrink-0" />
           Vault note not readable — check{' '}
-          <span className="font-mono text-[10.5px]">Named Operations.md</span> in 00_SAM_Control.
+          <span className="font-mono text-[12px]">Named Operations.md</span> in 00_SAM_Control.
         </p>
       )}
 
       {error && (
         <div className="flex items-center justify-between gap-3 rounded-md border border-red-700/30 bg-red-900/12 px-3 py-2">
-          <p className="text-[11.5px] text-red-300">{error}</p>
+          <p className="text-[12px] text-red-300">{error}</p>
           {needsStepUp && (
             <button
               type="button"
               onClick={handleUnlock}
               className="flex shrink-0 items-center gap-1.5 rounded-md border border-accent/30
-                         bg-accent/12 px-2.5 py-1 text-[11px] text-accent transition-colors hover:bg-accent/20"
+                         bg-accent/12 px-2.5 py-1 text-[12px] text-accent transition-colors hover:bg-accent/20"
             >
               <Lock size={11} /> Unlock
             </button>
@@ -480,7 +480,7 @@ export default function OperationsPage() {
             ) : (
               <Radio size={12} className="text-dim-300" />
             )}
-            <span className="min-w-0 flex-1 truncate text-[11.5px] text-void-100">
+            <span className="min-w-0 flex-1 truncate text-[12px] text-void-100">
               {activeRun ? `Operation ${activeRun.operation}` : 'Last run'}
               {phase && <span className="ml-2 text-dim-400">{phase}…</span>}
             </span>
@@ -489,7 +489,7 @@ export default function OperationsPage() {
                 type="button"
                 onClick={handleStop}
                 className="flex shrink-0 items-center gap-1 rounded-md border border-void-600
-                           px-2 py-1 text-[10.5px] text-dim-200 transition-colors hover:text-void-100"
+                           px-2 py-1 text-[12px] text-dim-200 transition-colors hover:text-void-100"
               >
                 <Square size={10} /> Stop
               </button>
@@ -502,7 +502,7 @@ export default function OperationsPage() {
       )}
 
       {loading ? (
-        <p className="text-[11.5px] text-dim-400">Reading the registry…</p>
+        <p className="text-[12px] text-dim-400">Reading the registry…</p>
       ) : (
         <div className="space-y-3">
           {operations.map((operation) => (
@@ -516,18 +516,21 @@ export default function OperationsPage() {
             />
           ))}
           {!authError && available && operations.length === 0 && (
-            <p className="text-[11.5px] text-dim-400 italic">
+            <p className="text-[12px] text-dim-400 italic">
               No operations defined in the vault registry yet.
             </p>
           )}
         </div>
       )}
 
-      <p className="text-[11px] text-dim-400">
+      <p className="text-[12px] text-dim-400">
         Operations are defined in the vault — edit{' '}
-        <span className="font-mono text-[10.5px]">Named Operations.md</span> to change what a launch
+        <span className="font-mono text-[12px]">Named Operations.md</span> to change what a launch
         runs. Runs are costed and listed with every other job on the{' '}
-        <Link href="/fleet" className="text-accent hover:underline">
+        <Link
+          href="/fleet"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center align-middle text-accent hover:underline"
+        >
           Fleet
         </Link>{' '}
         tab.
