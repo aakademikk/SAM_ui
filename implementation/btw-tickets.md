@@ -162,9 +162,11 @@ Do not touch: `inferTier`, `firstUserMessage`, `turnStartTimestamps`, the transc
 Proof: `npm test` — the new `transcripts.test` case fails without the `tagSideMessages` call (the fixture splits into two turns) and passes with it.
 
 ## T9: Final verification — Colin and SAM confirm the rest by hand
-Status: IN PROGRESS 2026-10-04. Deployed `8fcf27a` 02:41 (health ok). Step 6: merged tree typecheck 0, lint clean, tests 347/2 skip/0 fail; live check 2 passes.
+Status: DONE 2026-10-04. Colin confirmed on the live build: 1 amber yes, 2 reload and second device yes, 3 spoken hands-free side message yes; his "i killed the turn" also arrived mid-turn as a side message.
+Known edge, not a bug: a side message sent into a turn that is then stopped before its next step never reaches the CLI, so it is not in the transcript and does not show after a reload (Stop is out of scope, spec Won't do). Its log record is dropped at the chat's next Max turn end.
+Deployed `8fcf27a` 02:41 (health ok). Step 6: merged tree typecheck 0, lint clean, tests 347/2 skip/0 fail; live check 2 passes.
 Check 8 PASS (SAM, `/tmp/btw-latency.py`, CLI level, Haiku, 3 runs each, same machine): first text median 4.62 s argv (old) vs 2.78 s streamed (new).
-Check 14 (typed, laptop or phone): Colin's "test of btw" arrived mid-turn inside SAM's running turn on the live build. Still open: amber look (4), reload and second device (5), spoken hands-free (13/14), Colin's confirmation on both devices.
+Check 14 (typed, laptop or phone): Colin's "test of btw" arrived mid-turn inside SAM's running turn on the live build. Check 4 PASS (Colin, 2026-10-04: "yes", it shows amber). Still open: reload and second device (5), spoken hands-free (13/14), Colin's confirmation on both devices.
 Spec: all (checks 4, 5's browser half, 8, 14 specifically — these are deliberately not automated)
 Depends on: T4, T5, T6, T7, T8
 Blocked by: none
