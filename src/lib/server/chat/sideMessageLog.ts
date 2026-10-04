@@ -115,6 +115,28 @@ export function unresolved(chatId: string): { text: string; sentAt: string }[] {
     .sort((a, b) => a.sentAt.localeCompare(b.sentAt));
 }
 
+/** Removes this chat's records that are still unresolved and were sent before
+ *  `beforeIso` (the start of the turn that just ended): the CLI never wrote an
+ *  entry for them, so they can never match later. */
+export function dropUnresolvedBefore(chatId: string, beforeIso: string): void {
+  const before = Date.parse(beforeIso);
+  if (Number.isNaN(before)) return;
+  const store = load();
+  const list = listFor(store, chatId);
+  const kept = list.filter((r) => r.taggedUuid || !(Date.parse(r.sentAt) < before));
+  if (kept.length === list.length) return;
+  store[chatId] = kept;
+  persist(store);
+}
+
+/** Forgets every record for a chat (called when the chat is deleted). */
+export function removeSideMessageRecords(chatId: string): void {
+  const store = load();
+  if (!Object.prototype.hasOwnProperty.call(store, chatId)) return;
+  delete store[chatId];
+  persist(store);
+}
+
 /** Sets `taggedUuid` on the first still-unresolved record matching each
  *  pair's text, in the order the pairs are given. A pair whose text matches
  *  no unresolved record (already tagged by an earlier call, or a stale

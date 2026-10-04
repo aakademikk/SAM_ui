@@ -392,6 +392,188 @@ test('readHistory + tagSideMessages (T8 R4c): a mid-turn attachment and a late t
   );
 });
 
+test('readHistory (review 1): a task-notification queued_command attachment is not a side message', async () => {
+  await ready;
+  const home = freshHome();
+  const slug = defaultSlug(home);
+  const id = 'chat-task-notification-1';
+
+  // The real CLI also writes queued_command attachments for background-task
+  // completions: commandMode "task-notification", a plain string prompt of
+  // raw XML. They must stay invisible, exactly as before side messages existed.
+  const taskNotification = {
+    parentUuid: 'a1',
+    isSidechain: false,
+    attachment: {
+      type: 'queued_command',
+      prompt: '<task-notification>\n<task-id>bx1</task-id>\n<status>completed</status>\n</task-notification>',
+      source_uuid: 'src-tn-1',
+      commandMode: 'task-notification',
+      timestamp: new Date().toISOString(),
+    },
+    type: 'attachment',
+    uuid: 'tn-1',
+    timestamp: new Date().toISOString(),
+    sessionId: id,
+  };
+
+  writeTranscript(home, '.claude', slug, id, [
+    { type: 'user', message: { role: 'user', content: 'Run the build in the background' }, sessionId: id, uuid: 'u1' },
+    {
+      type: 'assistant',
+      message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'Started it.' }] },
+      sessionId: id,
+      uuid: 'a1',
+    },
+    taskNotification,
+    {
+      type: 'assistant',
+      message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'The build finished.' }] },
+      sessionId: id,
+      uuid: 'a2',
+    },
+  ]);
+
+  const messages = transcripts.readHistory(id);
+  assert.equal(messages.length, 2);
+  assert.equal(
+    messages[1].blocks.some((b) => b.kind === 'side'),
+    false,
+    'a background-task notification must not render as a side block',
+  );
+  // Adjacent assistant text merges into one block, as it always has.
+  assert.deepEqual(messages[1].blocks, [{ kind: 'text', text: 'Started it.\nThe build finished.' }]);
+});
+
+/** One user/assistant pair, for fixtures that need a few turns. */
+function turnEntries(id: string, n: number, userText: string, at: string): unknown[] {
+  return [
+    { type: 'user', message: { role: 'user', content: userText }, sessionId: id, uuid: `u${n}`, timestamp: at },
+    {
+      type: 'assistant',
+      message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: `answer ${n}` }] },
+      sessionId: id,
+      uuid: `a${n}`,
+      timestamp: at,
+    },
+  ];
+}
+
+test('tagSideMessages (review 2): a late side message with the same text as an older, ordinary message tags the late one', async () => {
+  await ready;
+  await sideMessageLogReady;
+  const home = freshHome();
+  sideMessageLog.__resetSideMessageLogForTests();
+  const slug = defaultSlug(home);
+  const id = 'chat-repeated-text-1';
+  const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+  const now = new Date().toISOString();
+
+  // Turn 2 is an ordinary "yes". Turn 3 is a long check, and a late side
+  // message "yes" is sent into it.
+  writeTranscript(home, '.claude', slug, id, [
+    ...turnEntries(id, 1, 'plan the deploy', hourAgo),
+    ...turnEntries(id, 2, 'yes', hourAgo),
+    ...turnEntries(id, 3, 'run the long check', hourAgo),
+    { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'yes' }] }, sessionId: id, uuid: 'u-side', timestamp: now },
+    {
+      type: 'assistant',
+      message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'answer to the side message' }] },
+      sessionId: id,
+      uuid: 'a-side',
+      timestamp: now,
+    },
+  ]);
+
+  sideMessageLog.recordSideMessageSent(id, 'yes');
+  transcripts.tagSideMessages(id);
+
+  assert.deepEqual([...sideMessageLog.taggedUuids(id)], ['u-side'], 'the late entry is tagged, not turn 2');
+
+  const messages = transcripts.readHistory(id);
+  assert.equal(messages.length, 6, 'three turns: turn 2 stays an ordinary turn');
+  assert.deepEqual(messages[2].blocks, [{ kind: 'text', text: 'yes' }], 'turn 2 is still a normal user message');
+  assert.deepEqual(messages[5].blocks, [
+    { kind: 'text', text: 'answer 3' },
+    { kind: 'side', text: 'yes' },
+    { kind: 'text', text: 'answer to the side message' },
+  ]);
+});
+
+test('tagSideMessages (review 2): only entries after the last tagged one are candidates', async () => {
+  await ready;
+  await sideMessageLogReady;
+  const home = freshHome();
+  sideMessageLog.__resetSideMessageLogForTests();
+  const slug = defaultSlug(home);
+  const id = 'chat-after-last-tagged-1';
+  const now = new Date().toISOString();
+  const user = (uuid: string, text: string) => ({
+    type: 'user',
+    message: { role: 'user', content: [{ type: 'text', text }] },
+    sessionId: id,
+    uuid,
+    timestamp: now,
+  });
+
+  // Every entry is stamped "now", so timestamps cannot tell the two "ok"s
+  // apart: only position can. u-ok-ordinary is an ordinary turn that sits
+  // BEFORE the side message already tagged (u-later); the second record "ok"
+  // belongs to the entry after it.
+  writeTranscript(home, '.claude', slug, id, [
+    ...turnEntries(id, 1, 'start', now),
+    user('u-ok-ordinary', 'ok'),
+    ...turnEntries(id, 3, 'work', now).slice(1),
+    user('u-later', 'later'),
+    user('u-ok-side', 'ok'),
+  ]);
+
+  sideMessageLog.recordSideMessageSent(id, 'later');
+  transcripts.tagSideMessages(id);
+  assert.deepEqual([...sideMessageLog.taggedUuids(id)], ['u-later']);
+
+  sideMessageLog.recordSideMessageSent(id, 'ok');
+  transcripts.tagSideMessages(id);
+  assert.deepEqual([...sideMessageLog.taggedUuids(id)].sort(), ['u-later', 'u-ok-side']);
+});
+
+test('tagSideMessages (review 2): when a turn ends, records from before its job start that never matched are dropped', async () => {
+  await ready;
+  await sideMessageLogReady;
+  const home = freshHome();
+  sideMessageLog.__resetSideMessageLogForTests();
+  const slug = defaultSlug(home);
+  const id = 'chat-drop-unresolved-1';
+
+  writeTranscript(home, '.claude', slug, id, turnEntries(id, 1, 'start', new Date().toISOString()));
+
+  // The CLI never wrote an entry for this message ("go").
+  sideMessageLog.recordSideMessageSent(id, 'go');
+  assert.equal(sideMessageLog.unresolved(id).length, 1);
+
+  // A turn that ended and started after the record was sent: the record is
+  // from an earlier turn, so it can never match later.
+  const laterJobStart = new Date(Date.now() + 1_000).toISOString();
+  transcripts.tagSideMessages(id, laterJobStart);
+  assert.deepEqual(sideMessageLog.unresolved(id), [], 'the unmatched record from the earlier turn is gone');
+});
+
+test('tagSideMessages (review 2): a record sent during the ending turn is kept even if unmatched', async () => {
+  await ready;
+  await sideMessageLogReady;
+  const home = freshHome();
+  sideMessageLog.__resetSideMessageLogForTests();
+  const slug = defaultSlug(home);
+  const id = 'chat-keep-unresolved-1';
+
+  writeTranscript(home, '.claude', slug, id, turnEntries(id, 1, 'start', new Date().toISOString()));
+
+  const jobStart = new Date(Date.now() - 1_000).toISOString();
+  sideMessageLog.recordSideMessageSent(id, 'go');
+  transcripts.tagSideMessages(id, jobStart);
+  assert.equal(sideMessageLog.unresolved(id).length, 1, 'sent after the job started: kept');
+});
+
 /* -------------------------------------------------------------------------- */
 /* transcriptPath                                                              */
 /* -------------------------------------------------------------------------- */

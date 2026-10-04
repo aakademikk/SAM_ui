@@ -9,7 +9,14 @@ import { test } from 'node:test';
 
 import type { ChatTier } from '@/types/chat';
 
-import { canTakeSideMessages, decideSendRoute, handsFreeListens, nextComposerText } from './chatSideMessage.js';
+import {
+  blockedSendError,
+  canTakeSideMessages,
+  decideSendRoute,
+  handsFreeListens,
+  nextComposerText,
+  sideRouteTier,
+} from './chatSideMessage.js';
 
 const ALL_TIERS: ChatTier[] = ['fast', 'pro', 'max', 'max2', 'gemini', 'unknown'];
 
@@ -59,4 +66,59 @@ test('nextComposerText: delivered clears the composer', () => {
 
 test('nextComposerText: a failed send keeps the text on screen', () => {
   assert.equal(nextComposerText(false, 'hello'), 'hello');
+});
+
+test('decideSendRoute (review 3): a chat whose handoff is in progress is blocked even on Max/Max 2', () => {
+  for (const tier of ALL_TIERS) {
+    assert.equal(decideSendRoute({ running: true, tier, handoffWaiting: true }), 'blocked', tier);
+  }
+});
+
+test('decideSendRoute (review 3): the handoff flag changes nothing when no turn is running or the flag is off', () => {
+  for (const tier of ALL_TIERS) {
+    assert.equal(decideSendRoute({ running: false, tier, handoffWaiting: true }), 'start', tier);
+    assert.equal(
+      decideSendRoute({ running: true, tier, handoffWaiting: false }),
+      decideSendRoute({ running: true, tier }),
+      tier,
+    );
+  }
+});
+
+test('handsFreeListens (review 3): stops listening on a Max chat while its handoff is in progress', () => {
+  assert.equal(handsFreeListens({ running: true, tier: 'max', handoffWaiting: true }), false);
+  assert.equal(handsFreeListens({ running: true, tier: 'max2', handoffWaiting: true }), false);
+  assert.equal(handsFreeListens({ running: false, tier: 'max', handoffWaiting: true }), true);
+});
+
+test('sideRouteTier (review 7): a draft has no chat to send into; a chat reads the tier its info carries', () => {
+  assert.equal(sideRouteTier({ chatId: 'draft', chatInfoTier: undefined }), 'unknown');
+  // Even if a stale info still carries a tier, a draft routes as unknown.
+  assert.equal(sideRouteTier({ chatId: 'draft', chatInfoTier: 'max' }), 'unknown');
+  assert.equal(sideRouteTier({ chatId: 'abc', chatInfoTier: 'max' }), 'max');
+  assert.equal(sideRouteTier({ chatId: 'abc', chatInfoTier: 'gemini' }), 'gemini');
+  assert.equal(sideRouteTier({ chatId: 'abc', chatInfoTier: undefined }), 'unknown');
+});
+
+test('review 7: the box, hands-free and send() agree for every state of a draft turning into a chat', () => {
+  // The three callers all go through sideRouteTier + decideSendRoute with the
+  // same inputs; this walks the new-chat sequence on Max.
+  const states = [
+    { chatId: 'draft', info: undefined, expect: 'blocked' }, // first turn starting, no id yet
+    { chatId: 'abc', info: 'max' as const, expect: 'side' }, // id arrived, tier set from the started turn
+  ];
+  for (const st of states) {
+    const route = decideSendRoute({
+      running: true,
+      tier: sideRouteTier({ chatId: st.chatId, chatInfoTier: st.info }),
+    });
+    assert.equal(route, st.expect, st.chatId);
+    assert.equal(handsFreeListens({ running: true, tier: sideRouteTier({ chatId: st.chatId, chatInfoTier: st.info }) }), st.expect === 'side');
+  }
+});
+
+test('blockedSendError (review 7): names the handoff when that is the reason, else a plain wait message', () => {
+  assert.match(blockedSendError({ handoffWaiting: true }), /handoff/i);
+  assert.doesNotMatch(blockedSendError({}), /handoff/i);
+  assert.notEqual(blockedSendError({}), '');
 });

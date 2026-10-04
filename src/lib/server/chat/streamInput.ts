@@ -6,6 +6,10 @@
  * single JSON line instead of argv. This is also the shape a mid-turn side
  * message takes (T5) — same line, written again later.
  */
+
+/** The longest message a chat turn, or a side message into one, may carry. */
+export const MAX_MESSAGE_CHARS = 8000;
+
 export function streamJsonUserLine(text: string): string {
   return (
     JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } }) +

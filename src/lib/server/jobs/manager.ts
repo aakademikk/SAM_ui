@@ -518,10 +518,20 @@ export async function readFrames(
 /* Job handle                                                                 */
 /* ========================================================================== */
 
+/** Where the job's stdout stands relative to line boundaries, so a marker
+ *  appended to the output log never lands inside a line a chunk split. */
+interface StdoutLineState {
+  /** True when the last stdout chunk did not end with a newline. */
+  midLine: boolean;
+  /** Marker lines waiting for the next stdout chunk that ends a line. */
+  deferred: string[];
+}
+
 interface RunningJob {
   record: JobRecord;
   process: ChildProcess;
   output: OutputWriter;
+  lineState: StdoutLineState;
 }
 
 export interface CreateArgsOptions {
@@ -549,10 +559,12 @@ export interface CreateArgsOptions {
    * should pass `'pipe'`.
    */
   stdin?: 'pipe' | 'ignore';
-  /** Fired for every output chunk, right after it's written to the job's own
-   *  output log — a side channel for a caller that needs to react to the
-   *  child's stdout live (e.g. detecting a `result` line to close stdin),
-   *  without duplicating the write/bookkeeping `attach` already does. */
+  /** Fired for every STDOUT chunk (never stderr), right after it's written to
+   *  the job's own output log — a side channel for a caller that needs to
+   *  react to the child's stdout live (e.g. detecting a `result` line to
+   *  close stdin), without duplicating the write/bookkeeping `attach` already
+   *  does. stderr is excluded so a stderr fragment can never be glued onto a
+   *  stdout line in the caller's own line buffer. */
   onOutputChunk?: (chunk: Buffer, record: JobRecord) => void;
 }
 
@@ -563,6 +575,13 @@ function mergeEnv(overrides?: Record<string, string | null>): NodeJS.ProcessEnv 
     else env[key] = value;
   }
   return env;
+}
+
+/** Test-only: awaited inside `deliverSideMessage` between the stdin write and
+ *  the marker write, so a test can make one delivery slow. */
+let deliverHook: ((markerLine: string) => Promise<void>) | null = null;
+export function __setDeliverHookForTests(hook: ((markerLine: string) => Promise<void>) | null): void {
+  deliverHook = hook;
 }
 
 /* ========================================================================== */
@@ -862,17 +881,35 @@ class JobManager {
     // etc.) can finish during the first I/O and we must not miss the close
     // or data events.
 
-    const onData = async (chunk: Buffer) => {
-      const seq = await output.write(chunk);
-      if (seq > 0) {
-        record.lastSeq = seq;
-        record.outputBytes += chunk.length;
+    const lineState: StdoutLineState = { midLine: false, deferred: [] };
+
+    const onData = async (chunk: Buffer, isStdout: boolean) => {
+      // Every write is queued synchronously, in arrival order, so any deferred
+      // marker lands right after the chunk that completed the line.
+      const writes: Promise<number>[] = [output.write(chunk)];
+      const sizes: number[] = [chunk.length];
+      if (isStdout && chunk.length > 0) {
+        lineState.midLine = chunk[chunk.length - 1] !== 0x0a;
+        if (!lineState.midLine) {
+          for (const marker of lineState.deferred.splice(0)) {
+            const buf = Buffer.from(marker);
+            writes.push(output.write(buf));
+            sizes.push(buf.length);
+          }
+        }
       }
-      opts.onOutputChunk?.(chunk, record);
+      for (let i = 0; i < writes.length; i++) {
+        const seq = await writes[i];
+        if (seq > 0) {
+          record.lastSeq = seq;
+          record.outputBytes += sizes[i];
+        }
+      }
+      if (isStdout) opts.onOutputChunk?.(chunk, record);
     };
 
-    child.stdout?.on('data', onData);
-    child.stderr?.on('data', onData);
+    child.stdout?.on('data', (chunk: Buffer) => void onData(chunk, true));
+    child.stderr?.on('data', (chunk: Buffer) => void onData(chunk, false));
 
     // Without this, a write after the child has closed its read end or
     // exited (a side message landing in the instant after the turn ends)
@@ -887,6 +924,12 @@ class JobManager {
       // `closed`, and leave the client finalising a transcript whose tail was
       // still being written — measured: the file stopped at line 2970 of 4000
       // while the record claimed lastSeq 299.
+      // A marker still waiting for a line boundary that never came goes in now,
+      // on a line of its own, so it is not lost.
+      for (const marker of lineState.deferred.splice(0)) {
+        await output.write((lineState.midLine ? '\n' : '') + marker).catch(() => 0);
+        lineState.midLine = false;
+      }
       await output.close();
       record.status = code === null ? 'killed' : 'exited';
       // Node reports `code: null` whenever a signal did the killing, so the
@@ -920,7 +963,7 @@ class JobManager {
     // Now persist the initial meta (handlers are already armed).
     await this.writeMeta(record);
 
-    const running: RunningJob = { record, process: child, output };
+    const running: RunningJob = { record, process: child, output, lineState };
     this.jobs.set(record.id, running);
     this.prune();
 
@@ -1055,10 +1098,18 @@ class JobManager {
         await new Promise<void>((resolve, reject) => {
           running.process.stdin!.write(stdinLine, (err) => (err ? reject(err) : resolve()));
         });
-        const seq = await running.output.write(Buffer.from(markerLine));
-        if (seq > 0) {
-          running.record.lastSeq = seq;
-          running.record.outputBytes += markerLine.length;
+        await deliverHook?.(markerLine);
+        if (running.lineState.midLine) {
+          // The last stdout chunk ended part-way through a line: a marker
+          // written now would split it. The next chunk that ends a line (or
+          // the job's close) writes it.
+          running.lineState.deferred.push(markerLine);
+        } else {
+          const seq = await running.output.write(Buffer.from(markerLine));
+          if (seq > 0) {
+            running.record.lastSeq = seq;
+            running.record.outputBytes += markerLine.length;
+          }
         }
         ok = true;
       } catch {

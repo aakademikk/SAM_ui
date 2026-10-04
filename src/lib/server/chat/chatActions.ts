@@ -33,6 +33,7 @@ import {
   restoreChat,
   setRunningJob,
 } from './chatStore';
+import { removeSideMessageRecords } from './sideMessageLog';
 import { fallbackTitle } from './titles';
 import { firstUserMessage, inferTier, readHistory, transcriptPath, turnStartTimestamps } from './transcripts';
 
@@ -209,11 +210,16 @@ export function remove(id: string): ChatActionOutcome {
   if (blocked) return blocked;
   const chat = deleteChat(id);
   if (!chat) return actionFail(404, 'Chat not found.');
+  try {
+    removeSideMessageRecords(id);
+  } catch (err) {
+    console.error('[chat] dropping side-message records failed:', err);
+  }
   return { ok: true, chat };
 }
 
 /* ========================================================================== */
-/* Adopt                                                                      */
+/* Adopt                                                                    */
 /* ========================================================================== */
 
 /**

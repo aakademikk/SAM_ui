@@ -25,9 +25,21 @@ import { getJobManager } from '@/lib/server/jobs/manager';
 
 import { getChat } from './chatStore';
 import { recordSideMessageSent } from './sideMessageLog';
-import { streamJsonUserLine } from './streamInput';
+import { MAX_MESSAGE_CHARS, streamJsonUserLine } from './streamInput';
 
-const CLOSE_DELAY_MS = 300;
+let closeDelayMs = 300;
+
+/** Test-only: lengthen (or restore, with no argument) the delay between a
+ *  result line and closing stdin, so a test can send inside the window
+ *  without racing a timer. */
+export function __setCloseDelayForTests(ms?: number): void {
+  closeDelayMs = ms ?? 300;
+}
+
+/** Test-only: how many jobs the close-timer bookkeeping is still holding. */
+export function __jobStateCountForTests(): number {
+  return jobStates.size + internalJobs.size;
+}
 
 interface JobCloseState {
   /** How many `sendSideMessage` calls for this job are currently writing. */
@@ -37,6 +49,10 @@ interface JobCloseState {
 
 const jobStates = new Map<string, JobCloseState>();
 
+/** Jobs the server started for itself (a handoff's memo turn): never a
+ *  target for a side message. */
+const internalJobs = new Set<string>();
+
 function stateFor(jobId: string): JobCloseState {
   let state = jobStates.get(jobId);
   if (!state) {
@@ -44,6 +60,31 @@ function stateFor(jobId: string): JobCloseState {
     jobStates.set(jobId, state);
   }
   return state;
+}
+
+export function markInternalJob(jobId: string): void {
+  internalJobs.add(jobId);
+}
+
+/** Drops everything remembered about a job once it has exited. */
+export function forgetJob(jobId: string): void {
+  const state = jobStates.get(jobId);
+  if (state?.timer) clearTimeout(state.timer);
+  jobStates.delete(jobId);
+  internalJobs.delete(jobId);
+}
+
+/**
+ * Whether `chatId` has a handoff pending (handoff.ts's `isHandoffPending`).
+ * Reads the same `globalThis` map instead of importing handoff.ts: that module
+ * imports startTurn.ts, which imports this one, and its load-time
+ * `onTurnExit.push` would hit a half-loaded startTurn.ts. No map yet means
+ * handoff.ts has never run a handoff, so none is pending.
+ */
+function handoffPending(chatId: string): boolean {
+  const pending = (globalThis as unknown as { __samuiPendingHandoffs?: Map<string, unknown> })
+    .__samuiPendingHandoffs;
+  return pending?.has(chatId) === true;
 }
 
 /**
@@ -62,7 +103,7 @@ export function onResultSeen(jobId: string): void {
       getJobManager().closeStdin(jobId);
       jobStates.delete(jobId);
     }
-  }, CLOSE_DELAY_MS);
+  }, closeDelayMs);
 }
 
 export interface SendSideMessageInput {
@@ -85,6 +126,9 @@ export type SendSideMessageResult = { ok: true } | { ok: false; status: number; 
 export async function sendSideMessage(input: SendSideMessageInput): Promise<SendSideMessageResult> {
   const text = input.text.trim();
   if (!text) return { ok: false, status: 400, error: 'text is required.' };
+  if (text.length > MAX_MESSAGE_CHARS) {
+    return { ok: false, status: 400, error: `Message too long (max ${MAX_MESSAGE_CHARS} chars).` };
+  }
 
   const chat = getChat(input.chatId);
   if (!chat) return { ok: false, status: 404, error: 'Chat not found.' };
@@ -96,6 +140,12 @@ export async function sendSideMessage(input: SendSideMessageInput): Promise<Send
 
   const jobId = chat.runningJobId;
   if (!jobId) return { ok: false, status: 409, error: 'No turn is running in this chat.' };
+
+  // A handoff's memo turn is the server's own turn, not Colin's: a message
+  // slipped into it would change the memo and be answered in the old chat.
+  if (handoffPending(input.chatId) || internalJobs.has(jobId)) {
+    return { ok: false, status: 409, error: 'A handoff is in progress.' };
+  }
 
   const state = stateFor(jobId);
   state.pending++;
@@ -112,5 +162,10 @@ export async function sendSideMessage(input: SendSideMessageInput): Promise<Send
     return { ok: true };
   } finally {
     state.pending--;
+    // An entry nothing is waiting on (no send in flight, no close timer) is
+    // dead weight — e.g. a send into a job id this process never spawned.
+    if (state.pending === 0 && state.timer === null && jobStates.get(jobId) === state) {
+      jobStates.delete(jobId);
+    }
   }
 }

@@ -44,7 +44,12 @@ before(async () => {
   manager = await import('./manager.js');
 });
 
+/** Jobs the review tests start; closed in `after` so a failing assertion can
+ *  never leave a child holding the runner open. */
+const spawned: string[] = [];
+
 after(() => {
+  for (const id of spawned) manager?.getJobManager().closeStdin(id);
   manager?.getJobManager().stopSweep();
   fs.rmSync(tmp, { recursive: true, force: true });
 });
@@ -169,4 +174,96 @@ test('deliverSideMessage preserves call order; closeStdin ends the child; delive
   // After exit, delivery reports failure rather than throwing or hanging.
   const ok3 = await manager.getJobManager().deliverSideMessage(job.id, 'gamma\n', 'MARK:gamma\n');
   assert.equal(ok3, false);
+});
+
+/* ========================================================================== */
+/* Review 4 and 5                                                             */
+/* ========================================================================== */
+
+async function waitForExit(jobId: string): Promise<void> {
+  await waitUntil(() => !manager.getJobManager().isLive(jobId), 8000);
+}
+
+test('review 4: onOutputChunk sees stdout chunks only, never stderr', async () => {
+  const script = path.join(tmp, 'stderr-then-stdout.js');
+  fs.writeFileSync(
+    script,
+    [
+      "process.stderr.write('warn: partial');",
+      "setTimeout(() => process.stdout.write('line one\\n'), 150);",
+      "process.stdin.on('end', () => process.exit(0));",
+      'process.stdin.resume();',
+      '',
+    ].join('\n'),
+  );
+
+  const seen: string[] = [];
+  const job = await manager.getJobManager().createArgs(process.execPath, [script], {
+    stdin: 'pipe',
+    onOutputChunk: (chunk) => seen.push(chunk.toString('utf-8')),
+  });
+  spawned.push(job.id);
+
+  await waitUntilOutputContains(job.id, 'line one');
+  await waitUntil(() => seen.length > 0);
+  manager.getJobManager().closeStdin(job.id);
+  await waitForExit(job.id);
+
+  // The stderr fragment is in the job's output log, but was never offered to
+  // the stdout-only callback.
+  assert.ok((await currentOutputText(job.id)).includes('warn: partial'));
+  assert.deepEqual(seen, ['line one\n']);
+});
+
+test('review 5: a marker delivered mid-line waits for the line to finish, then follows it', async () => {
+  const script = path.join(tmp, 'half-line.js');
+  fs.writeFileSync(
+    script,
+    [
+      "process.stdout.write('{\"a\":\"half');",
+      "setTimeout(() => process.stdout.write('-rest\"}\\n'), 800);",
+      "process.stdin.on('end', () => process.exit(0));",
+      'process.stdin.resume();',
+      '',
+    ].join('\n'),
+  );
+
+  const job = await manager.getJobManager().createArgs(process.execPath, [script], { stdin: 'pipe' });
+  spawned.push(job.id);
+  await waitUntilOutputContains(job.id, '{"a":"half');
+
+  // Delivered while the first half sits on the wire: stdin is written and
+  // reported delivered, but the marker must not split the line.
+  const ok = await manager.getJobManager().deliverSideMessage(job.id, 'hello\n', 'MARK:mid\n');
+  assert.equal(ok, true);
+
+  const text = await waitUntilOutputContains(job.id, 'MARK:mid');
+  assert.equal(text, '{"a":"half-rest"}\nMARK:mid\n');
+
+  manager.getJobManager().closeStdin(job.id);
+  await waitForExit(job.id);
+});
+
+test('review 5: a marker still waiting when the job ends is written on a line of its own', async () => {
+  const script = path.join(tmp, 'cut-short.js');
+  fs.writeFileSync(
+    script,
+    [
+      "process.stdout.write('{\"b\":\"cut');",
+      "process.stdin.on('end', () => process.exit(0));",
+      'process.stdin.resume();',
+      '',
+    ].join('\n'),
+  );
+
+  const job = await manager.getJobManager().createArgs(process.execPath, [script], { stdin: 'pipe' });
+  spawned.push(job.id);
+  await waitUntilOutputContains(job.id, '{"b":"cut');
+
+  const ok = await manager.getJobManager().deliverSideMessage(job.id, 'hello\n', 'MARK:end\n');
+  assert.equal(ok, true);
+  manager.getJobManager().closeStdin(job.id);
+  await waitForExit(job.id);
+
+  assert.equal(await currentOutputText(job.id), '{"b":"cut\nMARK:end\n');
 });

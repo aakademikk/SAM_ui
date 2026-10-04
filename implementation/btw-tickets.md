@@ -200,3 +200,8 @@ Proof: a line in the project's record (daily note or PR description) for each of
 | 14 | Colin confirms on phone and laptop | T9 |
 
 No spec check is left uncovered.
+
+## Code review (2026-10-04)
+
+Opus review of `72fbdb3` (job_samui-btw-review): 8 findings plus cleanups, all fixed by job_samui-btw-reviewfix on top of `72fbdb3`, each with a test that fails on `72fbdb3`.
+SAM re-ran: suite 347/2 skip/0 fail, three runs; disabling fix 1 (background-task attachments shown as side messages) or fix 4 (stderr in result detection) fails exactly their tests; live check 2 passes.

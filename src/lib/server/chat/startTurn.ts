@@ -37,14 +37,14 @@ import { agentCwd } from './agentCwd';
 import { createChat, deleteChat, getChat, setRunningJob, touchChat } from './chatStore';
 import { registerSamuiSession } from './samuiSessions';
 import { acquireSessionLock, holdSessionLock, releaseSessionLock } from './sessionLock';
-import { onResultSeen } from './sideMessage';
+import { forgetJob, markInternalJob, onResultSeen } from './sideMessage';
 import { deepseekTierAvailable, geminiTierAvailable, tierEnv, tierInfo } from './tiers';
-import { isResultLine, streamJsonUserLine } from './streamInput';
+import { MAX_MESSAGE_CHARS, isResultLine, streamJsonUserLine } from './streamInput';
 import { fallbackTitle, queueTitle } from './titles';
 import { tagSideMessages } from './transcripts';
 import { pingOffScreenChat } from './turnPing';
 
-export const MAX_MESSAGE_CHARS = 8000;
+export { MAX_MESSAGE_CHARS };
 
 /* ========================================================================== */
 /* Exit hooks                                                                 */
@@ -105,24 +105,6 @@ onTurnExit.push((event) => {
  * detached — this never delays the next turn.
  */
 onTurnExit.push(pingOffScreenChat);
-
-/**
- * T8: once a Max/Max2 turn's transcript is final, match this chat's
- * still-unresolved side message records against it (`tagSideMessages`), so a
- * late side message's own transcript entry is never mistaken for a new
- * top-level turn on the next `readHistory`. Running this from `onTurnExit`
- * rather than from `sendSideMessage` itself means it never races a
- * still-being-written transcript file.
- */
-onTurnExit.push((event) => {
-  if (event.tier === 'max' || event.tier === 'max2') {
-    try {
-      tagSideMessages(event.chatId);
-    } catch (err) {
-      console.error('[chat] side-message tagging failed:', err);
-    }
-  }
-});
 
 async function runExitHooks(event: TurnExitEvent): Promise<void> {
   for (const hook of onTurnExit) {
@@ -371,7 +353,8 @@ export async function startTurn(input: StartTurnInput): Promise<StartTurnResult>
   // carry-over survives the split rather than ever missing it — missing it
   // would leave stdin open and the process never exiting. Every result line
   // is reported, not just the first: a late side message's second result
-  // must reschedule the close too.
+  // must reschedule the close too. The manager only calls this with STDOUT
+  // chunks, so a stderr fragment can never be glued onto a result line here.
   //
   // `isResultLine` parses the line rather than checking a `{"type":"result"`
   // prefix: the real CLI (2.1.x) does not print `type` first on its result
@@ -415,7 +398,19 @@ export async function startTurn(input: StartTurnInput): Promise<StartTurnResult>
       // spend to the estate ledger (a no-op for the max tiers).
       onExit: async (finished) => {
         exited = true;
+        if (streamsPrompt) forgetJob(finished.id);
         let chat: ChatRecord | null = null;
+        // Match this chat's side-message records against the now-final
+        // transcript BEFORE the chat stops being "running" and the lock is
+        // released, so no reload, title hook or next turn ever reads history
+        // with a late side message still untagged. Max/Max 2 only.
+        if (streamsPrompt) {
+          try {
+            tagSideMessages(chatId, finished.startedAt ?? undefined);
+          } catch (err) {
+            console.error('[chat] side-message tagging failed:', err);
+          }
+        }
         try {
           const current = getChat(chatId);
           if (current && current.runningJobId === finished.id) setRunningJob(chatId, null);
@@ -465,6 +460,7 @@ export async function startTurn(input: StartTurnInput): Promise<StartTurnResult>
   // the chat running. A command that exits instantly may already have run
   // onExit; then neither is done, or they would outlive the turn.
   if (!exited) {
+    if (internal) markInternalJob(job.id);
     holdSessionLock(chatId, job.id);
     setRunningJob(chatId, job.id);
   }

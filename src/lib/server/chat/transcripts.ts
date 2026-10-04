@@ -26,7 +26,7 @@ import { AgentStreamParser } from '@/lib/agentStream';
 import type { ChatAccount, ChatMessage, ChatTier, TierId } from '@/types/chat';
 
 import { agentCwd } from './agentCwd';
-import { tagPending, taggedUuids, unresolved } from './sideMessageLog';
+import { dropUnresolvedBefore, tagPending, taggedUuids, unresolved } from './sideMessageLog';
 import { max2ConfigDir } from './tiers';
 
 /* -------------------------------------------------------------------------- */
@@ -86,6 +86,7 @@ interface TranscriptEntry {
   attachment?: {
     type?: string;
     prompt?: unknown;
+    commandMode?: string;
   };
   /** Set by `readHistory` itself (never present on disk) on a clone of a
    *  tagged late side message, or a queued_command attachment's own
@@ -160,7 +161,15 @@ function relevantEntries(
  *  by default (see its own comment), so only a caller that opts in via
  *  `includeQueuedCommandAttachments` ever sees one. */
 function isQueuedCommandAttachment(entry: TranscriptEntry): boolean {
-  return entry.type === 'attachment' && entry.attachment?.type === 'queued_command';
+  // `commandMode: 'prompt'` only: the CLI also writes `queued_command`
+  // attachments for background-task completions (`commandMode:
+  // 'task-notification'`, a string prompt of raw XML), which are not side
+  // messages and must stay invisible in history.
+  return (
+    entry.type === 'attachment' &&
+    entry.attachment?.type === 'queued_command' &&
+    entry.attachment.commandMode === 'prompt'
+  );
 }
 
 /** The text of a mid-turn side message's queued_command attachment, or
@@ -325,17 +334,20 @@ export function readHistory(id: string): ChatMessage[] {
  * top-level turn. Call once a turn's transcript is final (`startTurn.ts`'s
  * `onTurnExit` hook) — never while the file could still be mid-write.
  *
- * Two kinds of match, tried in this order for each record:
+ * Two kinds of match, the earliest entry of either kind winning:
  *  - A `queued_command` attachment entry with this exact text (T8 R1's
  *    mid-turn case — already rendered correctly by `readHistory` without any
  *    tagging; matching it here only marks the record resolved, via the
  *    attachment's own uuid, so it is never also matched to a user entry).
- *  - Failing that, the earliest prompt-shaped `user` entry with this exact
- *    text, not already tagged, and not the transcript's very first relevant
- *    entry (that one can never be a side message — it is the chat's own
- *    first prompt).
+ *  - A prompt-shaped `user` entry with this exact text, not already tagged,
+ *    and not the transcript's very first relevant entry (that one can never
+ *    be a side message — it is the chat's own first prompt).
+ * Only entries after the chat's last already-tagged entry, and not stamped
+ * more than 5 s before the record's `sentAt`, are candidates. When
+ * `jobStartedAt` is given (the turn that just ended), records still
+ * unresolved from before it are dropped.
  */
-export function tagSideMessages(chatId: string): void {
+export function tagSideMessages(chatId: string, jobStartedAt?: string): void {
   const found = transcriptPath(chatId);
   if (!found) return;
 
@@ -345,43 +357,67 @@ export function tagSideMessages(chatId: string): void {
   const entries = relevantEntries(readEntries(found.path), { includeQueuedCommandAttachments: true });
   const used = taggedUuids(chatId);
 
+  // Records resolve in the order they were sent, so an entry before the last
+  // one already tagged for this chat can never be a later record's match.
+  let searchFrom = 0;
+  entries.forEach((entry, index) => {
+    if (typeof entry.uuid === 'string' && used.has(entry.uuid)) searchFrom = index + 1;
+  });
+
   const pairs: { text: string; uuid: string }[] = [];
 
   for (const record of records) {
-    const attachmentMatch = entries.find(
-      (entry) => typeof entry.uuid === 'string' && !used.has(entry.uuid) && queuedCommandText(entry) === record.text,
-    );
-    if (attachmentMatch && typeof attachmentMatch.uuid === 'string') {
-      pairs.push({ text: record.text, uuid: attachmentMatch.uuid });
-      used.add(attachmentMatch.uuid);
-      continue;
-    }
+    const sentMs = Date.parse(record.sentAt);
+    // An entry written before the record existed is someone else's message
+    // that happens to have the same text. Slack: the CLI can log the line a
+    // moment before `recordSideMessageSent` runs. No usable timestamp: allow.
+    const notTooEarly = (entry: TranscriptEntry): boolean => {
+      const at = typeof entry.timestamp === 'string' ? Date.parse(entry.timestamp) : Number.NaN;
+      return Number.isNaN(at) || Number.isNaN(sentMs) || at >= sentMs - SIDE_MATCH_SLACK_MS;
+    };
 
-    const userMatch = entries.find(
-      (entry, index) =>
+    let matchIndex = -1;
+    for (let index = searchFrom; index < entries.length; index++) {
+      const entry = entries[index];
+      if (typeof entry.uuid !== 'string' || used.has(entry.uuid) || !notTooEarly(entry)) continue;
+      const isMidTurn = queuedCommandText(entry) === record.text;
+      const isLate =
         index !== 0 &&
         entry.type === 'user' &&
-        typeof entry.uuid === 'string' &&
-        !used.has(entry.uuid) &&
         isPromptContent(entry.message?.content) &&
-        extractPromptText(entry.message?.content) === record.text,
-    );
-    if (userMatch && typeof userMatch.uuid === 'string') {
-      pairs.push({ text: record.text, uuid: userMatch.uuid });
-      used.add(userMatch.uuid);
+        extractPromptText(entry.message?.content) === record.text;
+      if (isMidTurn || isLate) {
+        matchIndex = index;
+        break;
+      }
     }
+    if (matchIndex === -1) continue;
+
+    const uuid = entries[matchIndex].uuid as string;
+    pairs.push({ text: record.text, uuid });
+    used.add(uuid);
+    searchFrom = matchIndex + 1;
   }
 
   tagPending(chatId, pairs);
+
+  // A record still unresolved that was sent before this turn's job started
+  // belongs to an earlier turn that has ended: it can never match later, and
+  // left in place it could claim a future message with the same text.
+  if (jobStartedAt) dropUnresolvedBefore(chatId, jobStartedAt);
 }
 
+const SIDE_MATCH_SLACK_MS = 5_000;
+
 /**
- * The user prompt entry's own `timestamp` for each turn `readHistory`
- * returns, in the same order — `undefined` for a turn whose prompt entry
- * carries no timestamp. Used by `chatActions.ts`'s `openChat` (review finding
- * 7) to tell whether the last turn on disk is the chat's in-flight one: only
- * a prompt that landed at or after the running job's own `startedAt` is that
- * turn, rather than always assuming the last pair on disk is it.
+ * The `timestamp` of every prompt-shaped `user` entry in the transcript, in
+ * transcript order — `undefined` for an entry carrying no timestamp. This is
+ * NOT one per turn `readHistory` returns: a late side message is also a
+ * prompt-shaped `user` entry, so it adds a start here but is folded into the
+ * turn before it by `readHistory`, and the two lists can differ in length.
+ * `chatActions.ts`'s `openChat` (review finding 7) only counts the starts at
+ * or after the running job's own `startedAt` to tell whether the last turn on
+ * disk is the chat's in-flight one, which does not need the two to line up.
  */
 export function turnStartTimestamps(id: string): (string | undefined)[] {
   const found = transcriptPath(id);

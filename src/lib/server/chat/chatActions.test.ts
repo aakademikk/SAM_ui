@@ -188,6 +188,22 @@ test('check 8: archive hides, restore returns, delete removes from both lists an
   assert.ok(fs.existsSync(transcriptFile as string), 'transcript file still exists on disk');
 });
 
+test('delete drops the chat\'s side-message records, and only that chat\'s', async () => {
+  const log = await import('./sideMessageLog.js');
+  const started = await st.startTurn({ message: 'hello side-log delete', tier: 'max', device: 'phone' });
+  assertOk(started);
+  await waitExit(started.jobId);
+
+  log.recordSideMessageSent(started.chatId, 'note for the deleted chat');
+  log.recordSideMessageSent('some-other-chat', 'note for another chat');
+  assert.equal(log.unresolved(started.chatId).length, 1);
+
+  assert.equal(actions.remove(started.chatId).ok, true);
+
+  assert.deepEqual(log.unresolved(started.chatId), [], 'the deleted chat\'s records are gone');
+  assert.equal(log.unresolved('some-other-chat').length, 1, 'another chat\'s records are untouched');
+});
+
 test('check 8: archive and delete are refused with 409 while the turn is running', async () => {
   const started = await st.startTurn({
     message: 'hello running',
