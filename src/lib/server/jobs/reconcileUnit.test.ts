@@ -148,3 +148,61 @@ test('a record with neither pid nor unit keeps today\'s behaviour', async () => 
   assert.equal(probed, false);
   assert.equal(readMeta(id).status, 'killed');
 });
+
+test('(e) unknown probes mid-watch never finalise the job', async () => {
+  const id = 'job_flaky_20261004-000040';
+  const dir = writeJob(id, 'sam-job-flaky-40');
+  const seq: Array<'active' | 'unknown' | 'inactive'> = ['active', 'unknown', 'unknown', 'active', 'inactive'];
+  let calls = 0;
+  const statusAfterUnknowns: unknown[] = [];
+  manager.__setUnitProbeForTests(async () => {
+    const i = calls++;
+    // Look at the record just after each unknown has been answered.
+    if (i > 0 && seq[i - 1] === 'unknown') statusAfterUnknowns.push(readMeta(id).status);
+    if (seq[i] === 'inactive') fs.writeFileSync(path.join(dir, 'exitcode'), '0\n');
+    return seq[i];
+  }, 5);
+  await reconcile();
+  assert.deepEqual(statusAfterUnknowns, ['running', 'running']);
+  const meta = readMeta(id);
+  assert.equal(meta.status, 'exited');
+  assert.equal(meta.exitCode, 0);
+});
+
+test('(f) unknown at boot is not killed; only a definite inactive is', async () => {
+  const id = 'job_bootunk_20261004-000041';
+  writeJob(id, 'sam-job-bootunk-41');
+  const seq: Array<'unknown' | 'inactive'> = ['unknown', 'inactive'];
+  let calls = 0;
+  let statusAtSecondProbe: unknown;
+  manager.__setUnitProbeForTests(async () => {
+    const i = calls++;
+    if (i === 1) statusAtSecondProbe = readMeta(id).status;
+    return seq[Math.min(i, 1)];
+  }, 5);
+  await reconcile();
+  assert.equal(statusAtSecondProbe, 'running');
+  const meta = readMeta(id);
+  assert.equal(meta.status, 'killed');
+  assert.equal(meta.exitSource, 'unknown');
+});
+
+test('(g) persistent unknown past the cap stops the watch and leaves running', async () => {
+  const id = 'job_capped_20261004-000042';
+  writeJob(id, 'sam-job-capped-42');
+  let calls = 0;
+  manager.__setUnitProbeForTests(async () => ((calls++, 'unknown')), 5, 60);
+  await reconcile();
+  assert.ok(calls > 2, 'kept polling until the cap');
+  const meta = readMeta(id);
+  assert.equal(meta.status, 'running');
+  assert.equal(meta.endedAt, null);
+});
+
+test('queryUnitState mapping: only inactive/failed end a unit', () => {
+  for (const s of ['active', 'reloading', 'activating', 'deactivating', 'maintenance', 'refreshing']) {
+    assert.equal(manager.classifyActiveState(s + '\n').state, 'active', s);
+  }
+  for (const s of ['inactive', 'failed']) assert.equal(manager.classifyActiveState(s).state, 'inactive', s);
+  for (const s of ['', 'weird']) assert.equal(manager.classifyActiveState(s).state, 'unknown', s);
+});

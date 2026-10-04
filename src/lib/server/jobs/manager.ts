@@ -106,42 +106,66 @@ export function isSafeUnitName(unit: unknown): unit is string {
   return dot === -1 || unit.endsWith('.service') || unit.endsWith('.scope');
 }
 
-function queryUnitState(unit: string): Promise<UnitState> {
+/** A probe result; `reason` says why a state was 'unknown' (for the journal). */
+export type UnitProbe = { state: UnitState; reason?: string };
+
+/**
+ * Map a systemd ActiveState. Only a definite end counts as inactive; every
+ * other real state (active, reloading, activating, deactivating, maintenance,
+ * refreshing) means the unit is still around. Anything else is 'unknown'.
+ */
+export function classifyActiveState(raw: string): UnitProbe {
+  const state = raw.trim();
+  if (state === 'inactive' || state === 'failed') return { state: 'inactive' };
+  if (
+    ['active', 'reloading', 'activating', 'deactivating', 'maintenance', 'refreshing'].includes(state)
+  ) {
+    return { state: 'active' };
+  }
+  return { state: 'unknown', reason: `unexpected state ${JSON.stringify(state)}` };
+}
+
+function queryUnitState(unit: string): Promise<UnitProbe> {
   return new Promise((resolve) => {
     execFile(
       'systemctl',
       ['--user', 'show', '-p', 'ActiveState', '--value', unit],
       { timeout: 5_000 },
       (err, stdout) => {
-        if (err) return resolve('unknown');
-        const state = String(stdout).trim();
-        if (state === 'inactive' || state === 'failed') return resolve('inactive');
-        if (['active', 'activating', 'deactivating', 'reloading'].includes(state)) return resolve('active');
-        resolve('unknown');
+        if (err) return resolve({ state: 'unknown', reason: err.message });
+        resolve(classifyActiveState(String(stdout)));
       },
     );
   });
 }
 
-let unitStateFn: (unit: string) => Promise<UnitState> = queryUnitState;
-let unitPollMs = 5_000;
+type UnitProbeFn = (unit: string) => Promise<UnitState | UnitProbe>;
 
-/** Test-only: replace the systemd lookup and shorten the poll interval. */
+let unitStateFn: UnitProbeFn = queryUnitState;
+let unitPollMs = 5_000;
+/** How long the probe may answer only 'unknown' before the watch gives up. */
+const UNKNOWN_CAP_MS = 30 * 60_000;
+let unknownCapMs = UNKNOWN_CAP_MS;
+
+/** Test-only: replace the systemd lookup, shorten the poll interval and the unknown cap. */
 export function __setUnitProbeForTests(
-  fn: ((unit: string) => Promise<UnitState>) | null,
+  fn: UnitProbeFn | null,
   pollMs = 5_000,
+  capMs = UNKNOWN_CAP_MS,
 ): void {
   unitStateFn = fn ?? queryUnitState;
   unitPollMs = pollMs;
+  unknownCapMs = capMs;
 }
 
 /** Asks for a unit's state; a name that fails validation is never executed. */
-async function unitState(unit: unknown): Promise<UnitState> {
-  if (!isSafeUnitName(unit)) return 'unknown';
+async function probeUnit(unit: unknown): Promise<UnitProbe> {
+  if (!isSafeUnitName(unit)) return { state: 'unknown', reason: 'unsafe unit name' };
   try {
-    return await unitStateFn(unit);
-  } catch {
-    return 'unknown';
+    const r = await unitStateFn(unit);
+    return typeof r === 'string' ? { state: r } : r;
+  } catch (e) {
+    return { state: 'unknown', reason: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -719,7 +743,13 @@ class JobManager {
 
       // A headless sam-job job has a unit instead of a pid. While that unit
       // is active the job is alive: watch it, never file it as killed.
-      if (!record.pid && record.unit && (await unitState(record.unit)) === 'active') {
+      // Only a definite 'inactive' may fall through to killed: an 'unknown'
+      // probe is no evidence the job died, so it is watched too.
+      if (
+        !record.pid &&
+        isSafeUnitName(record.unit) &&
+        (await probeUnit(record.unit)).state !== 'inactive'
+      ) {
         const watch = this.watchUnit(record, file).finally(() => this.unitWatches.delete(watch));
         this.unitWatches.add(watch);
         continue;
@@ -751,14 +781,30 @@ class JobManager {
   }
 
   /**
-   * Poll a headless job's unit until it is no longer active, then finalise —
+   * Poll a headless job's unit until it is definitely inactive, then finalise —
    * unless run.sh already did (re-read right before writing). The unit going
    * away without run.sh recording an end means the exitcode file is the only
    * truth left; absent that, the job genuinely died.
    */
   private async watchUnit(record: JobRecord, file: string) {
     const unit = record.unit!;
-    while ((await unitState(unit)) === 'active') {
+    let unknownSince: number | null = null;
+    let logged = false;
+    for (;;) {
+      const probe = await probeUnit(unit);
+      if (probe.state === 'inactive') break;
+      if (probe.state === 'unknown') {
+        unknownSince ??= Date.now();
+        if (!logged) {
+          logged = true;
+          console.error('[jobs] unit probe unknown', unit, probe.reason ?? 'no reason');
+        }
+        // Persistently unknown: stop without writing. run.sh owns the final
+        // record, and a wrong 'killed' is worse than a stale 'running'.
+        if (Date.now() - unknownSince >= unknownCapMs) return;
+      } else {
+        unknownSince = null;
+      }
       await new Promise((r) => setTimeout(r, unitPollMs));
     }
     try {
