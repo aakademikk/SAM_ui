@@ -240,7 +240,7 @@ Do not touch: `PHONE_OPTIONS` itself, desktop and laptop option sets, `FloorCanv
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/phonePyramid.test.js .test-build/components/floor/floorGolden.test.js` passes (the pyramid tests fail on base: no `pyramid` option); `npm test` all pass, same counts plus new. Report the measured bust px, `samK`, and the smallest platform margin at each of the four sizes.
 
 ## T15: SAM links never pass through another General (P3)
-Status: TODO
+Status: DONE 2026-10-05 (check-10 link test passes at 360/390/412 and 390x371, idle and all-busy (failed on today's curve: hermes link crosses SAM tag); golden 7/7; typecheck clean; npm test 516/514 pass/2 skip/0 fail. Centre link routes round the right of the back row, not between the columns)
 Spec: must-do #P3, check #10
 Depends on: T14
 Blocked by: none
@@ -254,7 +254,7 @@ Do not touch: `wkLink`, desktop curve code path, `PHONE_OPTIONS`.
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/phonePyramid.test.js .test-build/components/floor/floorGolden.test.js` passes; paste the failing output of the new link test before the `samLink` change.
 
 ## T16: Camera framing for a tapped General, either row (P5)
-Status: TODO
+Status: DONE 2026-10-05 (check-12 framing test passes for all 5 Generals at 360/390/412 (failed before: hermes platform -30 px outside canvas); golden 7/7; typecheck clean; npm test 517/515 pass/2 skip/0 fail)
 Spec: must-do #P5, check #12 (the numbers; screenshots in T23)
 Depends on: T14
 Blocked by: none
@@ -268,7 +268,7 @@ Do not touch: `lerpCam`, desktop `zoom` options, `FloorCanvas.tsx`'s animation c
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/phonePyramid.test.js .test-build/components/floor/floorGolden.test.js` passes; the new framing test fails on the pre-change `camFor` (paste it).
 
 ## T17: Tap areas per row that never overlap (P4)
-Status: TODO
+Status: DONE 2026-10-05 (check-11 grid test passes at 360/390/412 and areas pairwise disjoint (failed on old hitGeneral: hermes platform null); floor group 36/36; typecheck clean; npm test 518/516 pass/2 skip/0 fail)
 Spec: must-do #P4, check #11
 Depends on: T14
 Blocked by: none
@@ -281,7 +281,7 @@ Do not touch: `hitFigure`, `pickAt`, `figureHit.ts`, `FloorCanvas.tsx`, the desk
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/phonePyramid.test.js .test-build/components/floor/floorRender.test.js .test-build/components/floor/figureHit.test.js .test-build/components/floor/floorGolden.test.js` all pass; the new grid test fails on the old `hitGeneral` (paste it).
 
 ## T18: Labels, SAM tag and the 12 numeral never overlap (P6)
-Status: TODO
+Status: DONE 2026-10-05 (check-13 test passes at 360/390/412 and 390x371 with no exemption (before the fix 390x371 failed with 8 overlaps); phonePyramid+ringRender+golden 36/36; typecheck clean; npm test 520/518 pass/2 skip/0 fail. At 390x371 the layout trims fixed reservations, scale 0.376, bust 18.9 px, label gap 2.53 px; T15 link-vs-label still exempt at 390x371)
 Spec: must-do #P6, check #13
 Depends on: T14
 Blocked by: none
