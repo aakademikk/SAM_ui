@@ -1,4 +1,4 @@
-Status: DRAFT 2026-10-05 (awaiting Colin's "lock it")
+Status: LOCKED 2026-10-05
 
 # SAM_ui: usage-limits tile + phone Generals pyramid
 
@@ -22,6 +22,8 @@ U4. When a seat's 5-hour reading reaches 80% or more, Colin gets a phone ping na
 U5. When a seat's weekly reading reaches 80% or more, Colin gets a phone ping naming the seat, the %, and the reset time.
 U6. The 5-hour reset time is recorded with every reading (today only the weekly reset is stored), so U1, U2 and U4 can show it.
 U7. The tile works on phone and desktop, follows the existing widget look, and passes the UX gate rules the other widgets pass.
+U8. Each ping fires at most once per seat per window: one 5-hour ping until that 5-hour window resets, one weekly ping until the week resets (Colin 2026-10-05, was OPEN 1).
+U9. A fresh reading is collected when each job ends, not only hourly, so a ping lands within 5 minutes of the run that crossed 80% (Colin 2026-10-05, was OPEN 2).
 
 Phone pyramid
 
@@ -83,8 +85,9 @@ P10. The pyramid is the phone layout, not a switch left in the code. The mockup'
 18. (Won't do: desktop) The desktop scene hash (layout, every General's zoom, both motion modes, hit-test grid) at six desktop and laptop sizes is identical to production before the build, as the mockup proved.
 19. Full gates: typecheck 0 errors, lint 0 errors, `npm test` all pass, `next build` clean.
 20. (P1 to P9, U1) Colin confirms on his phone after deploy: Generals readable, taps land, tile reads right.
+21. (U8) A test feeds three 5-hour readings over 0.80 in the same window, then one after the reset: exactly two pushes. The same for the weekly window.
+22. (U9) A test ends a job whose run reported 0.81 for the 5-hour window: the push is sent within 5 minutes of the job ending, without waiting for the hourly timer.
 
 ## 6. Open questions
 
-OPEN 1: How often may a ping repeat? SAM suggests once per seat per window: one 5-hour ping until that window resets, one weekly ping until the week resets.
-OPEN 2: How fast must the ping arrive? Readings are harvested hourly today, so a ping could land up to an hour after 80% is crossed, which is a fifth of a 5-hour window. SAM suggests harvesting when each job ends, so the ping lands within a few minutes.
+None. OPEN 1 and OPEN 2 were answered by Colin on 2026-10-05 and are now U8 and U9.
