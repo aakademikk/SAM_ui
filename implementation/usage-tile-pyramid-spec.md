@@ -59,6 +59,7 @@ P10. The pyramid is the phone layout, not a switch left in the code. The mockup'
 - Queued behind the floor-fixes build (`build/floor-fixes`) and the tidy-fixes deploy (done, `2e60de6`). This build starts from production after floor-fixes is merged, because P8 depends on its worker figures.
 - Data source: `~/bin/sam-quota-log.py` already harvests `rate_limit_event` from finished `claude -p` stream-json runs into `~/.sam/quota/runs.jsonl` (fields `seat`, `endedAt`, `fiveHour`, `sevenDay`, `sevenDayResetsAt`), hourly via `sam-quota-log.timer`.
 - Known gap in that source: terminal Claude Code sessions (like SAM's chat with Colin) do not write to the job store, so their usage only shows up in the next reading from a SAM_ui chat or fleet job. U1's reading age is what keeps this honest.
+- Amended 2026-10-05 (Colin, at ticketing): fleet jobs must report usage too, so U9 covers them; `sam-dispatch` streams JSON to a side file and the harvester reads it at job end (tickets T26, T27). Terminal sessions remain the known gap.
 - Phone pings go through the existing push path (`sam-push` / SAM_ui notifications), the same one job pings use.
 - UX gate rules apply ([[UX_Design_Standards]]).
 - Mockup risks to design out (job report): links crossing between top-row platforms (P3); overlapping tap areas (P4); SAM tag about 20 px above a top-row bust (P6); outer bottom-row platforms about 14 px from the edge in B (P7); only the top row reserving room for worker pads (P8); SAM dropping to 0.6 on a short hero (P9).

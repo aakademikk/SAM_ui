@@ -1,13 +1,13 @@
 # SAM_ui: usage-limits tile + phone Generals pyramid: tickets
 
-Spec (LOCKED 2026-10-05): [usage-tile-pyramid-spec.md](./usage-tile-pyramid-spec.md). Base commit `789589e` (production, floor-fixes merged and live). 25 tickets. Foreman: SAM. Builders: one fresh agent per ticket.
+Spec (LOCKED 2026-10-05): [usage-tile-pyramid-spec.md](./usage-tile-pyramid-spec.md). Base commit `789589e` (production, floor-fixes merged and live). 27 tickets. Build order: T1 to T23, then T26 and T27, then T24, then T25 at deploy (T26 and T27 were added 2026-10-05 on Colin's go, after T25 was numbered). Foreman: SAM. Builders: one fresh agent per ticket.
 
 ## Shared facts (the foreman repeats these in every brief)
 
 - Repo `/home/col/SAM_ui`, branch `claude/sam-core-dashboard-sf3639`. Never edit `/home/col/SAM_ui` directly. Build on a NEW branch `build/usage-pyramid` in a worktree `/home/col/SAM_ui-usage-pyramid`, cut from `789589e` (the foreman creates it once: `git -C /home/col/SAM_ui worktree add -b build/usage-pyramid /home/col/SAM_ui-usage-pyramid 789589e`). Work only there. Never run `deploy.sh`, never use port 3000, never restart a service. No deploy without Colin's go.
 - No `git commit`, `push`, `merge`, `stash`, `reset`. The foreman checkpoints with `git add -A`.
 - The shell has `NODE_ENV=production`. `node_modules` is installed; if you must reinstall, use `npx -y npm@10 ci --include=dev`, never plain `npm install`.
-- Tests: `npm test` runs `pretest` (`rm -rf .test-build && tsc -p tsconfig.test.json`) then `scripts/run-tests.cjs` over `.test-build/**/*.test.js`. Test files are `*.test.ts` beside the code, use `node:test` and `node:assert/strict`, import with the `@/` alias or `./x.js` relative paths (see `src/components/floor/floorRender.test.ts`). Run one file: `npm run pretest && node scripts/run-tests.cjs .test-build/<path>.test.js`. A test that makes a temp dir must use `tempDir` from `@/lib/server/testing/tempDir` (the suite fails on any leaked temp dir). Set `process.env.HOME = tempDir('...')` BEFORE importing the module under test (house rule). Known flake: `sideMessage.test` "review 3" can fail once when parallel test files race on `.test-build`; re-run before treating it as real.
+- Tests: `npm test` runs `pretest` (`rm -rf .test-build && tsc -p tsconfig.test.json`) then `scripts/run-tests.cjs` over `.test-build/**/*.test.js`. Test files are `*.test.ts` beside the code, use `node:test` and `node:assert/strict`, import with the `@/` alias or `./x.js` relative paths (see `src/components/floor/floorRender.test.ts`). Run one file: `npm run pretest && node scripts/run-tests.cjs .test-build/<path under src/>.test.js` (the build's rootDir is `src`, so `src/lib/x.test.ts` compiles to `.test-build/lib/x.test.js`; there is no `src/` inside `.test-build`). A test that makes a temp dir must use `tempDir` from `@/lib/server/testing/tempDir` (the suite fails on any leaked temp dir). Set `process.env.HOME = tempDir('...')` BEFORE importing the module under test (house rule). Known flake: `sideMessage.test` "review 3" can fail once when parallel test files race on `.test-build`; re-run before treating it as real.
 - Live-file rule: any new reader of a live `~/.sam` file resolves its path through `src/lib/server/livePaths.ts` (`samStateDir()` and friends, resolved per call from `os.homedir()`), never a module-level constant, so the proof harness (isolated `HOME`) and tests can redirect it.
 - System-change rule: a ticket that edits `~/bin`, `~/.sam` or `~/.local/bin` scripts or a user unit is a system change. Such edits are STAGED as `<name>.next` beside the live file (the pattern `sam-job.next`, `run.next.sh` already used here; `src/lib/server/push/dispatchPing.test.ts` has the `stagedOrLive` helper), tested there, and installed only by the install ticket (T25) with a dated `.bak`. No new systemd units or timers in this build. Repo tests that run those scripts are box-only (`boxOnlySkip` in `src/lib/server/testing/boxOnly.ts`) and use a temp `HOME` so they never touch live state.
 - Harness and ports: `/home/col/delivery/ux-audits/samui-local-harness/` (`start.sh`, `stop.sh`, `proxy.mjs`, `lib.mjs`). `SAMUI_WORKTREE=<worktree> bash start.sh` serves a worktree's production build (`npx next build` first) on 127.0.0.1:4950 behind a TLS proxy on 127.0.0.1:4951, with an isolated `HOME` (`<harness>/home`) and its own auth store; `SAM_PUSH_BIN=/bin/true` is already set so no real push is sent. One server at a time (another session may share 4950/4951: check `ss -ltn | grep -E ':49(5[01])'` first and leave its servers alone). Always run `stop.sh` before you finish; leave no listener. The floor-fixes proofs in `/home/col/delivery/ux-audits/floor-fixes-proofs/` (`common.mjs`, `run-proof.sh`, `t*.mjs`) are the model for browser proofs; this build's proofs live in `/home/col/delivery/ux-audits/usage-pyramid-proofs/` (built by T21), never in the repo.
@@ -42,7 +42,7 @@ Steps:
 4. Write `quotaLog.test.ts` (box-only via `boxOnlySkip`, resolving the script with the `stagedOrLive` pattern, and honouring an env override `SAM_QUOTA_LOG_BIN` so T25 can pin it to the live path). It builds a temp `HOME` with `~/.sam/jobs/<id>/meta.json` (`endedAt` set, a `command` starting `sam-agent (x)`) and a `stdout.log` of framed events (4-byte channel, 4-byte big-endian length, JSON body, as `frames()` reads them) holding one `rate_limit_event` with `five_hour: {utilization: 0.12, resetsAt: 1791202200}` and `seven_day: {utilization: 0.57, resetsAt: 1791237600}` plus a `result` event. Run the script with `HOME` set to the temp dir. Assert (a) the one row written has `fiveHourResetsAt === 1791202200` and `sevenDayResetsAt === 1791237600`; (b) two harvests started at the same moment (two `spawn`s, awaited together) leave exactly one row for that job id.
 5. Add a second case that replays a REAL stream-json run: copy the newest job dir under `/home/col/.sam/jobs` whose `stdout.log` contains a `rate_limit_event` into the temp `HOME` (read-only copy, never write to the real store), harvest it, and assert the row's `fiveHourResetsAt` equals the `resetsAt` read independently from that log's last `five_hour` window. This is the spec's check 6 on real data.
 Do not touch: `/home/col/bin/sam-quota-log.py` (the live file, T25 installs), `sam-quota-log.timer` and its service, `~/.sam/quota/runs.jsonl` (never write to the real quota dir), any other script.
-Proof: Before the change (no `.next.py` yet, the test resolving the live script): `npm run pretest && node scripts/run-tests.cjs .test-build/src/lib/server/usage/quotaLog.test.js` FAILS on the missing `fiveHourResetsAt` and on the duplicate row. After: the same command passes all three cases. `git -C /home/col/SAM_ui status --short` unchanged; `diff /home/col/bin/sam-quota-log.py /home/col/bin/sam-quota-log.next.py` shows only the intended lines; `ls ~/.sam/quota` shows no new file.
+Proof: Before the change (no `.next.py` yet, the test resolving the live script): `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/usage/quotaLog.test.js` FAILS on the missing `fiveHourResetsAt` and on the duplicate row. After: the same command passes all three cases. `git -C /home/col/SAM_ui status --short` unchanged; `diff /home/col/bin/sam-quota-log.py /home/col/bin/sam-quota-log.next.py` shows only the intended lines; `ls ~/.sam/quota` shows no new file.
 
 ## T2: Usage types and the pure reading builder
 Status: TODO
@@ -56,7 +56,7 @@ Steps:
 2. `usageReadings.ts`: `export interface QuotaRow { endedAt: string | null; seat: string | null; fiveHour: number | null; sevenDay: number | null; fiveHourResetsAt?: number | null; sevenDayResetsAt?: number | null }` and `buildUsage(rows: QuotaRow[], now: number): UsagePayload` applying the "Reading rules" in this file's design block exactly. Tolerate junk rows (missing fields, bad dates): skip them, never throw.
 3. Tests (`node:test`): a current 5h and weekly reading gives pct and ISO reset; a reading whose `fiveHourResetsAt` is before `now` gives `state: 'reset'`, `pct: null`, `readAt` kept (check 2: this fails on today's code, which has no such builder); same for weekly; a legacy 5h row (no reset field) 2 h old is `unknown-reset` with its pct, 6 h old is `reset`; the newest row per window wins even when a newer row has a null value for the other window; a row with `seat: null` is ignored; a seat with no rows has both windows null; rounding (0.795 gives 80, 0.804 gives 80); junk rows ignored.
 Do not touch: `sam-quota-log` files, any widget, the dashboard store.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/lib/server/usage/usageReadings.test.js` passes; the 'reset' test has no counterpart on `789589e` (no `buildUsage` exists there, so the file cannot compile), which is the before-fail. `npm run typecheck` clean.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/usage/usageReadings.test.js` passes; the 'reset' test has no counterpart on `789589e` (no `buildUsage` exists there, so the file cannot compile), which is the before-fail. `npm run typecheck` clean.
 
 ## T3: Read the quota runs and serve them (no probes)
 Status: TODO
@@ -72,7 +72,7 @@ Steps:
 4. Tests, with `HOME` set to a temp dir and a fixture `~/.sam/quota/runs.jsonl`: the route returns both seats with the right pct and reset; a missing file returns two seats with null windows; HOME override really redirects (write to a second temp HOME, see different data); check 3: `mock.method` on `child_process.spawn`, `exec`, `execFile`, `fork` and on `globalThis.fetch` (and `http`/`https` `request`), call the route's `GET` 20 times (20 polls is 10 minutes at the 30 s poll interval), assert none of them was called and that `~/.sam/jobs` in the temp HOME still does not exist or is empty.
 5. Also grep proof in your report: `grep -rn "child_process\|fetch(\|anthropic\|claude" src/lib/server/usage src/app/api/dashboard/usage` shows no match in non-test files.
 Do not touch: other dashboard routes, `src/lib/server/telemetry.ts`, the quota files under `~/.sam`.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/lib/server/usage/usageRuns.test.js` passes (all cases, including the 20-poll no-probe case); the grep returns nothing; `npm run typecheck` clean. Before: no route exists, `curl` of the path on `789589e` (or the test file failing to compile) is the fail.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/usage/usageRuns.test.js` passes (all cases, including the 20-poll no-probe case); the grep returns nothing; `npm run typecheck` clean. Before: no route exists, `curl` of the path on `789589e` (or the test file failing to compile) is the fail.
 
 ## T4: Dashboard service and store slice for usage
 Status: TODO
@@ -87,7 +87,7 @@ Steps:
 3. Add the `usage` slice everywhere `money` appears in `dashboardStore.ts` (type, `emptySlice`, `SliceKey`, intervals, `refresh` switch, `bootstrap` keys, the polling loop picks it up from `POLL_INTERVALS`).
 4. Test `parseUsage`: a good payload round-trips; garbage (null, a string, seats with wrong types) yields two seats with null windows and does not throw.
 Do not touch: other slices' behaviour or intervals, the system 4 s poll, any widget.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/lib/usageParse.test.js` passes; `npm run typecheck` clean (the `Record<SliceKey, number>` forces every spot). `npm test` unchanged counts plus the new tests.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/usageParse.test.js` passes; `npm run typecheck` clean (the `Record<SliceKey, number>` forces every spot). `npm test` unchanged counts plus the new tests.
 
 ## T5: Usage formatting helpers
 Status: TODO
@@ -102,7 +102,7 @@ Steps:
 3. `windowLine(w: UsageWindow | null, now: number): { text: string; sub: string; tone: 'ok' | 'warn' | 'high' | 'reset' | 'none' }`: `current` gives `text` "12%", `sub` the reset words; tone `warn` from 60 to 79, `high` from 80; `reset` gives `text` "reset" and `sub` "not checked since 14:05" (time of `readAt`, with the day name if not today), no percent anywhere in either string (U2); `unknown-reset` gives the pct and "reset time not recorded"; null gives "no reading yet".
 4. Tests for each branch, including the U2 case (a `reset` window's `text` and `sub` contain no digits followed by `%`), run with an explicit `now` and a fixed time zone so they do not depend on the machine's zone.
 Do not touch: the widget component, the store.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/components/dashboard/widgets/usageFormat.test.js` passes; `npm run typecheck` clean.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/dashboard/widgets/usageFormat.test.js` passes; `npm run typecheck` clean.
 
 ## T6: The Usage limits widget component
 Status: TODO
@@ -145,7 +145,7 @@ Steps:
 2. Map it in `TILE_WIDGETS` to `UsageLimitsWidget`; check `titleOf` resolves its registry title.
 3. Update `tileLayout.test.ts` (default ids now four; tests that rely on 'money-in' being last, or on hide/move positions, must be kept correct, not weakened); add a case: a persisted layout of the old three reconciles to four with `usage-limits` last.
 Do not touch: the three existing tiles' behaviour, order of existing defaults, the drag and menu code, `FleetPhoneView.tsx`.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/components/dashboard/fleet/tileLayout.test.js` passes (the four-tile and old-three-reconcile cases fail on `789589e`); `npm run typecheck`, `npm run lint`, `npm test` pass.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/dashboard/fleet/tileLayout.test.js` passes (the four-tile and old-three-reconcile cases fail on `789589e`); `npm run typecheck`, `npm run lint`, `npm test` pass.
 
 ## T9: Alert decision logic (80%, once per window)
 Status: TODO
@@ -159,7 +159,7 @@ Steps:
 2. `decideAlerts(usage: UsagePayload, state: AlertState, now: number): { pings: UsagePing[]; next: AlertState }`. Threshold uses the rounded pct (0.80 gives 80, fires; 0.79 gives 79, does not). Skip `reset` and `unknown-reset` windows and null windows. `body` names the seat, the percent and the reset time using `formatReset` style wording from T5 (import it, do not duplicate), for example "main seat: 5-hour limit at 82%, resets 18:40". `title` "SAM usage". `tag` `usage-<seat>-<fiveHour|sevenDay>`.
 3. Tests: check 4: a 5-hour pct of 0.80 gives exactly one ping naming seat, percent and reset; 0.79 gives none. Check 5: the same for weekly (0.80 one, 0.79 none). Check 21: feed `decideAlerts` three readings over 0.80 in one window threading `next` back in (one ping total), then a reading with a new reset epoch over 0.80 (second ping): exactly two pings overall, for 5-hour and again for weekly. A seat at 5-hour 85 and weekly 81 gives two pings in one call. An expired window never pings. Two seats are independent.
 Do not touch: the reader, the route, any push code (T10).
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/lib/server/usage/usageAlerts.test.js` passes; no `usageAlerts` exists on `789589e`, so every case fails before. `npm run typecheck` clean.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/usage/usageAlerts.test.js` passes; no `usageAlerts` exists on `789589e`, so every case fails before. `npm run typecheck` clean.
 
 ## T10: Alert runner: state file and the push
 Status: TODO
@@ -173,7 +173,7 @@ Steps:
 2. `runUsageAlerts`: serialise calls with an in-process promise chain (two chat turns ending together must not double-ping); `getUsage(now)` (T3), load state (missing or corrupt file means `{}`), `decideAlerts`, send each ping with a 10 s timeout, record into state only the pings whose push exited 0, write state, return the sent pings. `--url "/"` (the dashboard) on every ping.
 3. Tests with a temp `HOME`, a fixture `runs.jsonl`, and `SAM_PUSH_BIN` pointing at a tiny executable script that appends its args to a file: check 4, a 5-hour 0.80 reading sends exactly one push whose args contain the seat, `80%` and the reset time; 0.79 sends none. Check 5, same for weekly. Check 21, call `runUsageAlerts` four times as the fixture is edited (three over-0.80 readings in one window, then one after the reset with a new reset epoch): exactly two pushes in the file; same for weekly. A push command that exits 1 leaves the state unmarked, so the next call retries. A corrupt `alerts.json` does not throw. Two concurrent calls send one push.
 Do not touch: `turnPing.ts` (import `pushBin` from it, do not copy it), `sam-push`, the notifications code.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/lib/server/usage/usageAlertRunner.test.js` passes (fails before: no runner exists); `npm run typecheck` clean; `ls` of the real `~/.sam/quota` shows no `alerts.json` created by the tests.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/usage/usageAlertRunner.test.js` passes (fails before: no runner exists); `npm run typecheck` clean; `ls` of the real `~/.sam/quota` shows no `alerts.json` created by the tests.
 
 ## T11: Collect and alert at the end of every chat turn (U9)
 Status: TODO
@@ -188,7 +188,7 @@ Steps:
 3. Test (check 22), box-only, temp `HOME`: a fake finished job in `~/.sam/jobs/<id>/` (`meta.json` with `endedAt` = now, a framed `stdout.log` whose `rate_limit_event` has `five_hour: {utilization: 0.81, resetsAt: <now + 2 h in epoch s>}`), a session transcript file under `~/.claude/projects/x/<session>.jsonl` so the seat resolves to `main`, `SAM_QUOTA_LOG_BIN` set to the staged-or-live harvester that carries `fiveHourResetsAt` (the `.next.py` from T1; the test must name which one it ran), `SAM_PUSH_BIN` a recording script. Call `collectUsage()` with no timer involved and assert: one push recorded, its body names `main`, `81%` and the reset time, and the elapsed time from the job's `endedAt` to the recorded push is under 300 s (in practice seconds). Second call (a later turn at 0.82, same window): still one push in total (U8). A harvester that fails or a missing binary does not throw.
 4. Show the hook is wired: a unit test (or an assertion in the same file) that `onTurnExit` includes the collect hook after import of `startTurn`.
 Do not touch: `~/.sam/jobs-watch.sh`, `sam-jobs-watch.timer`, `run.sh`, `sam-job`, the hourly quota timer, `pingOffScreenChat`, the title hook, the chat lock logic.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/lib/server/usage/usageCollect.test.js` passes (fails on `789589e`: no hook, no module); `npm test` all pass; `grep -n "collectUsage" src/lib/server/chat/startTurn.ts` shows the single registration; no file created under the real `~/.sam`.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/usage/usageCollect.test.js` passes (fails on `789589e`: no hook, no module); `npm test` all pass; `grep -n "collectUsage" src/lib/server/chat/startTurn.ts` shows the single registration; no file created under the real `~/.sam`.
 
 ---
 
@@ -206,7 +206,7 @@ Steps:
 4. The test recomputes each hash and `assert.equal`s it. Print the failing size name in the message.
 5. Show it can fail: temporarily change `DESKTOP_OPTIONS.spacing` by 1 in `floorRender.ts`, run the test, see it fail on the desktop sizes, then revert (report both outputs; `git diff --stat` must show `floorRender.ts` clean at the end).
 Do not touch: `floorRender.ts` (except the temporary mutation, reverted), `PHONE_OPTIONS`, any existing test.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/components/floor/floorGolden.test.js` passes on base; passes again after the mutation is reverted; fails during the mutation (output pasted). `git diff --stat` lists only the new test file.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/floorGolden.test.js` passes on base; passes again after the mutation is reverted; fails during the mutation (output pasted). `git diff --stat` lists only the new test file.
 
 ## T13: Per-General row offset in the scene (no visible change)
 Status: TODO
@@ -221,7 +221,7 @@ Steps:
 3. `phoneLabels`: the label `y` per General uses `layout.GV[st.id] + layout.cardTop`.
 4. New test in `floorRender.test.ts`: take `computeLayout(1100, 640, DESKTOP_OPTIONS)`, copy it with `GV.hephaestus = 120` (others 0), build the scene, and assert that hephaestus's platform, bust slot, card, pads and figures all moved down by `120 * view.cam.k` canvas px against the zero-offset scene, that every other General is unchanged to 1e-9, and that its `samLink` end point moved by 120 in v. Fails before: `GV` does not exist (compile error, then no movement).
 Do not touch: `camFor`, `hitGeneral`, `computeLayout`'s fitting maths, `PHONE_OPTIONS`, `figureHit.ts`, `FloorCanvas.tsx`, `ringRender.ts`.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/components/floor/floorGolden.test.js .test-build/src/components/floor/floorRender.test.js .test-build/src/components/floor/ringRender.test.js` all pass (golden unchanged is check 18's guard; the new GV test fails on base). `npm run typecheck`, `npm run lint`, `npm test` pass with the same counts plus the new test.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/floorGolden.test.js .test-build/components/floor/floorRender.test.js .test-build/components/floor/ringRender.test.js` all pass (golden unchanged is check 18's guard; the new GV test fails on base). `npm run typecheck`, `npm run lint`, `npm test` pass with the same counts plus the new test.
 
 ## T14: Pyramid layout and the geometry helpers (opt-in)
 Status: TODO
@@ -237,7 +237,7 @@ Steps:
 4. `phonePyramid.test.ts`, using `PHONE_PYRAMID_OPTIONS` and fixtures at 360x780, 390x844, 412x915, and 390x371: rows (P1: top row's stations are cerberus and prometheus, strictly above hermes, hephaestus, calliope; each row centred on the canvas); P2 (at 412x915 each bust height is at least 57.5 px, `layout.samK` between 0.6 and 2.5 at all sizes); P7 (check 14: every platform polygon and label box is at least 16 px inside the canvas edges at 360, 390, 412 and at 390x371); P9 (at 390x371 both rows and SAM are present and `samK` is between 0.6 and 2.5, no General box overlaps another, the SAM tag or the 12 numeral).
 5. Existing `ringRender.test.ts` phone cases keep using `PHONE_OPTIONS` and must still pass untouched.
 Do not touch: `PHONE_OPTIONS` itself, desktop and laptop option sets, `FloorCanvas.tsx`, the existing phone tests.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/components/floor/phonePyramid.test.js .test-build/src/components/floor/floorGolden.test.js` passes (the pyramid tests fail on base: no `pyramid` option); `npm test` all pass, same counts plus new. Report the measured bust px, `samK`, and the smallest platform margin at each of the four sizes.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/phonePyramid.test.js .test-build/components/floor/floorGolden.test.js` passes (the pyramid tests fail on base: no `pyramid` option); `npm test` all pass, same counts plus new. Report the measured bust px, `samK`, and the smallest platform margin at each of the four sizes.
 
 ## T15: SAM links never pass through another General (P3)
 Status: TODO
@@ -251,7 +251,7 @@ Steps:
 2. Test (check 10): sample each curve at 80 points (`bez`) at 360, 390, 412 wide (full height) and at 390x371; for every General's link, no sample lies inside another General's platform polygon, bust box or label box, nor inside the SAM tag or 12 numeral box (`phoneGeometry.ts`), with a 3 px margin. Also assert the link's end point is inside its own platform's bounds. Also run the same assertion on the lit links in a scene where all five Generals are busy (`litLinks`).
 3. Fails before: with the mockup-style or today's curve, the centre link crosses a top-row label or bust (confirm by running the test first against the unmodified `samLink`).
 Do not touch: `wkLink`, desktop curve code path, `PHONE_OPTIONS`.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/components/floor/phonePyramid.test.js .test-build/src/components/floor/floorGolden.test.js` passes; paste the failing output of the new link test before the `samLink` change.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/phonePyramid.test.js .test-build/components/floor/floorGolden.test.js` passes; paste the failing output of the new link test before the `samLink` change.
 
 ## T16: Camera framing for a tapped General, either row (P5)
 Status: TODO
@@ -265,7 +265,7 @@ Steps:
 2. Test (check 12): for each of the five Generals, with `PHONE_PYRAMID_OPTIONS` at 360x780, 390x844, 412x915, build the scene with `cam: camFor(layout, id)` and assert the General's platform polygon, bust box and label box lie fully inside `[0, W] x [0, H]`, and that the camera zoom `k` is larger than the home `s` (it actually zooms). Fails before: the bottom-row Generals are framed off-centre or clipped.
 3. Check `lerpCam` between home and each General still gives sane in-between frames (no NaN).
 Do not touch: `lerpCam`, desktop `zoom` options, `FloorCanvas.tsx`'s animation code.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/components/floor/phonePyramid.test.js .test-build/src/components/floor/floorGolden.test.js` passes; the new framing test fails on the pre-change `camFor` (paste it).
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/phonePyramid.test.js .test-build/components/floor/floorGolden.test.js` passes; the new framing test fails on the pre-change `camFor` (paste it).
 
 ## T17: Tap areas per row that never overlap (P4)
 Status: TODO
@@ -278,7 +278,7 @@ Steps:
 1. For `GV` rows, a General's area is its column x-range and a y-range that starts above its bust top and ends at the top of the NEXT row's bust area (for the last row, its foot). No two Generals' areas may intersect. `hitAreas` returns the rectangles so the test can check disjointness directly.
 2. Test (check 11): at 360, 390, 412 wide, with an idle fixture (no figures): a 12 by 12 grid over each General's platform polygon, bust box and label box (from `phoneGeometry.ts`) returns that General through `hitGeneral`, and never another; the `hitAreas` rectangles are pairwise disjoint; points outside every area (the SAM ring, the canvas corners) return null. Fails before: top-row labels and bottom-row busts return the wrong General.
 Do not touch: `hitFigure`, `pickAt`, `figureHit.ts`, `FloorCanvas.tsx`, the desktop hit rectangle.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/components/floor/phonePyramid.test.js .test-build/src/components/floor/floorRender.test.js .test-build/src/components/floor/figureHit.test.js .test-build/src/components/floor/floorGolden.test.js` all pass; the new grid test fails on the old `hitGeneral` (paste it).
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/phonePyramid.test.js .test-build/components/floor/floorRender.test.js .test-build/components/floor/figureHit.test.js .test-build/components/floor/floorGolden.test.js` all pass; the new grid test fails on the old `hitGeneral` (paste it).
 
 ## T18: Labels, SAM tag and the 12 numeral never overlap (P6)
 Status: TODO
@@ -291,7 +291,7 @@ Steps:
 1. Add the test first (check 13): at 360x780, 390x844, 412x915 and 390x371, using the `phoneGeometry.ts` boxes, assert no overlap (with a 2 px margin) between any two of: the SAM tag box, the 12 numeral box, the five name-and-state label boxes; and no label box overlaps any General's platform polygon or bust box (a General's own label sits below its own platform by design: allow only the label's own platform edge touching, say so in the test); and the tag and numeral clear every bust by at least 4 px. Run it, paste the failures if any.
 2. Fix whatever it finds (label y from `GV`, the tag's x/y, or the SAM-size loop's clearance constant). If the layout from T14 already passes, say so; the test still ships as the guard and its before-fail is that the helper boxes for the bottom row did not exist on base (compile error).
 Do not touch: ring drawing in `ringRender.ts` (SAM's ring and clock), the desktop `SamLabel`, label fonts under 11 px.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/components/floor/phonePyramid.test.js .test-build/src/components/floor/ringRender.test.js .test-build/src/components/floor/floorGolden.test.js` passes. Report the smallest gap found between any two boxes at each size.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/phonePyramid.test.js .test-build/components/floor/ringRender.test.js .test-build/components/floor/floorGolden.test.js` passes. Report the smallest gap found between any two boxes at each size.
 
 ## T19: Worker figures and job pads on both rows (P8)
 Status: TODO
@@ -305,7 +305,7 @@ Steps:
 2. Fix the pyramid layout's row step and foot reservation (T14's constants) until the test passes. If at the short 390x371 hero the clearance cannot hold even at `samK` 0.6, exempt that one size from the figure-square clearance only (state it in a comment and in your report); the pads still must stay inside the canvas there, and both rows and SAM remain visible (P9).
 3. Re-run T14's P7 and P9 cases and T18's overlap case: they must still pass with the larger reservation.
 Do not touch: `figureHit.ts` and its 44 px size (floor-fixes Must 17, 18), figure drawing in `FloorCanvas.tsx`, desktop pad spacing.
-Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/src/components/floor/phonePyramid.test.js .test-build/src/components/floor/figureHit.test.js .test-build/src/components/floor/floorGolden.test.js` passes; the new figure test fails against T14's reservation (paste it before the fix); `npm test` all pass.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/phonePyramid.test.js .test-build/components/floor/figureHit.test.js .test-build/components/floor/floorGolden.test.js` passes; the new figure test fails against T14's reservation (paste it before the fix); `npm test` all pass.
 
 ## T20: Switch the pyramid on for the phone and update the phone tests
 Status: TODO
@@ -374,12 +374,12 @@ Proof: `bash run-proof.sh before t22-pyramid.mjs` shows the expected FAIL lines;
 ## T24: Whole-build gate (checks 7, 18, 19)
 Status: TODO
 Spec: whole; checks #7, #18, #19 (and a recount of #3 to #6, #17 to #22 against the coverage table)
-Depends on: T1 to T11, T22, T23 (all build tickets)
+Depends on: T1 to T23, T26, T27 (all build tickets)
 Blocked by: none
 Context: Final regression run on `build/usage-pyramid`. No feature work here: if anything fails, report it, do not fix it (the foreman re-tickets).
 Files: new files only in `/home/col/delivery/ux-audits/usage-pyramid-proofs/` (`t23-ux.mjs`, `results/summary.md`); no repo files.
 Steps:
-1. Check 18: run `.test-build/src/components/floor/floorGolden.test.js` (six desktop and laptop sizes, both motion modes, every General's zoom, hit-test grid) and confirm `git diff 789589e -- src/components/floor/floorGolden.test.ts` is empty (the golden values were never edited) and `git diff 789589e --stat -- src/components/floor/floorRender.ts` touches only phone and pyramid code (read the diff; list any hunk outside them).
+1. Check 18: run `.test-build/components/floor/floorGolden.test.js` (six desktop and laptop sizes, both motion modes, every General's zoom, hit-test grid) and confirm `git diff 789589e -- src/components/floor/floorGolden.test.ts` is empty (the golden values were never edited) and `git diff 789589e --stat -- src/components/floor/floorRender.ts` touches only phone and pyramid code (read the diff; list any hunk outside them).
 2. Check 7: the UX gate rules, as the floor-fixes run did (the `ux-gate.sh` pipeline cannot log in, so use the rig): `t23-ux.mjs` runs axe (serious and critical zero), tap targets 44x44, text 12 px or larger, and contrast (model it on `/home/col/delivery/ux-audits/floor-fixes-proofs/t10-contrast.mjs`) on the fleet page with the usage tile at 412x915 and 1440x900, and on the phone floor at 412x915, 390x844 and 360x780; BEFORE and AFTER, record both.
 3. Check 19: `npm run typecheck` (0 errors), `npm run lint` (0 errors; compare the warning count with the baseline from your first report), `npm test` (all pass, record counts), `npx next build` (clean). Run the `sideMessage` flake once more if it appears.
 4. `/api/health` ok on the AFTER build through the harness; `ss -ltn | grep -E ':49(5[01])'` empty afterwards; `git -C /home/col/SAM_ui status --short` and HEAD unchanged from what the foreman supplies; no new file under real `~/.sam/quota` or `~/.sam/jobs` made by any test.
@@ -389,19 +389,51 @@ Proof: `results/summary.md` has all 22 rows filled, zero gaps, check 20 marked C
 
 ## T25: Install the staged system script (deploy time, Colin's go required)
 Status: TODO
-Spec: must-do #U6, check #6 (live), #22 (live)
-Depends on: T1, T24
+Spec: must-do #U6, #U9, check #6 (live), #22 (live)
+Depends on: T1, T24, T26
 Blocked by: Colin's go to deploy (the foreman runs this ticket together with the deploy, never earlier)
-Context: SYSTEM CHANGE to `~/bin`. `/home/col/bin/sam-quota-log.next.py` (T1) becomes the live `sam-quota-log.py`. Nothing else changes: no unit, no timer, no `run.sh` or `jobs-watch.sh` edit (see the design block for why `onTurnExit` is the hook). Colin's rule: no change without enforcement, so this ticket ships a check that fails before the install and passes after.
-Files: /home/col/bin/sam-quota-log.py (replace), /home/col/bin/sam-quota-log.py.bak-20261005-usage (new backup of the old file), /home/col/bin/sam-quota-log.next.py (remove after install)
+Context: SYSTEM CHANGE to `~/bin` and `~/.local/bin`. `/home/col/bin/sam-quota-log.next.py` (T1, T26) becomes the live `sam-quota-log.py`, and `/home/col/.local/bin/sam-dispatch.next` (T26) becomes the live `sam-dispatch`, each with a dated `.bak`. Install the harvester FIRST (the new `sam-dispatch` calls its `--job` mode). Nothing else changes: no unit, no timer, no `run.sh` or `jobs-watch.sh` edit. For `sam-dispatch`, repeat steps 1 to 3 with T26's `fleetUsage.test.ts` pinned via `SAM_DISPATCH_BIN` (fails before, passes after) and `bash ~/.sam/tests/test-dispatch-routing.sh` (passes after); backup name `sam-dispatch.bak-20261005-usage`. Colin's rule: no change without enforcement, so this ticket ships a check that fails before the install and passes after.
+Files: /home/col/bin/sam-quota-log.py (replace), /home/col/bin/sam-quota-log.py.bak-20261005-usage (new backup), /home/col/bin/sam-quota-log.next.py (remove after install), /home/col/.local/bin/sam-dispatch (replace), /home/col/.local/bin/sam-dispatch.bak-20261005-usage (new backup), /home/col/.local/bin/sam-dispatch.next (remove after install)
 Steps:
-1. Enforcement check, BEFORE install: run T1's `quotaLog.test.ts` pinned to the live script, `SAM_QUOTA_LOG_BIN=/home/col/bin/sam-quota-log.py npm run pretest && SAM_QUOTA_LOG_BIN=/home/col/bin/sam-quota-log.py node scripts/run-tests.cjs .test-build/src/lib/server/usage/quotaLog.test.js`: it must FAIL (the live script lacks `fiveHourResetsAt` and the lock). Also `grep -c fiveHourResetsAt /home/col/bin/sam-quota-log.py` prints 0. Paste both.
+1. Enforcement check, BEFORE install: run T1's `quotaLog.test.ts` pinned to the live script, `SAM_QUOTA_LOG_BIN=/home/col/bin/sam-quota-log.py npm run pretest && SAM_QUOTA_LOG_BIN=/home/col/bin/sam-quota-log.py node scripts/run-tests.cjs .test-build/lib/server/usage/quotaLog.test.js`: it must FAIL (the live script lacks `fiveHourResetsAt` and the lock). Also `grep -c fiveHourResetsAt /home/col/bin/sam-quota-log.py` prints 0. Paste both.
 2. `cp -p /home/col/bin/sam-quota-log.py /home/col/bin/sam-quota-log.py.bak-20261005-usage`; `cp -p /home/col/bin/sam-quota-log.next.py /home/col/bin/sam-quota-log.py`; `rm /home/col/bin/sam-quota-log.next.py`. Do not touch the timer or service (`systemctl --user cat sam-quota-log.service` still points at the same path).
 3. AFTER install: the same pinned test passes; `grep -c fiveHourResetsAt /home/col/bin/sam-quota-log.py` is at least 1; `python3 /home/col/bin/sam-quota-log.py --report 1` still prints a summary (the report path is unchanged).
 4. Live smoke without writing to the real store: run the live script with a temp `HOME` holding a copy of one real recent job dir (T1's second case does exactly this); the row carries `fiveHourResetsAt`. Then, on the first real chat turn after deploy, record that the newest row in `~/.sam/quota/runs.jsonl` carries `fiveHourResetsAt` equal to that turn's `rate_limit_event` `five_hour.resetsAt` (check 6 on a live run; non-blocking if no turn has run yet, note it for Colin).
 5. Rollback note in the report: `cp -p /home/col/bin/sam-quota-log.py.bak-20261005-usage /home/col/bin/sam-quota-log.py` restores the old harvester.
 Do not touch: `sam-quota-log.timer`, `sam-quota-log.service`, `~/.sam/jobs-watch.sh`, `~/.sam/sam-job/run.sh`, `~/.local/bin/sam-job`, the real `~/.sam/quota/runs.jsonl` (the harvester appends to it on its own schedule, this ticket does not).
 Proof: the pinned `quotaLog.test.js` FAILS before step 2 and PASSES after; `ls /home/col/bin | grep sam-quota-log` shows the live file and the dated `.bak` only; `systemctl --user is-active sam-quota-log.timer` still prints active.
+
+
+## T26: Fleet jobs record their usage (sam-dispatch streams, harvest at job end)
+Status: TODO
+Spec: must-do #U9, #U6, check #22 (fleet half), #6
+Depends on: T1
+Blocked by: none
+Context: Added 2026-10-05 on Colin's go. Fleet jobs run `claude -p ... --output-format text` (`/home/col/.local/bin/sam-dispatch`, the `bash -c` line near the end), so they emit no `rate_limit_event` and the tile never sees fleet usage: in `runs.jsonl` there are 1,123 chat rows and 2 fleet rows. Fix: the fleet command streams JSON to a side file in the job dir and prints only the final result text to stdout, so `stdout.log`, the sam-job notify ping and everything that reads a job's report stay exactly as they are today. SYSTEM CHANGE to `~/.local/bin` and `~/bin`: staged only, installed by T25.
+TRAP, read first: `/home/col/.local/bin/sam-dispatch.next` already exists and is STALE. Verified 2026-10-05: it adds nothing over the live file and lacks the live 2026-10-04 tidiness fix (`trap 'rm -f "$WORKBRIEF"' EXIT` and the `B=$(cat $WB) && rm -f $WB` launch), so installing it would revert that fix. Start this ticket by replacing it with a fresh `cp -p` of the live `sam-dispatch`, then make the change there.
+Files: /home/col/.local/bin/sam-dispatch.next (replace with a fresh copy of live, then edit), /home/col/bin/sam-quota-log.next.py (edit, T1's staged copy), src/lib/server/usage/fleetUsage.test.ts (new, box-only)
+Steps:
+1. `cp -p /home/col/.local/bin/sam-dispatch /home/col/.local/bin/sam-dispatch.next` (overwrites the stale copy; say so in the report with the before diff).
+2. In `sam-dispatch.next`, change only the launch line's claude call: `claude -p "$B" --model ... --allowedTools ... --output-format stream-json --verbose`, with its stdout `tee`d to `"$SAM_JOB_DIR/claude-stream.jsonl"` (`run.sh` exports `SAM_JOB_DIR` to the command) and piped through `jq -r --unbuffered 'select(.type=="result") | .result // empty'` so stdout carries only the final text, as text mode did. Keep `set -o pipefail` semantics: the command exits with claude's own exit code (use `PIPESTATUS`). After claude exits, run `python3 /home/col/bin/sam-quota-log.py --job "$SAM_JOB_DIR"` with a 60 s timeout, output discarded, failure ignored, so the reading lands at job end. Keep the tidiness fix, the EXIT trap and every other line byte-identical.
+3. In `sam-quota-log.next.py`: (a) a `--job <dir>` mode that harvests that one job now, without waiting for `endedAt` (use the time of the stream's `result` event, else now, as `endedAt`), under the same flock and `seen` check as T1, so the hourly run later skips it; (b) the normal hourly mode also reads `claude-stream.jsonl` (plain JSON lines, not the framed `stdout.log` format) when a job dir has one. Both take `five_hour.resetsAt` into `fiveHourResetsAt` as T1 does. Seat resolution is unchanged (the transcript lands under `~/.claude` or `~/.claude-max2` by `CLAUDE_CONFIG_DIR`).
+4. `fleetUsage.test.ts` (box-only, temp `HOME`, staged-or-live resolution as T1, with `SAM_DISPATCH_BIN` and `SAM_QUOTA_LOG_BIN` overrides so T25 can pin live paths): put a fake `claude` first on `PATH` that prints a canned stream (`system` init, one `rate_limit_event` with `five_hour {utilization: 0.81, resetsAt: <now + 2 h>}` and `seven_day`, one `assistant` message, a `result` with `result: "REPORT TEXT"`) and exits with a chosen code; run the dispatch through its `SAM_JOB_BIN` seam into a temp job store (see `~/.sam/tests/test-dispatch-routing.sh` for the seams). Assert: (a) `stdout.log` is exactly `REPORT TEXT` plus the notify line, no JSON; (b) `claude-stream.jsonl` holds the raw lines; (c) exit codes 0 and 3 both propagate; (d) one `runs.jsonl` row for that job with `fiveHour` 0.81 and the right `fiveHourResetsAt`, written before the job's `ended` event; (e) a second, hourly-mode harvest adds no duplicate; (f) the brief's working copy is gone from `/tmp` afterwards (the tidiness fix survived).
+5. Run `bash ~/.sam/tests/test-dispatch-routing.sh` against the staged file (its seam or a copy) and show it still passes.
+Do not touch: the live `sam-dispatch`, `sam-job`, `sam-job.next`, `run.sh`, `jobs-watch.sh`, any unit or timer, the real job store or `~/.sam/quota`, the tier and routing table in `sam-dispatch`.
+Proof: `fleetUsage.test.js` pinned to the LIVE `sam-dispatch` FAILS (text mode: no stream file, no row); against the staged `.next` it PASSES all six assertions; `test-dispatch-routing.sh` passes against the staged file; `diff` of live against `.next` shows only the launch-line change (paste it); `ls /tmp` shows no leaked brief.
+
+## T27: The server checks for alerts every minute, whatever wrote the reading
+Status: TODO
+Spec: must-do #U4, #U5, #U8, #U9, #U3, checks #4, #5, #21, #22 (fleet half), #3
+Depends on: T10, T26
+Blocked by: none
+Context: Added 2026-10-05 with T26. T11 runs the alerts when a SAM_ui chat turn ends, but a reading written by a fleet job (T26) or the hourly timer has no hook in SAM_ui. A light sweep inside the SAM_ui server calls `runUsageAlerts()` every 60 s, so any new row pings within a minute, with or without the dashboard open. It reads the mtime-cached rows (T3) and sends only through `sam-push`: no Claude run, no probe, no network (U3). `runUsageAlerts` already serialises and records state, so the sweep and the T11 hook can never double-ping.
+Files: src/instrumentation.ts (edit: start the sweep once on server start, read how the file starts other server work and match it; `src/lib/server/serialTick.ts` may be the right helper), src/lib/server/usage/usageSweep.ts (new: `startUsageSweep(intervalMs = 60_000)`, idempotent, unref'd timer), src/lib/server/usage/usageSweep.test.ts (new)
+Steps:
+1. `usageSweep.ts`: a single unref'd interval that calls `runUsageAlerts()`, swallows errors, never overlaps itself, and returns a stop function for tests. Calling `startUsageSweep` twice starts one timer.
+2. Wire it in `instrumentation.ts` for the Node.js server runtime only, the way the file already guards its other start-up work, and not during `next build` or tests.
+3. Tests, temp `HOME`, recording `SAM_PUSH_BIN`, a short interval: (a) a row with 5-hour 0.81 appended to `runs.jsonl` by hand (as a fleet harvest would, no chat turn) gives exactly one push within two intervals; (b) further sweeps send nothing more in the same window (U8); (c) starting the sweep twice still gives one push; (d) during the sweep, `child_process` is used only for the push binary and `fetch` is never called (U3).
+Do not touch: T11's chat-turn hook (it stays: it is faster for chat turns), the push code, the 30 s client poll.
+Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/usage/usageSweep.test.js` passes (fails on `789589e`: no sweep exists); `npm test`, `npm run typecheck`, `npm run lint`, `npx next build` pass; on the harness AFTER build, with a seeded 0.81 row and `SAM_PUSH_BIN` pointed at a recording script for that run only, the record shows one push within 2 minutes of starting the server (paste the record).
 
 ---
 
@@ -411,8 +443,8 @@ Proof: the pinned `quotaLog.test.js` FAILS before step 2 and PASSES after; `ls /
 |---|---|---|
 | 1 | Tile in browser at 412x915 and 1440x900, screenshot (U1) | T22 (T6, T8 build it) |
 | 2 | Reset reading shows "reset, not checked since", fails on today's code (U2) | T2 (unit), T5 (wording), T22 (in the page) |
-| 3 | No Claude run or outbound call from the tile (U3) | T3 (20-poll unit test, grep), T22 (browser, 120 s) |
-| 4 | 5-hour 0.80 sends one push, 0.79 none (U4) | T9 (pure), T10 (real push command) |
+| 3 | No Claude run or outbound call from the tile (U3) | T3 (20-poll unit test, grep), T22 (browser, 120 s), T27 (the sweep makes none) |
+| 4 | 5-hour 0.80 sends one push, 0.79 none (U4) | T9 (pure), T10 (real push command), T27 (from the sweep) |
 | 5 | Weekly the same (U5) | T9, T10 |
 | 6 | Newest `runs.jsonl` row carries the five-hour reset, matching a real run (U6) | T1 (real job replayed in a temp HOME), T25 (live install and first live row) |
 | 7 | UX gate at phone and desktop sizes (U7) | T24 (axe, targets, text, contrast; T22 for the tile alone) |
@@ -430,5 +462,5 @@ Proof: the pinned `quotaLog.test.js` FAILS before step 2 and PASSES after; `ls /
 | 19 | typecheck, lint, `npm test`, `next build` | every ticket (typecheck, lint, test), T24 (all four, `next build`) |
 | 20 | Colin confirms on his phone after deploy (P1 to P9, U1) | Colin, after deploy (not run here) |
 | 21 | Three over-80 readings in one window then one after reset gives two pushes, 5-hour and weekly (U8) | T9 (pure), T10 (against the real push command and state file) |
-| 22 | A job ending at 0.81 pings within 5 minutes, without the hourly timer (U9) | T11 (the chat-turn exit hook runs the harvester and the alerts; unit test with the real harvester, temp HOME, recording push) |
+| 22 | A job ending at 0.81 pings within 5 minutes, without the hourly timer (U9) | T11 (chat turns: exit hook runs the harvester and the alerts), T26 (fleet jobs: stream to a side file, harvest at job end), T27 (server sweep pings within 60 s of any new row), T25 (live install) |
 
