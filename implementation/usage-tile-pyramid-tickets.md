@@ -354,7 +354,7 @@ Do not touch: the repo, the harness dir, `start.sh`, the real `~/.sam`.
 Proof: `bash run-proof.sh before t21-usage-tile.mjs` exits non-zero with checks 1 and 2 FAIL; `bash run-proof.sh after t21-usage-tile.mjs` exits 0 with all `CHECK` lines PASS and screenshots saved under `results/shots/`; no 49xx listener left; seeded quota file removed.
 
 ## T23: Browser proof: the phone pyramid
-Status: TODO
+Status: DONE 2026-10-05 (before: checks 8, 9, 12, 15, 16 FAIL (single row, bust 32.9 px) rc 1; after: all CHECK PASS rc 0, bust 58 px samK 1.15, 10 of 10 taps right, 390x371 two rows samK 0.6. Note: the zoom sheet at y 427 covers the zoomed General platform on screen, as on the floor-fixes build; Cerberus/Prometheus zoom shows SAM plinth in top 3 px strip)
 Spec: must-do #P1, #P2, #P5, #P8, #P9, checks #8, #9, #12, #15, #16
 Depends on: T20, T21
 Blocked by: none
@@ -372,7 +372,7 @@ Do not touch: the repo, harness dir, `start.sh`, desktop viewports (not part of 
 Proof: `bash run-proof.sh before t22-pyramid.mjs` shows the expected FAIL lines; `bash run-proof.sh after t22-pyramid.mjs` exits 0, every `CHECK` PASS, screenshots saved; no 49xx listener left.
 
 ## T24: Whole-build gate (checks 7, 18, 19)
-Status: TODO
+Status: DONE 2026-10-05 (results/summary.md 22 rows: 19 PASS, 2 PASS with live half at T25 (6, 22), 1 Colin (20); golden 7/7 on build and pristine 789589e; axe serious/critical 0 after; typecheck 0, lint 0 errors/6 warnings, npm test 526/524/2 skip/0 fail, next build clean)
 Spec: whole; checks #7, #18, #19 (and a recount of #3 to #6, #17 to #22 against the coverage table)
 Depends on: T1 to T23, T26, T27 (all build tickets)
 Blocked by: none
@@ -405,7 +405,7 @@ Proof: the pinned `quotaLog.test.js` FAILS before step 2 and PASSES after; `ls /
 
 
 ## T26: Fleet jobs record their usage (sam-dispatch streams, harvest at job end)
-Status: TODO
+Status: DONE 2026-10-05 (fleetUsage.test 3/3 pass on staged, 3/3 fail pinned to live; quotaLog.test 3/3; routing test 23/23 on staged copy; diff live vs .next is the launch line only; stale .next replaced; typecheck clean; npm test 524/522/2 skip/0 fail. Extra: SAM_QUOTA_LOG_BIN seam in .next; fleet rows classify as other in sam-quota-log, tile does not filter on kind)
 Spec: must-do #U9, #U6, check #22 (fleet half), #6
 Depends on: T1
 Blocked by: none
@@ -422,7 +422,7 @@ Do not touch: the live `sam-dispatch`, `sam-job`, `sam-job.next`, `run.sh`, `job
 Proof: `fleetUsage.test.js` pinned to the LIVE `sam-dispatch` FAILS (text mode: no stream file, no row); against the staged `.next` it PASSES all six assertions; `test-dispatch-routing.sh` passes against the staged file; `diff` of live against `.next` shows only the launch-line change (paste it); `ls /tmp` shows no leaked brief.
 
 ## T27: The server checks for alerts every minute, whatever wrote the reading
-Status: TODO
+Status: DONE 2026-10-05 (usageSweep.test 2/2 pass covering a-d; harness AFTER build: one push 62 s after server start, recorded; typecheck clean; lint 0 errors; next build clean; npm test 526/524/2 skip/0 fail. start.sh hardcodes SAM_PUSH_BIN so a temp copy was used for the recording run)
 Spec: must-do #U4, #U5, #U8, #U9, #U3, checks #4, #5, #21, #22 (fleet half), #3
 Depends on: T10, T26
 Blocked by: none
