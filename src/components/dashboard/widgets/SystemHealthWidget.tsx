@@ -28,6 +28,7 @@ export function SystemHealthWidget({
   dragHandleProps,
   isDragging,
   isOverlay,
+  tile,
 }: WidgetProps) {
   const slice = useDashboardStore((s) => s.system);
   const refresh = useDashboardStore((s) => s.refresh);
@@ -72,6 +73,7 @@ export function SystemHealthWidget({
       dragHandleProps={dragHandleProps}
       isDragging={isDragging}
       isOverlay={isOverlay}
+      tile={tile}
       headerRight={
         degraded.length > 0 ? (
           <Pill tone="warning">{degraded.length} degraded</Pill>

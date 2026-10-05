@@ -19,6 +19,8 @@
  */
 
 import { spawn } from 'node:child_process';
+import os from 'node:os';
+import path from 'node:path';
 
 import { readFrames } from '@/lib/server/jobs/manager';
 import { AgentStreamParser } from '@/lib/agentStream';
@@ -30,8 +32,8 @@ import type { TurnExitEvent } from './startTurn';
 /** Longest slice of the answer that goes into the push body. */
 const ANSWER_CHARS = 100;
 
-function pushBin(): string {
-  return process.env.SAM_PUSH_BIN ?? '/home/col/.local/bin/sam-push';
+export function pushBin(): string {
+  return process.env.SAM_PUSH_BIN ?? path.join(os.homedir(), '.local', 'bin', 'sam-push');
 }
 
 /**

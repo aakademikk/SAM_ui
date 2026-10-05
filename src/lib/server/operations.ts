@@ -11,7 +11,9 @@
  */
 
 import fs from 'node:fs';
+import path from 'node:path';
 
+import { atwoodDir } from '@/lib/server/livePaths';
 import type {
   Operation,
   OperationRun,
@@ -19,9 +21,8 @@ import type {
   OperationVariable,
 } from '@/types/operations';
 
-const OPERATIONS_PATH =
-  process.env.SAM_OPERATIONS_PATH ??
-  '/home/col/ai-memory-vault/02 - Atwood Systems/00_SAM_Control/Named Operations.md';
+const operationsPath = () =>
+  process.env.SAM_OPERATIONS_PATH ?? path.join(atwoodDir(), '00_SAM_Control', 'Named Operations.md');
 
 const CACHE_MS = 8_000;
 
@@ -180,7 +181,7 @@ let cached: { at: number; operations: Operation[]; available: boolean } | null =
 
 function readNow(): { operations: Operation[]; available: boolean } {
   try {
-    const text = fs.readFileSync(OPERATIONS_PATH, 'utf-8');
+    const text = fs.readFileSync(operationsPath(), 'utf-8');
     return { operations: parseOperations(text), available: true };
   } catch {
     return { operations: [], available: false };
@@ -261,7 +262,7 @@ export function setOperationVariables(
   variables: OperationVariable[],
 ): boolean {
   try {
-    const text = fs.readFileSync(OPERATIONS_PATH, 'utf-8');
+    const text = fs.readFileSync(operationsPath(), 'utf-8');
     const lines = text.split('\n');
 
     const runLogStart = lines.findIndex((l) => /^##\s+Run log\s*$/i.test(l));
@@ -305,7 +306,7 @@ export function setOperationVariables(
       lines.splice(varsStart, varsEnd - varsStart, ...block);
     }
 
-    fs.writeFileSync(OPERATIONS_PATH, lines.join('\n'), 'utf-8');
+    fs.writeFileSync(operationsPath(), lines.join('\n'), 'utf-8');
     invalidateOperationsCache();
     return true;
   } catch {
@@ -320,7 +321,7 @@ export function setOperationVariables(
  */
 export function recordRun(op: Operation, entry: string): void {
   try {
-    const text = fs.readFileSync(OPERATIONS_PATH, 'utf-8');
+    const text = fs.readFileSync(operationsPath(), 'utf-8');
     const lines = text.split('\n');
 
     const runLogStart = lines.findIndex((l) => /^##\s+Run log\s*$/i.test(l));
@@ -343,7 +344,7 @@ export function recordRun(op: Operation, entry: string): void {
     while (insertAt < lines.length && lines[insertAt].startsWith('- ')) insertAt++;
 
     lines.splice(insertAt, 0, `- ${entry}`);
-    fs.writeFileSync(OPERATIONS_PATH, lines.join('\n'), 'utf-8');
+    fs.writeFileSync(operationsPath(), lines.join('\n'), 'utf-8');
     invalidateOperationsCache();
   } catch {
     // Run-log write failures never fail the dispatch.

@@ -12,11 +12,12 @@
  */
 
 import fs from 'node:fs';
+import path from 'node:path';
 
+import { samStateDir } from '@/lib/server/livePaths';
 import type { DailyTask } from '@/types/dashboard';
 
-const STATE_DIR = '/home/col/.sam';
-const STATE_PATH = process.env.SAM_TASK_STATE_PATH ?? `${STATE_DIR}/daily-tasks-state.json`;
+const statePath = () => process.env.SAM_TASK_STATE_PATH ?? path.join(samStateDir(), 'daily-tasks-state.json');
 
 interface CompletionEvent {
   id: string;
@@ -31,7 +32,7 @@ interface TaskStateFile {
 
 function load(): TaskStateFile {
   try {
-    const raw: unknown = JSON.parse(fs.readFileSync(STATE_PATH, 'utf-8'));
+    const raw: unknown = JSON.parse(fs.readFileSync(statePath(), 'utf-8'));
     const r = (raw ?? {}) as Record<string, unknown>;
     const completions = Array.isArray(r.completions)
       ? (r.completions as CompletionEvent[]).filter(
@@ -49,10 +50,11 @@ const state: TaskStateFile = load();
 
 function persist() {
   try {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
-    const tmp = `${STATE_PATH}.tmp`;
+    const file = statePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = `${file}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf-8');
-    fs.renameSync(tmp, STATE_PATH);
+    fs.renameSync(tmp, file);
   } catch {
     // Persistence is best-effort — the in-memory estate still serves the request.
   }

@@ -13,11 +13,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { activePrioritiesPath, atwoodDir } from '@/lib/server/livePaths';
 import type { Project, ProjectHealth, ProjectPhase } from '@/types/dashboard';
 
-const ATWOOD_DIR = '/home/col/ai-memory-vault/02 - Atwood Systems';
-const CLIENTS_DIR = path.join(ATWOOD_DIR, '10_Clients');
-const PRIORITIES_PATH = '/home/col/ai-memory-vault/Active Priorities.md';
 const CACHE_MS = 8_000;
 
 interface ProjectMeta {
@@ -134,7 +132,7 @@ const PROJECT_META: ProjectMeta[] = [
 /* ------------------------------------------------------------------------ */
 
 function readFileIfExists(file: string): string | null {
-  const full = path.join(ATWOOD_DIR, file);
+  const full = path.join(atwoodDir(), file);
   try {
     return fs.readFileSync(full, 'utf-8');
   } catch {
@@ -166,7 +164,7 @@ function noteStatus(text: string | null): string | null {
 function prioritiesProgress(prefixes: string[]): { done: number; total: number } {
   let text: string;
   try {
-    text = fs.readFileSync(PRIORITIES_PATH, 'utf-8');
+    text = fs.readFileSync(activePrioritiesPath(), 'utf-8');
   } catch {
     return { done: 0, total: 0 };
   }
@@ -244,7 +242,7 @@ function buildProject(meta: ProjectMeta): Project {
   let lastDeploy = 0;
   for (const file of meta.files) {
     try {
-      const st = fs.statSync(path.join(ATWOOD_DIR, file));
+      const st = fs.statSync(path.join(atwoodDir(), file));
       lastDeploy = Math.max(lastDeploy, st.mtimeMs);
     } catch {
       // note missing — skip

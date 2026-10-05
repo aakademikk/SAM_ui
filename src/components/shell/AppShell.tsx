@@ -18,6 +18,7 @@ import { InstallButton } from './InstallButton';
 import { PushNotifications } from './PushNotifications';
 import { BootSequence } from './BootSequence';
 import { SignedOutOverlay } from './SignedOutOverlay';
+import { PreferencesApplier } from './PreferencesApplier';
 import { useDevDuplicateCheck } from './useDevDuplicateCheck';
 import { SamBackground } from '@/components/visualiser/SamBackground';
 import { readSidebarCollapsed, writeSidebarCollapsed } from '@/lib/sidebarCollapse';
@@ -63,6 +64,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           here, same as SamBackground/BootSequence, so every page gets it
           without each page wiring it up itself. */}
       <SignedOutOverlay />
+
+      {/* Theme, background intensity and grid onto <html> for every page
+          (floor-fixes Must 9, 24). Renders null. The inline boot script in
+          the root layout covers first paint; this keeps up with changes. */}
+      <PreferencesApplier />
 
       {/* Desktop sidebar */}
       <Sidebar collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebarCollapsed} />

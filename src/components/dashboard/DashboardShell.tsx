@@ -10,17 +10,14 @@ import { ChatVoiceWidget } from '@/components/chat/ChatVoiceWidget';
 import { AvatarReceptionist } from '@/components/avatar';
 
 /**
- * Console root. Owns the data lifecycle and pushes preference state onto the
- * document element, where the CSS layer reads it.
+ * Console root. Owns the data lifecycle. Theme, intensity and grid reach the
+ * document element through `PreferencesApplier` in `AppShell`, on every page.
  */
 export function DashboardShell() {
   const bootstrap = useDashboardStore((s) => s.bootstrap);
   const startPolling = useDashboardStore((s) => s.startPolling);
   const stopPolling = useDashboardStore((s) => s.stopPolling);
 
-  const ambientTheme = useUserPreferencesStore((s) => s.ambientTheme);
-  const backgroundIntensity = useUserPreferencesStore((s) => s.backgroundIntensity);
-  const gridOverlay = useUserPreferencesStore((s) => s.gridOverlay);
   const flushLayoutSync = useUserPreferencesStore((s) => s.flushLayoutSync);
 
   /* --- Data lifecycle ----------------------------------------------------- */
@@ -29,21 +26,6 @@ export function DashboardShell() {
     startPolling();
     return () => stopPolling();
   }, [bootstrap, startPolling, stopPolling]);
-
-  /* --- Preferences → document -------------------------------------------- */
-  useEffect(() => {
-    document.documentElement.dataset.ambient = ambientTheme;
-  }, [ambientTheme]);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty('--sam-bg-intensity', backgroundIntensity.toFixed(2));
-    // The circuit grid tracks intensity so the two layers never fight.
-    root.style.setProperty(
-      '--sam-grid-alpha',
-      gridOverlay ? (0.02 + backgroundIntensity * 0.05).toFixed(3) : '0',
-    );
-  }, [backgroundIntensity, gridOverlay]);
 
   /* --- Never lose a pending layout on unload ------------------------------ */
   useEffect(() => {
@@ -74,10 +56,10 @@ export function DashboardShell() {
           */}
 
           <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 px-1 pb-4">
-            <span className="font-mono text-[12px] tracking-[0.16em] text-slate-700 uppercase">
+            <span className="font-mono text-[12px] tracking-[0.16em] text-dim-500 uppercase">
               SAM core dashboard · atwood systems
             </span>
-            <span className="font-mono text-[12px] tracking-[0.16em] text-slate-700 uppercase">
+            <span className="font-mono text-[12px] tracking-[0.16em] text-dim-500 uppercase">
               drag any widget to reorder
             </span>
           </footer>

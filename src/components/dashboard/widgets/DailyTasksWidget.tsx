@@ -134,7 +134,7 @@ function TaskRow({ task, index, showMeta }: { task: DailyTask; index: number; sh
   );
 }
 
-export function DailyTasksWidget({ size, index, dragHandleProps, isDragging, isOverlay }: WidgetProps) {
+export function DailyTasksWidget({ size, index, dragHandleProps, isDragging, isOverlay, tile }: WidgetProps) {
   const slice = useDashboardStore((s) => s.tasks);
   const refresh = useDashboardStore((s) => s.refresh);
   const addTask = useDashboardStore((s) => s.addTask);
@@ -186,6 +186,7 @@ export function DailyTasksWidget({ size, index, dragHandleProps, isDragging, isO
       dragHandleProps={dragHandleProps}
       isDragging={isDragging}
       isOverlay={isOverlay}
+      tile={tile}
       headerRight={
         // A 1-column header cannot carry the pill, the filter and the menu
         // without eating the title. The overdue count still shows in the footer.

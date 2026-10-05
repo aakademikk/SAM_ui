@@ -43,8 +43,8 @@ export const WIDGET_SIZE_LABELS: Record<WidgetSize, string> = {
 export type AmbientTheme = 'void' | 'plasma' | 'toxic' | 'ember' | 'ghost' | 'emerald';
 
 export const AMBIENT_THEMES: { id: AmbientTheme; label: string; swatch: [string, string] }[] = [
-  { id: 'void', label: 'Void', swatch: ['#a855f7', '#22d3ee'] },
-  { id: 'plasma', label: 'Plasma', swatch: ['#c026d3', '#f472b6'] },
+  { id: 'void', label: 'Void', swatch: ['#b26bf9', '#22d3ee'] },
+  { id: 'plasma', label: 'Plasma', swatch: ['#db48ee', '#f472b6'] },
   { id: 'toxic', label: 'Toxic', swatch: ['#22d3ee', '#4ade80'] },
   { id: 'ember', label: 'Ember', swatch: ['#fb923c', '#f43f5e'] },
   { id: 'ghost', label: 'Ghost', swatch: ['#94a3b8', '#67e8f9'] },

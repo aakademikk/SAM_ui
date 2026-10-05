@@ -5,6 +5,7 @@ import { Banknote, CheckSquare, FolderKanban, Activity } from 'lucide-react';
 
 import type { WidgetKind, WidgetSize } from '@/types/dashboard';
 import type { ToneName } from '@/components/ui/Indicators';
+import type { TileControls } from '@/components/dashboard/WidgetFrame';
 
 import { ActiveProjectsWidget } from '@/components/dashboard/widgets/ActiveProjectsWidget';
 import { SystemHealthWidget } from '@/components/dashboard/widgets/SystemHealthWidget';
@@ -18,6 +19,8 @@ export interface WidgetProps {
   dragHandleProps?: Record<string, unknown>;
   isDragging?: boolean;
   isOverlay?: boolean;
+  /** Fleet tile mode (`SidebarWidgets` only); `StatCardGrid` never passes it. */
+  tile?: TileControls;
 }
 
 export interface WidgetDescriptor {

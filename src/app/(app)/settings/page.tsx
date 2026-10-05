@@ -53,7 +53,7 @@ function ThemeSection() {
               onClick={() => setTheme(t.id)}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
                 theme === t.id
-                  ? 'border-accent/50 bg-accent/10 text-accent'
+                  ? 'border-accent bg-accent/10 text-accent'
                   : 'border-void-700 bg-void-900 text-dim-300 hover:border-void-600'
               }`}
             >
@@ -77,7 +77,7 @@ function ThemeSection() {
               onClick={() => setSarcasm(level)}
               className={`inline-flex min-h-11 min-w-11 items-center justify-center px-3 py-1.5 rounded-lg border text-xs transition-colors ${
                 sarcasm === level
-                  ? 'border-accent/50 bg-accent/10 text-accent'
+                  ? 'border-accent bg-accent/10 text-accent'
                   : 'border-void-700 bg-void-900 text-dim-300 hover:border-void-600'
               }`}
             >

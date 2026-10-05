@@ -34,6 +34,7 @@ import type {
 } from '@/types/dashboard';
 import { clamp, makeRng } from '@/lib/utils';
 import { sampleHost, sampleDockerService, REAL_SERVICE_BLUEPRINTS } from '@/lib/server/hostMetrics';
+import { vaultDir } from '@/lib/server/livePaths';
 import { scanVault } from '@/lib/server/vaultMetrics';
 import { invalidateTasksCache, readTasks, setTaskDone } from '@/lib/server/taskMetrics';
 import {
@@ -50,7 +51,6 @@ import { readFleetAgents } from '@/lib/server/fleetMetrics';
 
 const SERIES_LENGTH = 60;
 const SERIES_STEP_MS = 4_000;
-const VAULT_PATH = '/home/col/ai-memory-vault';
 const DOCKER_CHECK_INTERVAL_MS = 4_000;
 
 /* ========================================================================== */
@@ -127,7 +127,7 @@ class EstateSimulator {
     this.services = REAL_SERVICE_BLUEPRINTS.map(sampleDockerService);
     this.lastDockerCheck = now;
 
-    const hostSample = sampleHost(VAULT_PATH);
+    const hostSample = sampleHost(vaultDir());
     this.cpuPct = hostSample.cpuPct;
     this.memPct = hostSample.memPct;
     this.diskPct = hostSample.diskPct;
@@ -191,7 +191,7 @@ class EstateSimulator {
     this.tick++;
 
     /* --- Host metrics (real: os() + /proc/net/dev, see hostMetrics.ts) ---- */
-    const hostSample = sampleHost(VAULT_PATH);
+    const hostSample = sampleHost(vaultDir());
     this.cpuPct = hostSample.cpuPct;
     this.memPct = hostSample.memPct;
     this.diskPct = hostSample.diskPct;

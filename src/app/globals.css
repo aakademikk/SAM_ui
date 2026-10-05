@@ -102,10 +102,10 @@
 }
 
 :root {
-  --sam-accent: #a855f7;
+  --sam-accent: #b26bf9;
   --sam-accent-2: #22d3ee;
   --sam-accent-3: #ec4899;
-  --sam-accent-rgb: 168 85 247;
+  --sam-accent-rgb: 178 107 249;
   --sam-accent-2-rgb: 34 211 238;
   --sam-accent-3-rgb: 236 72 153;
   /* Driven live by the Three.js background intensity preference. */
@@ -115,10 +115,10 @@
 }
 
 :root[data-ambient='plasma'] {
-  --sam-accent: #c026d3;
+  --sam-accent: #db48ee;
   --sam-accent-2: #a855f7;
   --sam-accent-3: #f472b6;
-  --sam-accent-rgb: 192 38 211;
+  --sam-accent-rgb: 219 72 238;
   --sam-accent-2-rgb: 168 85 247;
   --sam-accent-3-rgb: 244 114 182;
 }
@@ -183,6 +183,15 @@
   --sam-accent-rgb: 61 255 90;
   --sam-accent-2-rgb: 157 255 112;
   --sam-accent-3-rgb: 45 212 191;
+}
+
+/* The body's fixed grid overlay sits outside the shell roots, so it follows
+ * the saved accent (Must 29). While a fleet view is mounted (including the
+ * pending placeholder) it stays emerald so no ember or plasma hue shows
+ * through the fleet surface's translucent backgrounds (Must 10). */
+body:has(.fleet-dashboard)::before {
+  --sam-accent-rgb: 61 255 90;
+  --sam-accent-2-rgb: 157 255 112;
 }
 
 @layer base {

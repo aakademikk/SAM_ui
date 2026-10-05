@@ -10,7 +10,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const VAULT_PATH = '/home/col/ai-memory-vault';
+import { vaultDir } from '@/lib/server/livePaths';
+
 const IGNORED_DIRS = new Set(['.obsidian', '.git', '.trash', 'node_modules']);
 const CACHE_MS = 8_000;
 
@@ -51,7 +52,7 @@ function walk(dir: string, acc: { notes: number; bytes: number; lastMod: number 
 function scanNow(): VaultScan {
   let topLevel: fs.Dirent[];
   try {
-    topLevel = fs.readdirSync(VAULT_PATH, { withFileTypes: true });
+    topLevel = fs.readdirSync(vaultDir(), { withFileTypes: true });
   } catch {
     return { totalNotes: 0, vaultSizeMb: 0, lastModified: Date.now(), clusters: [] };
   }
@@ -63,7 +64,7 @@ function scanNow(): VaultScan {
 
   for (const entry of topLevel) {
     if (IGNORED_DIRS.has(entry.name)) continue;
-    const full = path.join(VAULT_PATH, entry.name);
+    const full = path.join(vaultDir(), entry.name);
     if (entry.isDirectory()) {
       const acc = { notes: 0, bytes: 0, lastMod: 0 };
       walk(full, acc);

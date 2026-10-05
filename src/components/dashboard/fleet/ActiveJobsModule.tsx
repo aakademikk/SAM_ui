@@ -5,9 +5,9 @@
  *
  * One row per `FloorWorker` currently queued or running, read straight off
  * the `FloorState` a parent already polls (T1/T5) — no fetch of its own, no
- * recomputation of status. Clicking a row tells the parent which job (and,
- * when the job belongs to a General rather than SAM, which General) was
- * picked; wiring that into the zoom/detail view is T11's job, not this one.
+ * recomputation of status. Clicking a row tells the parent which job was
+ * picked and nothing more (floor-fixes T12): a General opens from its statue
+ * or its Fleet status row, never from a job row.
  */
 
 import type { FloorState, FloorWorker, FloorWorkerStatus, GeneralId } from '@/types/floor';
@@ -38,7 +38,6 @@ export interface ActiveJobsModuleProps {
   state: FloorState | null;
   selectedJobId?: string | null;
   onSelectJob?: (jobId: string) => void;
-  onSelectGeneral?: (id: GeneralId) => void;
   className?: string;
 }
 
@@ -88,15 +87,9 @@ export default function ActiveJobsModule({
   state,
   selectedJobId = null,
   onSelectJob,
-  onSelectGeneral,
   className,
 }: ActiveJobsModuleProps) {
   const entries = activeJobEntries(state);
-
-  const selectRow = (entry: ActiveJobEntry) => {
-    onSelectJob?.(entry.worker.jobId);
-    if (entry.general !== 'sam') onSelectGeneral?.(entry.general);
-  };
 
   return (
     <section
@@ -127,7 +120,7 @@ export default function ActiveJobsModule({
               <li key={entry.worker.jobId}>
                 <button
                   type="button"
-                  onClick={() => selectRow(entry)}
+                  onClick={() => onSelectJob?.(entry.worker.jobId)}
                   aria-pressed={selected}
                   className="flex w-full flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left transition-colors"
                   style={{

@@ -100,7 +100,7 @@ function EntryRow({ entry, index, showSource }: { entry: MoneyEntry; index: numb
   );
 }
 
-export function MoneyInWidget({ size, index, dragHandleProps, isDragging, isOverlay }: WidgetProps) {
+export function MoneyInWidget({ size, index, dragHandleProps, isDragging, isOverlay, tile }: WidgetProps) {
   const slice = useDashboardStore((s) => s.money);
   const refresh = useDashboardStore((s) => s.refresh);
   const addMoneyEntry = useDashboardStore((s) => s.addMoneyEntry);
@@ -157,6 +157,7 @@ export function MoneyInWidget({ size, index, dragHandleProps, isDragging, isOver
       dragHandleProps={dragHandleProps}
       isDragging={isDragging}
       isOverlay={isOverlay}
+      tile={tile}
       headerRight={
         payload && payload.countThisMonth > 0 && (profile.wide || profile.large) ? (
           <Pill tone="success">{payload.countThisMonth} in</Pill>
