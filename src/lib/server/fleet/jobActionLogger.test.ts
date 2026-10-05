@@ -3,7 +3,7 @@
  * worker run, and never writes raw command text (staged, ux-fixes T6).
  *
  * Spec: must-do 5; check 4. `job-action-logger.next.sh`
- * (`/home/col/.claude/hooks/job-action-logger.next.sh`) is a staged `.next`
+ * (`scripts/hooks/job-action-logger.next.sh` in this repo) is a staged `.next`
  * hook script, not yet installed into either seat's `settings.json` — see
  * `implementation/job-action-logger.settings-snippet.json` for the paste-in
  * snippet and install note. This test invokes the staged script directly via
@@ -45,9 +45,11 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { tempDir } from '@/lib/server/testing/tempDir';
 
+// The repo copy, so a hosted runner has it too: pointing at the box-only
+// /home/col/.claude/hooks copy failed CI with exit 127 (fixed 2026-10-05).
 const SCRIPT =
   process.env.SAM_JOB_ACTION_LOGGER_UNDER_TEST ||
-  '/home/col/.claude/hooks/job-action-logger.next.sh';
+  path.join(process.cwd(), 'scripts', 'hooks', 'job-action-logger.next.sh');
 
 /** A fresh temp sandbox per case, holding only this case's events file. */
 function makeTmp(): string {

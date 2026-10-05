@@ -17,8 +17,8 @@
 # honestly. The build gate stays where it can actually be proved — ./deploy.sh
 # on the box, which now also checks /api/health's rolled-up status.
 #
-# Same reason, ten tests: the push/notification tests spawn the REAL scripts
-# out of /home/col/.local/bin and /home/col/.sam (`sam-push`, `sam-dispatch`,
+# Same reason, 31 tests (32 skips counting one live opt-in): the
+# push/notification tests spawn the REAL scripts out of /home/col/.local/bin and /home/col/.sam (`sam-push`, `sam-dispatch`,
 # `sam-job`, `run.sh`), or drive `systemd-run --user`. On a hosted runner
 # those paths do not exist, so the test gets `status: null` instead of the
 # exit code it asserts on and fails for a reason no code change can fix.
@@ -27,7 +27,7 @@
 # They now report `skipped` with their reason
 # (src/lib/server/testing/boxOnly.ts), and the box gate is ./deploy.sh, which
 # runs the full suite before it builds. The last step here fails if MORE than
-# those ten ever skip, so a portable test cannot be silenced to dodge a
+# those 32 ever skip, so a portable test cannot be silenced to dodge a
 # failure.
 
 name: CI
@@ -92,16 +92,19 @@ jobs:
           set -o pipefail
           npm test 2>&1 | tee "$RUNNER_TEMP/test-output.txt"
 
-      # Exactly ten tests are box-only and report skipped here. More than ten
-      # means a test that CAN run on a runner has been switched off, which is
-      # the failure mode this whole arrangement exists to prevent.
+      # Exactly 32 tests report skipped here: 31 box-only plus one live opt-in
+      # (SAM_LIVE_SIDE_MESSAGE). More than 32 means a test that CAN run on a
+      # runner has been switched off, which is the failure mode this whole
+      # arrangement exists to prevent. Raised from 10 on 2026-10-05: box-only
+      # tests had grown to 31 without this limit following, so CI was red on
+      # every push. A new box-only test must bump this number in the same commit.
       - name: Box-only skips have not grown
         run: |
           skipped=$(grep -oE '^# skipped [0-9]+' "$RUNNER_TEMP/test-output.txt" | awk '{print $3}')
           skipped=${skipped:-0}
-          echo "skipped: ${skipped} (ten box-only tests expected on a hosted runner, 0 on the box)"
-          if [ "$skipped" -gt 10 ]; then
-            echo "!! more than the ten known box-only tests skipped: a portable test has been silenced" >&2
+          echo "skipped: ${skipped} (32 expected on a hosted runner: 31 box-only, 1 live opt-in)"
+          if [ "$skipped" -gt 32 ]; then
+            echo "!! more than the 32 known skips: a portable test has been silenced" >&2
             exit 1
           fi
 
