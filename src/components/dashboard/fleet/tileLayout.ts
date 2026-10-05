@@ -1,12 +1,12 @@
 /**
  * SAM — tileLayout: pure order / size / hidden logic for the fleet
- * dashboard's three carried-over tiles (System Health, Daily Tasks, Money In).
+ * dashboard's tiles (System Health, Daily Tasks, Money In, Usage limits).
  *
  * No DOM and no store: `tileLayoutStore` wraps these functions and keeps the
  * result on this device only.
  */
 
-export type TileId = 'system-health' | 'daily-tasks' | 'money-in';
+export type TileId = 'system-health' | 'daily-tasks' | 'money-in' | 'usage-limits';
 export type TileSize = 'sm' | 'tall';
 
 export interface TileItem {
@@ -22,6 +22,9 @@ export const DEFAULT_TILES: TileItem[] = [
   { id: 'system-health', size: 'sm', hidden: false },
   { id: 'daily-tasks', size: 'sm', hidden: false },
   { id: 'money-in', size: 'sm', hidden: false },
+  // Tall by default: the compact (sm) profile shows only a seat's higher percent,
+  // and the tile must show both windows and both reset times (spec U1).
+  { id: 'usage-limits', size: 'tall', hidden: false },
 ];
 
 const KNOWN_TILES = new Set<TileId>(DEFAULT_TILES.map((t) => t.id));

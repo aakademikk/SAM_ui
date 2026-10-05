@@ -27,8 +27,25 @@ import {
 const ids = (items: TileItem[]) => items.map((t) => t.id);
 
 test('defaults: order and sizes', () => {
-  assert.deepEqual(ids(DEFAULT_TILES), ['system-health', 'daily-tasks', 'money-in']);
-  assert.ok(DEFAULT_TILES.every((t) => t.size === 'sm' && !t.hidden));
+  assert.deepEqual(ids(DEFAULT_TILES), ['system-health', 'daily-tasks', 'money-in', 'usage-limits']);
+  assert.ok(DEFAULT_TILES.every((t) => !t.hidden));
+  assert.deepEqual(
+    DEFAULT_TILES.map((t) => t.size),
+    ['sm', 'sm', 'sm', 'tall'],
+    'usage-limits is tall so both windows and reset times fit (spec U1)',
+  );
+});
+
+test('reconcile: a saved layout of the old three gains usage-limits last', () => {
+  const old = [
+    { id: 'money-in', size: 'tall', hidden: false },
+    { id: 'system-health', size: 'sm', hidden: true },
+    { id: 'daily-tasks', size: 'sm', hidden: false },
+  ];
+  const out = reconcileTiles(old);
+  assert.deepEqual(ids(out), ['money-in', 'system-health', 'daily-tasks', 'usage-limits']);
+  assert.deepEqual(out.slice(0, 3), old, 'the three saved tiles keep order, size and hidden');
+  assert.deepEqual(out[3], { id: 'usage-limits', size: 'tall', hidden: false });
 });
 
 test('reconcile: non-array gives defaults', () => {
@@ -45,13 +62,13 @@ test('reconcile: drops unknown ids, duplicates and junk entries', () => {
     { id: 'money-in', size: 'tall', hidden: true },
     { id: 'money-in', size: 'sm' },
   ]);
-  assert.deepEqual(ids(out), ['money-in', 'system-health', 'daily-tasks']);
+  assert.deepEqual(ids(out), ['money-in', 'system-health', 'daily-tasks', 'usage-limits']);
   assert.deepEqual(out[0], { id: 'money-in', size: 'tall', hidden: true });
 });
 
 test('reconcile: appends missing tiles in default order', () => {
   const out = reconcileTiles([{ id: 'daily-tasks', size: 'sm', hidden: false }]);
-  assert.deepEqual(ids(out), ['daily-tasks', 'system-health', 'money-in']);
+  assert.deepEqual(ids(out), ['daily-tasks', 'system-health', 'money-in', 'usage-limits']);
 });
 
 test('reconcile: repairs bad sizes and bad hidden', () => {
@@ -68,11 +85,13 @@ test('reorder: arrayMove semantics and no-ops', () => {
     'daily-tasks',
     'money-in',
     'system-health',
+    'usage-limits',
   ]);
   assert.deepEqual(ids(reorderTiles(DEFAULT_TILES, 'money-in', 'system-health')), [
     'money-in',
     'system-health',
     'daily-tasks',
+    'usage-limits',
   ]);
   assert.equal(reorderTiles(DEFAULT_TILES, 'money-in', 'money-in'), DEFAULT_TILES);
   assert.equal(
@@ -84,25 +103,26 @@ test('reorder: arrayMove semantics and no-ops', () => {
 test('move: steps among visible tiles, hidden keep their slot', () => {
   const items = hideTile(DEFAULT_TILES, 'daily-tasks');
   const moved = moveTile(items, 'system-health', 1);
-  assert.deepEqual(ids(moved), ['money-in', 'daily-tasks', 'system-health']);
+  assert.deepEqual(ids(moved), ['money-in', 'daily-tasks', 'system-health', 'usage-limits']);
   assert.equal(moved[1].hidden, true);
   assert.deepEqual(ids(moveTile(moved, 'system-health', -1)), ids(items));
 });
 
 test('move: at the ends is a no-op returning the same array', () => {
   assert.equal(moveTile(DEFAULT_TILES, 'system-health', -1), DEFAULT_TILES);
-  assert.equal(moveTile(DEFAULT_TILES, 'money-in', 1), DEFAULT_TILES);
+  assert.equal(moveTile(DEFAULT_TILES, 'usage-limits', 1), DEFAULT_TILES);
   assert.equal(canMove(DEFAULT_TILES, 'system-health', -1), false);
   assert.equal(canMove(DEFAULT_TILES, 'system-health', 1), true);
-  assert.equal(canMove(DEFAULT_TILES, 'money-in', 1), false);
-  const hiddenEnd = hideTile(DEFAULT_TILES, 'money-in');
+  assert.equal(canMove(DEFAULT_TILES, 'usage-limits', 1), false);
+  assert.equal(canMove(DEFAULT_TILES, 'money-in', 1), true);
+  const hiddenEnd = hideTile(hideTile(DEFAULT_TILES, 'usage-limits'), 'money-in');
   assert.equal(canMove(hiddenEnd, 'daily-tasks', 1), false);
 });
 
 test('hide then restore returns the same place and size', () => {
   const sized = setTileSize(DEFAULT_TILES, 'daily-tasks', 'tall');
   const hidden = hideTile(sized, 'daily-tasks');
-  assert.deepEqual(ids(visibleTiles(hidden)), ['system-health', 'money-in']);
+  assert.deepEqual(ids(visibleTiles(hidden)), ['system-health', 'money-in', 'usage-limits']);
   assert.deepEqual(ids(hiddenTiles(hidden)), ['daily-tasks']);
   assert.deepEqual(restoreTile(hidden, 'daily-tasks'), sized);
 });

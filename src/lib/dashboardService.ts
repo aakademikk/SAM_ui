@@ -25,6 +25,7 @@ import type {
   TaskPriority,
   WidgetLayoutItem,
 } from '@/types/dashboard';
+import type { UsagePayload, UsageSeat, UsageSeatId, UsageWindow } from '@/types/usage';
 import { asArray, asBool, asEnum, asNumber, asRecord, asSeries, asString, clamp, sleep } from '@/lib/utils';
 
 /* ========================================================================== */
@@ -270,6 +271,37 @@ export function parseTasks(raw: unknown): DailyTasksPayload {
   };
 }
 
+const USAGE_SEATS: readonly UsageSeatId[] = ['main', 'max2'];
+const USAGE_STATES = ['current', 'reset', 'unknown-reset'] as const;
+
+/** A window without a string `readAt` is no reading at all: null, not a guess. */
+function parseUsageWindow(raw: unknown): UsageWindow | null {
+  const r = asRecord(raw);
+  if (typeof r.readAt !== 'string' || r.readAt === '') return null;
+  const pct = typeof r.pct === 'number' && Number.isFinite(r.pct) ? clamp(Math.round(r.pct), 0, 100) : null;
+  return {
+    pct,
+    resetsAt: typeof r.resetsAt === 'string' ? r.resetsAt : null,
+    readAt: r.readAt,
+    state: asEnum(r.state, USAGE_STATES, 'current'),
+  };
+}
+
+function parseUsageSeat(id: UsageSeatId, raw: unknown): UsageSeat {
+  const r = asRecord(raw);
+  return { id, fiveHour: parseUsageWindow(r.fiveHour), sevenDay: parseUsageWindow(r.sevenDay) };
+}
+
+/** Always two seats, `main` then `max2`, whatever the wire sent. */
+export function parseUsage(raw: unknown): UsagePayload {
+  const r = asRecord(raw);
+  const seats = Array.isArray(r.seats) ? r.seats : [];
+  return {
+    seats: USAGE_SEATS.map((id) => parseUsageSeat(id, seats.find((s) => asRecord(s).id === id))),
+    generatedAt: asString(r.generatedAt, new Date(0).toISOString()),
+  };
+}
+
 function parseMoneyEntry(raw: unknown): MoneyEntry {
   const r = asRecord(raw);
   return {
@@ -359,6 +391,11 @@ export const dashboardService = {
   async getMoney(opts: FetchOpts = {}): Promise<MoneyInPayload> {
     const res = await request<unknown>('/dashboard/money', { signal: opts.signal });
     return parseMoney(res.data);
+  },
+
+  async getUsage(opts: FetchOpts = {}): Promise<UsagePayload> {
+    const res = await request<unknown>('/dashboard/usage', { signal: opts.signal });
+    return parseUsage(res.data);
   },
 
   async createMoneyEntry(

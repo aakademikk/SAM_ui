@@ -27,6 +27,7 @@ export const DEFAULT_LAYOUT: WidgetLayoutItem[] = [
   { id: 'money-in', size: 'md-wide', visible: true },
   { id: 'active-projects', size: 'md-wide', visible: true },
   { id: 'system-health', size: 'md-wide', visible: true },
+  { id: 'usage-limits', size: 'md-wide', visible: true },
 ];
 
 const KNOWN_WIDGETS = new Set<WidgetKind>(DEFAULT_LAYOUT.map((w) => w.id));

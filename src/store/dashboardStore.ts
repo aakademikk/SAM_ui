@@ -21,6 +21,7 @@ import type {
   SystemHealthPayload,
   TaskPriority,
 } from '@/types/dashboard';
+import type { UsagePayload } from '@/types/usage';
 import { ApiError, dashboardService } from '@/lib/dashboardService';
 import { uid } from '@/lib/utils';
 
@@ -45,7 +46,7 @@ const emptySlice = <T>(): Slice<T> => ({
   failures: 0,
 });
 
-export type SliceKey = 'projects' | 'system' | 'tasks' | 'money';
+export type SliceKey = 'projects' | 'system' | 'tasks' | 'money' | 'usage';
 
 /** Polling cadence per slice, in milliseconds. */
 export const POLL_INTERVALS: Record<SliceKey, number> = {
@@ -53,6 +54,7 @@ export const POLL_INTERVALS: Record<SliceKey, number> = {
   tasks: 30_000,
   projects: 30_000,
   money: 30_000,
+  usage: 30_000,
 };
 
 const controllers = new Map<SliceKey, AbortController>();
@@ -93,6 +95,7 @@ export interface DashboardState {
   system: Slice<SystemHealthPayload>;
   tasks: Slice<DailyTasksPayload>;
   money: Slice<MoneyInPayload>;
+  usage: Slice<UsagePayload>;
 
   /** True until the first bootstrap settles. Drives the skeleton cascade. */
   booting: boolean;
@@ -124,6 +127,7 @@ export const useDashboardStore = create<DashboardState>()((set, get) => ({
   system: emptySlice(),
   tasks: emptySlice(),
   money: emptySlice(),
+  usage: emptySlice(),
 
   booting: true,
   polling: false,
@@ -154,6 +158,9 @@ export const useDashboardStore = create<DashboardState>()((set, get) => ({
         case 'money':
           data = await dashboardService.getMoney({ signal });
           break;
+        case 'usage':
+          data = await dashboardService.getUsage({ signal });
+          break;
       }
 
       if (signal.aborted) return;
@@ -183,7 +190,7 @@ export const useDashboardStore = create<DashboardState>()((set, get) => ({
 
   bootstrap: async () => {
     set({ booting: true });
-    const keys: SliceKey[] = ['system', 'tasks', 'projects', 'money'];
+    const keys: SliceKey[] = ['system', 'tasks', 'projects', 'money', 'usage'];
     // Settle everything, then lift the boot curtain once — a partial estate is
     // still worth rendering.
     await Promise.allSettled(keys.map((key) => get().refresh(key)));

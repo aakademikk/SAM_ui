@@ -92,6 +92,7 @@ import { WIDGET_REGISTRY, type WidgetProps } from '@/components/dashboard/widget
 import { DailyTasksWidget } from '@/components/dashboard/widgets/DailyTasksWidget';
 import { MoneyInWidget } from '@/components/dashboard/widgets/MoneyInWidget';
 import { SystemHealthWidget } from '@/components/dashboard/widgets/SystemHealthWidget';
+import { UsageLimitsWidget } from '@/components/dashboard/widgets/UsageLimitsWidget';
 import { cn } from '@/lib/utils';
 import { useTileLayoutStore } from '@/store/tileLayoutStore';
 
@@ -107,6 +108,7 @@ const TILE_WIDGETS: Record<TileId, ComponentType<WidgetProps>> = {
   'system-health': SystemHealthWidget,
   'daily-tasks': DailyTasksWidget,
   'money-in': MoneyInWidget,
+  'usage-limits': UsageLimitsWidget,
 };
 
 const titleOf = (id: unknown) => WIDGET_REGISTRY[id as TileId]?.title ?? 'Tile';

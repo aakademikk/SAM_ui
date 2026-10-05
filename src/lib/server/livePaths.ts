@@ -27,3 +27,13 @@ export function atwoodDir(): string {
 export function activePrioritiesPath(): string {
   return path.join(vaultDir(), 'Active Priorities.md');
 }
+
+/** `~/.sam/quota/runs.jsonl`, one row per finished chat turn that carried a usage reading. */
+export function quotaRunsPath(): string {
+  return path.join(samStateDir(), 'quota', 'runs.jsonl');
+}
+
+/** `~/.sam/quota/alerts.json`, which usage windows have already been pinged. */
+export function quotaAlertsPath(): string {
+  return path.join(samStateDir(), 'quota', 'alerts.json');
+}

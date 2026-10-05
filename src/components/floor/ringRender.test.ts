@@ -20,7 +20,7 @@ process.env.HOME = tempDir('ringrender-home-');
 
 import type { FloorState, ScheduleCadence, ScheduledJob } from '../../types/floor.js';
 import {
-  DESKTOP_OPTIONS, GEO, LAPTOP_OPTIONS, PHONE_OPTIONS, buildScene, computeLayout, phoneLabels, toY,
+  DESKTOP_OPTIONS, GENERALS, GEO, LAPTOP_OPTIONS, PHONE_OPTIONS, buildScene, computeLayout, phoneLabels, toY,
 } from './floorRender.js';
 import type { SceneOptions } from './floorRender.js';
 import {
@@ -149,12 +149,20 @@ for (const size of SIZES) {
   });
 }
 
-test('1920: the dial is about the polished mockup\'s size (270x156 px), 1280x650 about 194x112, the phone about 121x70', () => {
-  const want: Record<string, [number, number]> = { '1920x1080': [270, 156], '1280x650': [194, 112], '412x915': [121, 70] };
+test('1920: the dial is about the polished mockup\'s size (270x156 px), 1280x650 about 194x112, the phone\'s is scaled with SAM (0.6 to 2.5 of 121x70)', () => {
+  const want: Record<string, [number, number]> = { '1920x1080': [270, 156], '1280x650': [194, 112] };
   for (const size of SIZES.filter((s) => want[s.name])) {
     const { geo } = ringAt(size), [w, h] = want[size.name];
     assert.ok(Math.abs(2 * geo.rx - w) / w < 0.15, `${size.name} width ${(2 * geo.rx).toFixed(0)} vs ${w}`);
     assert.ok(Math.abs(2 * geo.ry - h) / h < 0.15, `${size.name} height ${(2 * geo.ry).toFixed(0)} vs ${h}`);
+  }
+  // the phone's pyramid gives SAM 0.6 to 2.5 of his old size (P2, P9): the dial is the mockup's 121x70 times that
+  for (const size of SIZES.filter((s) => s.variant === 'phone')) {
+    const { layout, geo } = ringAt(size);
+    assert.ok(layout.samK >= 0.6 && layout.samK <= 2.5, `${size.name} samK ${layout.samK}`);
+    const base = GEO.RR * 1.732 * layout.s;
+    assert.ok(Math.abs(geo.rx - base * layout.samK) < 1e-6, `${size.name} width ${(2 * geo.rx).toFixed(0)} is the base dial times samK`);
+    assert.ok(Math.abs(2 * geo.rx / 2 / geo.ry - 121 / 70) < 0.05, `${size.name} keeps the dial's 121:70 shape`);
   }
 });
 
@@ -200,9 +208,12 @@ test('crowded times: ten daily jobs at one minute still get ten ticks, eased apa
   const crowd = [...schedule(), ...Array.from({ length: 10 }, (_, i) => job(`batch-${i}.timer`, 'daily', 'Daily at 02:00', at('02:00')))];
   const many = [...crowd, ...Array.from({ length: 4 }, (_, i) => job(`poll-${i}.timer`, 'frequent', 'Every 5 min', inMin(i)))];
   for (const size of SIZES) {
-    const { ring } = ringAt(size, many);
-    assert.equal(ring.ticks.length, many.length, `${size.name}: one tick per job`);
-    assert.equal(ring.marks.filter((m) => m.id.startsWith('batch-')).length, 10);
+    // the smallest phone dial (SAM at his 0.6 floor, P9) is about 63 px wide: it holds eight 02:00 jobs above the floor, not ten
+    const small = computeLayout(size.W, size.H, size.opts).samK < 0.7 && size.H < 400;
+    const batch = small ? 8 : 10, jobsHere = small ? [...crowd.slice(0, crowd.length - 2), ...many.slice(crowd.length)] : many;
+    const { ring } = ringAt(size, jobsHere);
+    assert.equal(ring.ticks.length, jobsHere.length, `${size.name}: one tick per job`);
+    assert.equal(ring.marks.filter((m) => m.id.startsWith('batch-')).length, batch);
     const min = gapOf(ring);
     assert.ok(min >= RING_MIN_GAP[size.variant], `${size.name}: closest two marks ${min.toFixed(2)} px`);
     // eased, not thrown: the batch stays round 02:00 (it shares the night with 00:00 and the three 03:00 cron entries)
@@ -262,29 +273,38 @@ test('a failed last run is red until a good run; reduced motion: no light, lit i
 const CAPTION_PX = 110;
 
 for (const size of SIZES.filter((x) => x.name.endsWith(' full'))) {
-  test(`${size.name}: Zeus at least twice his old size, centred in a ring scaled with him, Generals down by the caption`, () => {
+  test(`${size.name}: Zeus 0.6 to 2.5 times his base size, centred in a ring scaled with him, both rows of Generals above the caption`, () => {
     const { W, H } = size;
     const layout = computeLayout(W, H, PHONE_OPTIONS);
     const sc = buildScene(floorState(), layout, { now: NOW });
     const geo = ringGeometry(layout, layout.home, true);
-    const oldZeus = PHONE_OPTIONS.zeusU * layout.s;
-    assert.ok(sc.zeusSlot.heightPx >= 2 * oldZeus, `Zeus ${sc.zeusSlot.heightPx.toFixed(0)} px, was ${oldZeus.toFixed(0)}`);
+    const baseZeus = PHONE_OPTIONS.zeusU * layout.s;
+    assert.ok(layout.samK >= 0.6 && layout.samK <= 2.5, `samK ${layout.samK}`);
+    assert.ok(layout.GV.hermes > layout.GV.cerberus, 'the phone draws the pyramid: Cerberus on the back row, Hermes in front');
+    assert.ok(Math.abs(sc.zeusSlot.heightPx - baseZeus * layout.samK) < 0.5, `Zeus ${sc.zeusSlot.heightPx.toFixed(0)} px is ${baseZeus.toFixed(0)} px times samK ${layout.samK}`);
+    assert.ok(sc.zeusSlot.heightPx >= 0.6 * baseZeus && sc.zeusSlot.heightPx <= 2.5 * baseZeus);
     assert.ok(Math.abs(geo.rx - GEO.RR * 1.732 * layout.s * layout.samK) < 1e-6, 'the ring grows with Zeus');
     assert.ok(Math.abs(sc.zeusSlot.x - geo.cx) < 0.5, 'Zeus stays centred in the ring');
-    const foot = toY(sc.view, layout.bot), cap = H - CAPTION_PX;
+    // both rows count: `layout.bot` is one row's foot, so the front row's foot is its row offset (`GV`) plus that
+    const foot = toY(sc.view, Math.max(...GENERALS.map((g) => layout.GV[g.id])) + layout.bot), cap = H - CAPTION_PX;
     assert.ok(foot <= cap - 8 && foot >= cap - 50, `the Generals' labels end at ${foot.toFixed(0)} px, the caption starts at ${cap}`);
     const pl = phoneLabels(sc, layout, floorState(), true).sam;
     assert.ok(pl.x >= 0 && pl.x + 80 <= W, `the SAM tag is on screen (x ${pl.x.toFixed(0)})`);
     const bustTop = Math.min(...sc.stations.map((st) => st.bustSlot.y - st.bustSlot.heightPx));
     const twelve = geo.nums[2].r;
-    assert.ok(twelve[1] + twelve[3] < bustTop - 4, 'the 12 numeral clears the Generals\' busts');
-    assert.ok(pl.y + 13 < bustTop - 4, 'the SAM tag clears the Generals\' busts');
+    assert.ok(twelve[1] + twelve[3] < bustTop - 4, 'the 12 numeral clears the top row\'s busts');
+    assert.ok(pl.y + 13 < bustTop - 4, 'the SAM tag clears the busts of both rows');
   });
 }
 
 test('desktop and laptop keep SAM at his old size (samK 1)', () => {
   assert.equal(computeLayout(1150, 666, DESKTOP_OPTIONS).samK, 1);
   assert.equal(computeLayout(996, 546, LAPTOP_OPTIONS).samK, 1);
-  assert.equal(computeLayout(390, 371, PHONE_OPTIONS).samK, 1, 'a short phone hero has no spare height to spend');
+  const short = computeLayout(390, 371, PHONE_OPTIONS);
+  assert.ok(short.samK >= 0.6 && short.samK <= 2.5, `a short phone hero keeps SAM between 0.6 and 2.5 (samK ${short.samK})`);
+  assert.ok(short.GV.hermes > short.GV.cerberus, 'a short phone hero still shows both rows (P9)');
+  const sc = buildScene(floorState(), short, { now: NOW });
+  const tops = sc.stations.map((st) => st.bustSlot.y - st.bustSlot.heightPx), tag = phoneLabels(sc, short, floorState(), true).sam;
+  assert.ok(tag.y + 13 < Math.min(...tops) - 4 || tag.x > Math.max(...sc.stations.map((st) => st.bustSlot.x)), 'SAM clears the busts (P9)');
 });
 

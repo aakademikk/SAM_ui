@@ -13,7 +13,7 @@
 /** Grid footprint of a widget. The grid is 4 columns wide on desktop. */
 export type WidgetSize = 'sm' | 'md-wide' | 'md-tall' | 'lg';
 
-export type WidgetKind = 'active-projects' | 'system-health' | 'daily-tasks' | 'money-in';
+export type WidgetKind = 'active-projects' | 'system-health' | 'daily-tasks' | 'money-in' | 'usage-limits';
 
 export interface WidgetLayoutItem {
   id: WidgetKind;

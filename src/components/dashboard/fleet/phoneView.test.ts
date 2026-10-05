@@ -163,9 +163,12 @@ test('phone hero: five labels under the Generals, with their real state, and SAM
     assert.equal(by.calliope.state, 'Queued');
     assert.equal(by.hermes.state, 'Idle');
     assert.equal(by.hermes.busy, false);
-    // every label is inside the hero and the five run left to right
-    const xs = pl.generals.map((g) => g.x);
-    xs.forEach((x, i) => { assert.ok(x > 0 && x < W); if (i) assert.ok(x > xs[i - 1]); });
+    // every label is inside the hero and each pyramid row runs left to right (back row, then front row; spec P1)
+    pl.generals.forEach((g) => assert.ok(g.x > 0 && g.x < W));
+    for (const row of [['cerberus', 'prometheus'], ['hermes', 'hephaestus', 'calliope']]) {
+      const rx = row.map((id) => by[id].x);
+      rx.forEach((x, i) => { if (i) assert.ok(x > rx[i - 1], `${row[i]} right of ${row[i - 1]}`); });
+    }
     pl.generals.forEach((g) => assert.ok(g.y > 0 && g.y + 24 < H, `label row inside the hero at ${W}`));
     // the SAM tag sits right of SAM's node and of the clock ring, and "ORCHESTRATOR" (8.5 px bold, about 70 px) fits
     assert.ok(pl.sam.x > toX(scene.view, 0));

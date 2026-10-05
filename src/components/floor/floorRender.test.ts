@@ -21,6 +21,7 @@ import {
   ACC, BAD, CORE, DEEP, DESKTOP_OPTIONS, EDGE, FX, GENERALS, LAPTOP_OPTIONS, MIST, TEAL,
   buildScene, computeLayout, diffFloor, emptyFx, figureCounts, hitGeneral, samLink, toX,
 } from './floorRender.js';
+import type { Layout } from './floorRender.js';
 
 const NOW = Date.parse('2026-10-02T12:00:00Z');
 const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString();
@@ -231,4 +232,40 @@ test('laptop layout keeps the same proportions and fits the canvas; the palette 
     const [r, g, b] = c;
     assert.ok(g >= r && g >= b, `${c} is green-led`);
   }
+});
+
+test('a per-General row offset GV moves only that General, everything on it, by GV * cam.k canvas px', () => {
+  assert.ok(GENERALS.every((g) => layout.GV[g.id] === 0), 'every offset is zero by default');
+  const shifted: Layout = Object.create(layout, { GV: { value: { ...layout.GV, hephaestus: 120 } } });
+  const base = buildScene(fixture(), layout, { now: NOW }), moved = buildScene(fixture(), shifted, { now: NOW });
+  const dy = 120 * base.view.cam.k, near = (a: number, b: number, m: string) => assert.ok(Math.abs(a - b) < 1e-9, `${m}: ${a} vs ${b}`);
+  const dropped = (a: [number, number][], b: [number, number][], m: string) => a.forEach((p, i) => { near(b[i][0], p[0], m + ' x'); near(b[i][1], p[1] + dy, m + ' y'); });
+
+  for (const g of GENERALS) {
+    const a = base.stations.find((s) => s.id === g.id)!, b = moved.stations.find((s) => s.id === g.id)!;
+    if (g.id !== 'hephaestus') { assert.deepEqual(b, a, `${g.id} is unchanged`); continue; }
+    for (const face of ['top', 'left', 'right'] as const) dropped(a.box[face], b.box[face], 'platform ' + face);
+    assert.ok(a.slabs.length > 0 && a.stagePads.length > 0);
+    a.slabs.forEach((sl, i) => (['top', 'left', 'right'] as const).forEach((f) => dropped(sl.box[f], b.slabs[i].box[f], 'slab ' + f)));
+    a.stagePads.forEach((p, i) => dropped(p.quad, b.stagePads[i].quad, 'stage pad'));
+    near(b.bustSlot.y, a.bustSlot.y + dy, 'bust slot y'); near(b.bustSlot.x, a.bustSlot.x, 'bust slot x');
+    near(b.bustSlot.emitter[1], a.bustSlot.emitter[1] + dy, 'emitter y');
+    near(b.card.y, a.card.y + dy, 'card y'); near(b.card.x, a.card.x, 'card x');
+  }
+  const fa = figuresOf(base, 'hephaestus'), fb = figuresOf(moved, 'hephaestus');
+  assert.equal(fa.length, 2);
+  fa.forEach((f, i) => {
+    near(fb[i].y, f.y + dy, 'figure y'); near(fb[i].ly, f.ly + dy, 'figure label y'); near(fb[i].x, f.x, 'figure x');
+  });
+  for (const g of GENERALS) if (g.id !== 'hephaestus') assert.deepEqual(figuresOf(moved, g.id), figuresOf(base, g.id), `${g.id} figures unchanged`);
+  // pads: exactly hephaestus's two moved (by dy), the rest identical
+  assert.equal(moved.pads.length, base.pads.length);
+  const padsMoved = base.pads.filter((p, i) => Math.abs(moved.pads[i].box.top[0][1] - p.box.top[0][1]) > 1e-9);
+  assert.equal(padsMoved.length, 2, 'two worker pads moved');
+  base.pads.forEach((p, i) => { if (padsMoved.includes(p)) dropped(p.box.top, moved.pads[i].box.top, 'pad'); else assert.deepEqual(moved.pads[i], p); });
+
+  const gu = layout.GU.hephaestus, l0 = samLink(layout, gu), l1 = samLink(layout, gu, 120);
+  assert.equal(l1[3][0], l0[3][0]);
+  near(l1[3][1], l0[3][1] + 120, 'samLink end v');
+  assert.deepEqual(l1[0], l0[0], 'the SAM end does not move');
 });
