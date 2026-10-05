@@ -29,7 +29,7 @@ Spec (LOCKED 2026-10-05): [usage-tile-pyramid-spec.md](./usage-tile-pyramid-spec
 ---
 
 ## T1: Harvester records the five-hour reset and runs one harvest at a time
-Status: TODO
+Status: DONE 2026-10-05 (quotaLog.test 3/3 pass on staged sam-quota-log.next.py, 2 of 3 fail on live; typecheck clean; npm test 455/453 pass/2 skip/0 fail)
 Spec: must-do #U6, check #6
 Depends on: none
 Blocked by: none
@@ -45,7 +45,7 @@ Do not touch: `/home/col/bin/sam-quota-log.py` (the live file, T25 installs), `s
 Proof: Before the change (no `.next.py` yet, the test resolving the live script): `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/usage/quotaLog.test.js` FAILS on the missing `fiveHourResetsAt` and on the duplicate row. After: the same command passes all three cases. `git -C /home/col/SAM_ui status --short` unchanged; `diff /home/col/bin/sam-quota-log.py /home/col/bin/sam-quota-log.next.py` shows only the intended lines; `ls ~/.sam/quota` shows no new file.
 
 ## T2: Usage types and the pure reading builder
-Status: TODO
+Status: DONE 2026-10-05 (usageReadings.test 12/12 pass; typecheck clean; npm test 467/465 pass/2 skip/0 fail)
 Spec: must-do #U1, #U2, check #2 (the test half)
 Depends on: none
 Blocked by: none
@@ -59,7 +59,7 @@ Do not touch: `sam-quota-log` files, any widget, the dashboard store.
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/usage/usageReadings.test.js` passes; the 'reset' test has no counterpart on `789589e` (no `buildUsage` exists there, so the file cannot compile), which is the before-fail. `npm run typecheck` clean.
 
 ## T3: Read the quota runs and serve them (no probes)
-Status: TODO
+Status: DONE 2026-10-05 (usageRuns.test 4/4 pass incl. 20-poll no-probe; grep clean; typecheck clean; npm test 471/469 pass/2 skip/0 fail)
 Spec: must-do #U1, #U3, check #3
 Depends on: T2
 Blocked by: none
@@ -75,7 +75,7 @@ Do not touch: other dashboard routes, `src/lib/server/telemetry.ts`, the quota f
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/usage/usageRuns.test.js` passes (all cases, including the 20-poll no-probe case); the grep returns nothing; `npm run typecheck` clean. Before: no route exists, `curl` of the path on `789589e` (or the test file failing to compile) is the fail.
 
 ## T4: Dashboard service and store slice for usage
-Status: TODO
+Status: DONE 2026-10-05 (usageParse.test 4/4 pass; typecheck clean; npm test 475/473 pass/2 skip/0 fail)
 Spec: must-do #U1
 Depends on: T3
 Blocked by: none
@@ -90,7 +90,7 @@ Do not touch: other slices' behaviour or intervals, the system 4 s poll, any wid
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/usageParse.test.js` passes; `npm run typecheck` clean (the `Record<SliceKey, number>` forces every spot). `npm test` unchanged counts plus the new tests.
 
 ## T5: Usage formatting helpers
-Status: TODO
+Status: DONE 2026-10-05 (usageFormat.test 7/7 pass; typecheck clean; npm test 482/480 pass/2 skip/0 fail)
 Spec: must-do #U1, #U2, check #2
 Depends on: T2
 Blocked by: none
@@ -105,7 +105,7 @@ Do not touch: the widget component, the store.
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/dashboard/widgets/usageFormat.test.js` passes; `npm run typecheck` clean.
 
 ## T6: The Usage limits widget component
-Status: TODO
+Status: DONE 2026-10-05 (UsageLimitsWidget.tsx compiles against store; typecheck clean; lint 0 errors/6 warnings; npm test 482/480 pass/2 skip/0 fail (visual proof is T22))
 Spec: must-do #U1, #U2, #U7
 Depends on: T4, T5
 Blocked by: none
@@ -120,7 +120,7 @@ Do not touch: `WidgetFrame.tsx`, `Indicators`, other widgets, the registry (T7).
 Proof: `npm run typecheck` and `npm run lint` clean (the component compiles against the real store type). `npm test` counts unchanged. The visual proof is T22.
 
 ## T7: Register the widget kind
-Status: TODO
+Status: DONE 2026-10-05 (userPreferencesStore.test 3/3 pass (3/3 fail with the default line removed); typecheck clean; npm test 485/483 pass/2 skip/0 fail. Ticket wrong: no existing reconcileLayout test, new test file made)
 Spec: must-do #U1, #U7
 Depends on: T6
 Blocked by: none
@@ -134,7 +134,7 @@ Do not touch: the order or sizes of the four existing widgets, `tileLayout.ts` (
 Proof: the new reconcile test passes and fails on `789589e` (kind unknown, so the appended entry is absent); `npm run typecheck` clean; `npm test` all pass.
 
 ## T8: Show it as a fleet tile (phone and desktop)
-Status: TODO
+Status: DONE 2026-10-05 (tileLayout.test 13/13 pass; typecheck clean; npm test 486/484 pass/2 skip/0 fail. Default size tall, not sm (sm compact shows only the higher percent))
 Spec: must-do #U1, #U7
 Depends on: T7
 Blocked by: none
@@ -148,7 +148,7 @@ Do not touch: the three existing tiles' behaviour, order of existing defaults, t
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/dashboard/fleet/tileLayout.test.js` passes (the four-tile and old-three-reconcile cases fail on `789589e`); `npm run typecheck`, `npm run lint`, `npm test` pass.
 
 ## T9: Alert decision logic (80%, once per window)
-Status: TODO
+Status: DONE 2026-10-05 (usageAlerts.test 6/6 pass; typecheck clean; npm test 492/490 pass/2 skip/0 fail)
 Spec: must-do #U4, #U5, #U8, checks #4, #5, #21
 Depends on: T2
 Blocked by: none
@@ -162,7 +162,7 @@ Do not touch: the reader, the route, any push code (T10).
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/usage/usageAlerts.test.js` passes; no `usageAlerts` exists on `789589e`, so every case fails before. `npm run typecheck` clean.
 
 ## T10: Alert runner: state file and the push
-Status: TODO
+Status: DONE 2026-10-05 (usageAlertRunner.test 7/7 pass with recording SAM_PUSH_BIN; no alerts.json in real ~/.sam/quota; typecheck clean; lint 0 errors; npm test 499/497 pass/2 skip/0 fail)
 Spec: must-do #U4, #U5, #U8, checks #4, #5, #21
 Depends on: T3, T9
 Blocked by: none
@@ -176,7 +176,7 @@ Do not touch: `turnPing.ts` (import `pushBin` from it, do not copy it), `sam-pus
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/usage/usageAlertRunner.test.js` passes (fails before: no runner exists); `npm run typecheck` clean; `ls` of the real `~/.sam/quota` shows no `alerts.json` created by the tests.
 
 ## T11: Collect and alert at the end of every chat turn (U9)
-Status: TODO
+Status: DONE 2026-10-05 (usageCollect.test 3/3 pass (push 0.08 s after endedAt, no timer; hook registered once); typecheck clean; lint 0 errors; npm test 502/500 pass/2 skip/0 fail)
 Spec: must-do #U9, #U4, #U5, #U8, check #22
 Depends on: T1, T10
 Blocked by: none
@@ -193,7 +193,7 @@ Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/usa
 ---
 
 ## T12: Desktop and laptop golden guard (captured on 789589e)
-Status: TODO
+Status: DONE 2026-10-05 (floorGolden.test 7/7 pass on untouched floor; spacing mutation fails the 2 desktop sizes, reverted; typecheck clean; npm test 509/507 pass/2 skip/0 fail)
 Spec: check #18 (the guard half), Won't do: desktop
 Depends on: none
 Blocked by: none
@@ -209,7 +209,7 @@ Do not touch: `floorRender.ts` (except the temporary mutation, reverted), `PHONE
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/floorGolden.test.js` passes on base; passes again after the mutation is reverted; fails during the mutation (output pasted). `git diff --stat` lists only the new test file.
 
 ## T13: Per-General row offset in the scene (no visible change)
-Status: TODO
+Status: DONE 2026-10-05 (floor group 39/39 pass incl. golden unchanged and new GV test; typecheck clean; npm test 510/508 pass/2 skip/0 fail. Ticket wrong: GV had to be non-enumerable so the golden JSON stays identical)
 Spec: must-do #P1, #P3, #P4, #P8, check #18
 Depends on: T12
 Blocked by: none
@@ -224,7 +224,7 @@ Do not touch: `camFor`, `hitGeneral`, `computeLayout`'s fitting maths, `PHONE_OP
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/floorGolden.test.js .test-build/components/floor/floorRender.test.js .test-build/components/floor/ringRender.test.js` all pass (golden unchanged is check 18's guard; the new GV test fails on base). `npm run typecheck`, `npm run lint`, `npm test` pass with the same counts plus the new test.
 
 ## T14: Pyramid layout and the geometry helpers (opt-in)
-Status: TODO
+Status: DONE 2026-10-05 (phonePyramid.test 5/5 + golden 7/7 pass; 412x915 bust 58.0 px samK 1.15, margins 16.0 px at 360/390/412; typecheck clean; npm test 515/513 pass/2 skip/0 fail. CAVEAT: at 390x371 scale drops to 0.149 (bust 7.5 px), name labels overlap there)
 Spec: must-do #P1, #P2, #P7, #P9, checks #8 (numbers), #9, #14, #16 (edge half)
 Depends on: T13
 Blocked by: none
