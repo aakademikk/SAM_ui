@@ -31,6 +31,7 @@ import { readMessage as readCrossTab } from '@/lib/crossTab';
 import { jobsService } from '@/lib/jobsService';
 import { FieldLabel } from '@/components/ui/FieldLabel';
 import { closeKind, cutOffNotice, type CloseStatus } from '@/lib/chatClose';
+import { enterSends, isTouchKeyboard } from '@/lib/composerEnter';
 import { ApiError } from '@/lib/dashboardService';
 import { authService } from '@/lib/authService';
 import { startAgentTurn, StepUpRequiredError } from '@/lib/chatAgentService';
@@ -2275,11 +2276,13 @@ function ChatPageInner() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                // Enter sends, Shift+Enter inserts a newline. Guarded the same way
-                // as the submit button so an empty or mid-run composer never fires —
-                // on Max/Max 2, a running turn's 'side' route is allowed through,
-                // same as a click on the submit button.
-                if (e.key === 'Enter' && !e.shiftKey) {
+                // Enter sends, Shift+Enter inserts a newline; on a phone's
+                // keyboard Enter always inserts a newline (composerEnter).
+                // Guarded the same way as the submit button so an empty or
+                // mid-run composer never fires — on Max/Max 2, a running turn's
+                // 'side' route is allowed through, same as a click on the
+                // submit button.
+                if (enterSends(e, isTouchKeyboard())) {
                   e.preventDefault();
                   if (
                     (input.trim() || stagedRef.current.length > 0) &&
