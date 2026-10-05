@@ -46,6 +46,11 @@ function writeEvents(id: string, lines: Record<string, unknown>[]): void {
 
 const now = Date.now();
 const iso = (offsetMs: number) => new Date(now + offsetMs).toISOString();
+// Jobs F1/F2 must finish *today* for the tower count. A plain offset back from
+// now landed them yesterday in the first minutes after midnight and failed a
+// 00:01 deploy (2026-10-06), so their times are clamped into today.
+const startOfToday = new Date(now).setHours(0, 0, 0, 0);
+const todayIso = (offsetMs: number) => new Date(Math.max(now + offsetMs, startOfToday)).toISOString();
 
 test('readFloorState builds the floor honestly from fixture job directories', async () => {
   await ready;
@@ -151,9 +156,9 @@ test('readFloorState builds the floor honestly from fixture job directories', as
     command: 'claude -p "benchmark run 1"',
     status: 'exited',
     exitCode: 0,
-    createdAt: iso(-400_000),
-    startedAt: iso(-390_000),
-    endedAt: iso(-380_000),
+    createdAt: todayIso(-400_000),
+    startedAt: todayIso(-390_000),
+    endedAt: todayIso(-380_000),
     general: 'prometheus',
   });
   writeMeta('job-prometheus-done-2', {
@@ -161,9 +166,9 @@ test('readFloorState builds the floor honestly from fixture job directories', as
     command: 'claude -p "benchmark run 2"',
     status: 'exited',
     exitCode: 0,
-    createdAt: iso(-300_000),
-    startedAt: iso(-290_000),
-    endedAt: iso(-280_000),
+    createdAt: todayIso(-300_000),
+    startedAt: todayIso(-290_000),
+    endedAt: todayIso(-280_000),
     general: 'prometheus',
   });
 
