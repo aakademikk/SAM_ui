@@ -294,7 +294,7 @@ Do not touch: ring drawing in `ringRender.ts` (SAM's ring and clock), the deskto
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/phonePyramid.test.js .test-build/components/floor/ringRender.test.js .test-build/components/floor/floorGolden.test.js` passes. Report the smallest gap found between any two boxes at each size.
 
 ## T19: Worker figures and job pads on both rows (P8)
-Status: TODO
+Status: DONE 2026-10-05 (P8 figure/pad test passes at 360/390/412 with margins 40-60 px, phonePyramid+figureHit+golden 26/26; typecheck clean; npm test 521/519 pass/2 skip/0 fail. Test passes on T14 reservation already, no floorRender change; 390x371 exempt for figure squares and caption)
 Spec: must-do #P8, checks #15 (the numbers; screenshot in T23), #11 (figures interplay)
 Depends on: T15, T17
 Blocked by: none
@@ -308,7 +308,7 @@ Do not touch: `figureHit.ts` and its 44 px size (floor-fixes Must 17, 18), figur
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/floor/phonePyramid.test.js .test-build/components/floor/figureHit.test.js .test-build/components/floor/floorGolden.test.js` passes; the new figure test fails against T14's reservation (paste it before the fix); `npm test` all pass.
 
 ## T20: Switch the pyramid on for the phone and update the phone tests
-Status: TODO
+Status: DONE 2026-10-05 (grep PYRAMID_VARIANT/MOCKUP/PHONE_PYRAMID_OPTIONS empty; golden unedited; 4 phone cases fail on single row, pass now; typecheck clean; lint 0 errors; npm test 521/519 pass/2 skip/0 fail. 412x915 bust 57.97 px samK 1.15 Zeus 109.6 px; 390x371 bust 18.95 samK 0.6. Extra edit: fleet/phoneView.test.ts row order; dial-size and crowded-times cases rewritten for 0.6 floor)
 Spec: must-do #P1, #P2, #P9, #P10, checks #8, #9, #16, #17
 Depends on: T15, T16, T17, T18, T19
 Blocked by: none
@@ -323,7 +323,7 @@ Do not touch: desktop and laptop options, `floorGolden.test.ts` (must stay byte-
 Proof: `grep -rn "PYRAMID_VARIANT\|MOCKUP\|PHONE_PYRAMID_OPTIONS" src/` prints nothing; `git diff --stat` shows `floorGolden.test.ts` untouched; `npm test` all pass, with the phone cases asserting the new sizes (the old cases failed against the pyramid, the new ones fail against `789589e`'s single row: paste one example); `npm run typecheck`, `npm run lint` clean.
 
 ## T21: Proof rig and the 789589e "before" build
-Status: TODO
+Status: DONE 2026-10-05 (CHECK 0 PASS on before and after builds, no 49xx listener, before worktree clean; baseline npm test at 789589e 452/450 pass/2 skip/0 fail)
 Spec: whole (enables checks #1, #8, #12, #15, #16, #7)
 Depends on: none
 Blocked by: none
