@@ -338,7 +338,7 @@ Do not touch: `/home/col/SAM_ui`, the harness directory (edit nothing in it), `/
 Proof: `bash run-proof.sh before t0-smoke.mjs` and `bash run-proof.sh after t0-smoke.mjs` both print `CHECK 0 PASS`; `ss -ltn | grep -E ':49(5[01])'` prints nothing afterwards; `git -C /home/col/SAM_ui-usage-pyramid-before status --short` is clean.
 
 ## T22: Browser proof: the Usage limits tile
-Status: TODO
+Status: DONE 2026-10-05 (before: checks 1, 2, 3-axe/targets/text FAIL tile absent, rc 1; after: all CHECK PASS rc 0 at 412x915 and 1440x900, 120 s quiet 8 polls no jobs or off-origin requests, quota file removed, no 49xx listener)
 Spec: must-do #U1, #U2, #U7, checks #1, #2 (in the page), #3 (browser half)
 Depends on: T8, T21
 Blocked by: none
