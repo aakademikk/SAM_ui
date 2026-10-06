@@ -215,6 +215,24 @@ test("the dispatch exits with claude's own exit code", { skip: SKIP }, () => {
   assert.equal(rows(r).length, 1, 'a failed job still records its reading');
 });
 
+test('a non-JSON line on claude stdout does not kill the job or lose the report', { skip: SKIP }, () => {
+  // A CLI warning or stray hook print between events must not break the pipe (review finding 1).
+  const r = rig();
+  const [first, ...rest] = r.stream.split('\n').filter(Boolean);
+  fs.writeFileSync(
+    path.join(r.home, 'stream.jsonl'),
+    [first, 'Warning: test', ...rest].join('\n') + '\n',
+  );
+  assert.equal(dispatch(r, 0), 0);
+  const [jd] = jobDirs(r);
+  assert.equal(fs.readFileSync(path.join(jd, 'stdout.log'), 'utf8'), 'REPORT TEXT\nNOTIFY-LINE\n');
+  assert.ok(
+    fs.readFileSync(path.join(jd, 'claude-stream.jsonl'), 'utf8').includes('Warning: test'),
+    'the stream file holds every line, including the stray one',
+  );
+  assert.equal(rows(r).length, 1, 'the usage row is still written');
+});
+
 test('the hourly harvest reads a job dir that has a stream file', { skip: SKIP }, () => {
   // A finished job whose usage was not harvested at job end (framed-log reader must not be used).
   const r = rig();
