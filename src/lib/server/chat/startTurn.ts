@@ -43,6 +43,7 @@ import { MAX_MESSAGE_CHARS, isResultLine, streamJsonUserLine } from './streamInp
 import { fallbackTitle, queueTitle } from './titles';
 import { tagSideMessages } from './transcripts';
 import { pingOffScreenChat } from './turnPing';
+import { collectUsage } from '@/lib/server/usage/usageCollect';
 
 export { MAX_MESSAGE_CHARS };
 
@@ -105,6 +106,17 @@ onTurnExit.push((event) => {
  * detached — this never delays the next turn.
  */
 onTurnExit.push(pingOffScreenChat);
+
+/**
+ * U9: harvest the usage reading this turn produced and send any 80% alert.
+ * By the time hooks run the job's `meta.json` already has `endedAt` and its
+ * output is drained (the manager writes both before `onExit`), so the
+ * harvester sees the finished job. Handoff memo turns use quota too, so
+ * internal turns are included. Fire-and-forget (`void`), like the title hook.
+ */
+onTurnExit.push(() => {
+  void collectUsage();
+});
 
 async function runExitHooks(event: TurnExitEvent): Promise<void> {
   for (const hook of onTurnExit) {

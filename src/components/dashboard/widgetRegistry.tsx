@@ -1,7 +1,7 @@
 'use client';
 
 import type { ComponentType } from 'react';
-import { Banknote, CheckSquare, FolderKanban, Activity } from 'lucide-react';
+import { Banknote, CheckSquare, FolderKanban, Activity, Gauge } from 'lucide-react';
 
 import type { WidgetKind, WidgetSize } from '@/types/dashboard';
 import type { ToneName } from '@/components/ui/Indicators';
@@ -11,6 +11,7 @@ import { ActiveProjectsWidget } from '@/components/dashboard/widgets/ActiveProje
 import { SystemHealthWidget } from '@/components/dashboard/widgets/SystemHealthWidget';
 import { DailyTasksWidget } from '@/components/dashboard/widgets/DailyTasksWidget';
 import { MoneyInWidget } from '@/components/dashboard/widgets/MoneyInWidget';
+import { UsageLimitsWidget } from '@/components/dashboard/widgets/UsageLimitsWidget';
 
 /** Props every widget receives from the grid. */
 export interface WidgetProps {
@@ -64,6 +65,14 @@ export const WIDGET_REGISTRY: Record<WidgetKind, WidgetDescriptor> = {
     icon: Banknote,
     tone: 'success',
     component: MoneyInWidget,
+  },
+  'usage-limits': {
+    id: 'usage-limits',
+    title: 'Usage limits',
+    description: 'How much of each Claude seat\'s 5-hour and weekly allowance is used.',
+    icon: Gauge,
+    tone: 'accent-2',
+    component: UsageLimitsWidget,
   },
 };
 

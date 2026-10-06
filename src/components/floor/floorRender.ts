@@ -97,6 +97,12 @@ export interface SceneOptions {
    */
   samMax?: number;
   padBottom?: number;
+  /**
+   * The phone's Generals as a pyramid under SAM (T14): one array of ids per row, back (top) row first. `samMin` is
+   * how far SAM may shrink (as a share of normal) to leave the height the rows need; `edge` is the least gap, in
+   * canvas px, between the widest row's outer platform edges and the canvas sides.
+   */
+  pyramid?: { rows: GeneralId[][]; samMin: number; edge: number };
 }
 
 const BASE_OPTIONS: SceneOptions = {
@@ -109,6 +115,9 @@ export const DESKTOP_OPTIONS: SceneOptions = { ...BASE_OPTIONS };
 export const LAPTOP_OPTIONS: SceneOptions = { ...BASE_OPTIONS, padTop: 62, labelPx: 46, labelW: 0.42, minFont: 11, numPx: 11, laptop: true };
 /** The mockup's laptop media query, verbatim. */
 export const LAPTOP_QUERY = '(min-width:820px) and (max-width:1600px),(min-width:820px) and (max-height:800px)';
+/** The phone pyramid's rows (spec P1): Cerberus and Prometheus on the back row, Hermes, Hephaestus, Calliope in front. */
+export const PYRAMID_ROWS: GeneralId[][] = [['cerberus', 'prometheus'], ['hermes', 'hephaestus', 'calliope']];
+
 /**
  * e-phone.html's hero scene options (T13): `EScene(hero, { zeusTop: 6, spacing: 170, cardPx: 26, labelPx: 36,
  * pad: 10, padTop: 16, zoom: 1.9, zoomCard: 1, maxScale: 1, numPx: 10.5 })`. The phone draws no General cards,
@@ -117,6 +126,9 @@ export const LAPTOP_QUERY = '(min-width:820px) and (max-width:1600px),(min-width
 export const PHONE_OPTIONS: SceneOptions = {
   ...BASE_OPTIONS, zeusTop: 6, spacing: 170, cardPx: 26, labelPx: 36, pad: 10, padTop: 16, zoom: 1.9, zoomCard: 1,
   maxScale: 1, numPx: 10.5, anchorTop: true, samMax: 2.5, padBottom: 124,
+  // the pyramid (spec P1, P2, P7): `bustU` 73 (was 72) as the 16 px edge margin takes about 0.6 percent off the scale,
+  // and 73 keeps the busts at 412x915 at or above the variant-B mockup's 57.5 px
+  bustU: 73, pyramid: { rows: PYRAMID_ROWS, samMin: 0.6, edge: 16 },
 };
 
 /* ---------- small maths ---------- */
@@ -146,14 +158,17 @@ export interface Layout {
   /** SAM's own scale over the floor's: Zeus and the clock ring grow by it (1 except on a tall phone hero). */
   samK: number;
   GU: Record<GeneralId, number>;
+  /** Per-General row offset in v (the phone pyramid's back row sits above the front; all zero until T14). */
+  GV: Record<GeneralId, number>;
   home: Cam;
   opts: SceneOptions;
 }
 
 export function computeLayout(W: number, H: number, opts: SceneOptions = DESKTOP_OPTIONS): Layout {
+  if (opts.pyramid && opts.anchorTop && opts.samMax && opts.padBottom != null) return pyramidLayout(W, H, opts);
   const { COREZ, CORER, WH, SZ2 } = GEO;
-  const GU = {} as Record<GeneralId, number>;
-  GENERALS.forEach((g, i) => { GU[g.id] = (i - (GENERALS.length - 1) / 2) * opts.spacing; });
+  const GU = {} as Record<GeneralId, number>, GV = {} as Record<GeneralId, number>;
+  GENERALS.forEach((g, i) => { GU[g.id] = (i - (GENERALS.length - 1) / 2) * opts.spacing; GV[g.id] = 0; });
   const wU = opts.spacing * GENERALS.length + 8; // outer cards are as wide as a column
   const cardTop = 52;
   let s = 1, gapS = 0, gapW = 0, samV = -168, padV = 0, top = 0, bot = 0;
@@ -205,18 +220,95 @@ export function computeLayout(W: number, H: number, opts: SceneOptions = DESKTOP
   const tierY = h / 2 + (samV - SZ2 - home.y) * s;
   const zeusU = zeusFit || clamp((tierY - opts.zeusTop) / s / 0.88, 40, opts.zeusU);
   const bustU = Math.min(opts.bustU, zeusU * 0.7);
-  return { W: w, H: h, s, samV, cardTop, padV, top, bot, zeusU, bustU, samK, GU, home, opts };
+  const out: Layout = { W: w, H: h, s, samV, cardTop, padV, top, bot, zeusU, bustU, samK, GU, home, opts } as Layout;
+  // Non-enumerable on purpose: floorGolden hashes the layout's JSON, and the desktop guard may not change.
+  Object.defineProperty(out, 'GV', { value: GV, enumerable: false, writable: true, configurable: true });
+  return out;
+}
+
+/**
+ * The phone floor with its Generals in rows (T14), centred under SAM. The widest row sets the scale so its outer
+ * platform edges sit `edge` px inside the canvas; each row is a full column (bust, platform, name and state, worker
+ * pads and their label), and the next row's busts start `ROW_GAP` px below the row above's label. SAM then takes the
+ * height left: the largest size from `samMax` down to `samMin` whose ring fits across the screen and clears the
+ * back row's busts. Desktop and laptop never come here (they have no `pyramid`).
+ */
+const ROW_GAP = 10;
+/** On a short screen (the rows do not fit at the width's scale): the card-to-pad and row-to-row gaps shrink to these, and the pads' own label room (the phone draws none) goes. */
+const TIGHT_PAD_GAP = 0, TIGHT_ROW_GAP = 0, TIGHT_FOOT = 4;
+function pyramidLayout(W: number, H: number, opts: SceneOptions): Layout {
+  const { COREZ, CORER, WH, SZ2, GH, GZ } = GEO;
+  const py = opts.pyramid!, w = Math.max(1, W), h = Math.max(1, H);
+  const widest = Math.max(...py.rows.map((r) => r.length));
+  const wU = (widest - 1) * opts.spacing + 2 * GH * 1.732;
+  const bustTopW = -4 - GZ - opts.bustU * 1.08;
+  const numW = numeralW(opts.numPx);
+  const cardTop = 52;
+  /** The rows' vertical build at scale `sc`: the card row's foot, the pads' v, one row's foot, the step between rows, all rows' foot. */
+  let tight = false; // a short screen (below): the pads' fixed-px room is trimmed, as the phone draws no pad labels
+  const rowsAt = (sc: number) => {
+    const cardBot = cardTop + opts.cardPx / sc, padV = cardBot + 44 + (tight ? TIGHT_PAD_GAP : 14) / sc;
+    const bot = padV + WH + 6 + (tight ? 0 : opts.labelPx) / sc; // one row's foot (pads and their label), from its own v
+    const rowStep = bot + (tight ? TIGHT_ROW_GAP : ROW_GAP) / sc - bustTopW; // under every row but the last, so each row has room for its pads
+    return { padV, bot, rowStep, botAll: (py.rows.length - 1) * rowStep + bot };
+  };
+  /** How much v SAM's plinth needs above the standard 168 so the back row's busts clear the ring's 12 numeral and the SAM tag. */
+  const clearGap = (sc: number, f: number) => {
+    const need = Math.max(11, 16 * sc * f) + 4 + opts.numPx + 4 + 27 + 8;
+    return Math.max(0, need / sc - (bustTopW + 169 + SZ2 - GEO.RR * f));
+  };
+  // Zeus's head is pinned TOP_ANCHOR_PX from the top; `reserve` px stay clear at the foot. The width sets the scale,
+  // unless the rows plus SAM at `samMin` do not fit the height with just `edge` px to spare (a short screen): then
+  // the scale gives way, as the one-row floor's does, rather than let a row fall off the canvas.
+  const fits = (sc: number, reserve: number) =>
+    (h - TOP_ANCHOR_PX - reserve) / sc - (rowsAt(sc).botAll + 168 + SZ2 + 0.88 * opts.zeusU * py.samMin) >= clearGap(sc, py.samMin);
+  let s = Math.max(0.05, Math.min((w - 2 * py.edge) / wU, opts.maxScale));
+  if (!fits(s, py.edge)) {
+    tight = true;
+    let lo = 0.05, hi = s;
+    for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (fits(mid, TIGHT_FOOT)) lo = mid; else hi = mid; }
+    s = lo;
+  }
+  const { padV, bot, rowStep, botAll } = rowsAt(s);
+  const GU = {} as Record<GeneralId, number>, GV = {} as Record<GeneralId, number>;
+  py.rows.forEach((row, r) => row.forEach((id, i) => { GU[id] = (i - (row.length - 1) / 2) * opts.spacing; GV[id] = r * rowStep; }));
+  // the foot keeps the caption's room (padBottom) while SAM at samMin leaves it; on a short screen only the edge margin
+  const span = (h - TOP_ANCHOR_PX - (fits(s, opts.padBottom!) ? opts.padBottom! : TIGHT_FOOT)) / s; // world height from Zeus's head to the last row's foot
+  let samK = py.samMin, zeusFit = opts.zeusU * py.samMin, gap = span - (botAll + 168 + SZ2 + 0.88 * zeusFit);
+  for (let f = opts.samMax!; f >= py.samMin; f = Math.round((f - 0.05) * 100) / 100) {
+    const kr = s * f, lenLit = Math.max(11, 16 * kr), zu = opts.zeusU * f;
+    if (GEO.RR * 1.732 * kr + lenLit + 4 + numW > w / 2 - py.edge) continue; // ring and numerals across the screen
+    const g = span - (botAll + 168 + SZ2 + 0.88 * zu);
+    if (g < clearGap(s, f)) continue; // below the ring's front: its 12 numeral, then the SAM tag, then a margin, all above the back row's busts
+    samK = f; zeusFit = zu; gap = g;
+    break;
+  }
+  const samV = -168 - gap;
+  const top = samV - COREZ - CORER * 1.6;
+  const headTopW = samV - (SZ2 - zeusFit * 0.12 + zeusFit);
+  const home: Cam = { x: 0, y: headTopW - (TOP_ANCHOR_PX - h / 2) / s, k: s };
+  const bustU = Math.min(opts.bustU, zeusFit * 0.7);
+  const out = { W: w, H: h, s, samV, cardTop, padV, top, bot, zeusU: zeusFit, bustU, samK, GU, home, opts } as Layout;
+  // Non-enumerable like the one-row layout's: floorGolden hashes the layout's JSON.
+  Object.defineProperty(out, 'GV', { value: GV, enumerable: false, writable: true, configurable: true });
+  return out;
 }
 
 /** A two-digit ring numeral's width at `numPx` (ringRender's `numeralWidth`, kept here so layout can reserve it). */
 const numeralW = (numPx: number) => 2 * 0.625 * numPx;
 
-/** The camera for a focused General (the zoom), or home. */
+/**
+ * The camera for a focused General (the zoom), or home. The view is the General's own column, from its bust to its
+ * label: `top` to `bot`, both from its row's v (`GV`, zero on the one-row floor, which keeps the old numbers exactly).
+ * On the pyramid `bot` is already one row's foot (pads and label), so the front row is framed by its own foot, not
+ * the back row's, and `top` also reaches the bust when that stands higher than the usual 110.
+ */
 export function camFor(layout: Layout, id: GeneralId | null | undefined): Cam {
   if (!id) return layout.home;
-  const { opts, H, s } = layout, top = -110, bot = layout.bot;
+  const { opts, H, s } = layout, gv = layout.GV[id], bot = layout.bot;
+  const top = opts.pyramid ? Math.min(-110, -4 - GEO.GZ - layout.bustU * 1.08) : -110;
   const k = Math.min(s * opts.zoom, (H - opts.pad - opts.padTop) / (bot - top));
-  return { x: layout.GU[id], y: (top + bot) / 2 - (opts.padTop - opts.pad) / (2 * k), k };
+  return { x: layout.GU[id], y: gv + (top + bot) / 2 - (opts.padTop - opts.pad) / (2 * k), k };
 }
 
 export function lerpCam(a: Cam, b: Cam, e: number): Cam {
@@ -495,14 +587,23 @@ export function samSlotU(i: number): number {
 
 /* ---------- links ---------- */
 
-export function samLink(layout: Layout, gu: number): Curve {
-  const a: Pt = [0, layout.samV - GEO.COREZ + GEO.CORER * 0.9], b: Pt = [gu, -GEO.GH - GEO.GZ + 2];
+export function samLink(layout: Layout, gu: number, gv = 0): Curve {
+  const a: Pt = [0, layout.samV - GEO.COREZ + GEO.CORER * 0.9], b: Pt = [gu, gv - GEO.GH - GEO.GZ + 2];
+  if (layout.opts.pyramid) {
+    // The phone pyramid (T15): the SAM tag and the ring's 12 numeral sit straight under SAM, so no link may drop
+    // from him. Every link first swings out sideways, then comes down outside the General it passes: the outer
+    // links on their own side of both rows, the centre link (gu 0, nothing outside it to hug) round the right of the
+    // back row and back in to its platform. Found by search over the four phone sizes (360x780 to 412x915 and the
+    // 390x371 hero), at least 8 px clear of every platform, bust, name, the tag and the numeral.
+    if (gu === 0) return [a, [47 / layout.s, a[1] + 78], [layout.opts.spacing * 2.02, b[1] - 262], b];
+    return [a, [gu * 2, a[1]], [gu * 1.3, b[1] - 30], b];
+  }
   return [a, [gu * 0.08, a[1] + 70], [gu, b[1] - 70], b];
 }
 
-export function wkLink(layout: Layout, gu: number, padU: number, cardBot: number): Curve {
+export function wkLink(layout: Layout, gu: number, padU: number, cardBot: number, gv = 0): Curve {
   const side = clamp((padU - gu) / (layout.opts.spacing * 0.23), -1.6, 1.6);
-  const a: Pt = [gu + side * 10, cardBot], b: Pt = [padU, layout.padV - GEO.WH];
+  const a: Pt = [gu + side * 10, gv + cardBot], b: Pt = [padU, gv + layout.padV - GEO.WH];
   return [a, [a[0], a[1] + 26], [padU, b[1] - 20], b];
 }
 
@@ -609,23 +710,23 @@ export function buildScene(state: FloorState, layout: Layout, input: SceneInput)
   const stations: Station[] = [];
 
   GENERALS.forEach((g, gi) => {
-    const gu = layout.GU[g.id], entry = state.generals[g.id] ?? { idle: true, workers: [] };
+    const gu = layout.GU[g.id], gv = layout.GV[g.id], entry = state.generals[g.id] ?? { idle: true, workers: [] };
     const shown = figureWorkers(entry.workers, now);
     const idle = !!entry.idle;
     const dp = dispatchOf(g.id), ver = verifyOf(g.id);
-    const route = samLink(layout, gu);
+    const route = samLink(layout, gu, gv);
     const routeLit = !idle || !!dp || !!ver;
     baseLinks.push({ curve: route, t1: 1, col: EDGE, alpha: routeLit ? 0 : 0.5, lit: false });
 
     const { offsets, scale } = slotOffsets(shown.length, opts.spacing);
-    offsets.forEach((off) => baseLinks.push({ curve: wkLink(layout, gu, gu + off, cardBot), t1: 1, col: EDGE, alpha: 0.22, lit: false }));
+    offsets.forEach((off) => baseLinks.push({ curve: wkLink(layout, gu, gu + off, cardBot, gv), t1: 1, col: EDGE, alpha: 0.22, lit: false }));
 
     /* the station (drawStation) */
     const hover = input.hover === g.id;
     const act = idle ? 0 : 1;
     const failFlash = endsOf(g.id).some((e) => !e.ok && live(e.at, FX.RETURN + FX.VERIFY + 1200));
-    const box = isoBox(view, gu, 0, GH, 0, GZ);
-    const c = P(gu, 0, GZ);
+    const box = isoBox(view, gu, gv, GH, 0, GZ);
+    const c = P(gu, gv, GZ);
     // tower on the left of the platform: one slab per job verified today (Must 12); taller days pack tighter
     const nSlabs = Math.max(0, state.towers?.[g.id] ?? 0);
     const pitch = nSlabs > 10 ? 110 / nSlabs : 11, slabH = pitch * (8 / 11), tu = gu - 36;
@@ -638,7 +739,7 @@ export function buildScene(state: FloorState, layout: Layout, input: SceneInput)
       const hidden = fresh && since(drop!.at) < 0; // still waiting for the proof to reach SAM
       if (hidden) continue;
       const z0 = GZ + 3 + i * pitch;
-      const tb = isoBox(view, tu, 0, 11, z0 + dz, z0 + slabH + dz);
+      const tb = isoBox(view, tu, gv, 11, z0 + dz, z0 + slabH + dz);
       slabs.push({
         box: tb,
         top: falling ? rgba(TEAL, 0.6) : fresh ? rgba(ACC, 0.6) : rgba(EDGE, 0.2 + act * 0.14),
@@ -656,7 +757,7 @@ export function buildScene(state: FloorState, layout: Layout, input: SceneInput)
     }
     const nP = padStates.length;
     const stagePads: StagePad[] = padStates.map((st, i) => {
-      const kk = (i + 1) / (nP + 1), pu = gu + GH * 1.732 * kk - 4, pv = GH * (1 - kk) - 7;
+      const kk = (i + 1) / (nP + 1), pu = gu + GH * 1.732 * kk - 4, pv = gv + GH * (1 - kk) - 7;
       const col = st === 'done' ? ACC : CORE;
       const quad = [P(pu, pv - 3.2, GZ), P(pu + 5.5, pv, GZ), P(pu, pv + 3.2, GZ), P(pu - 5.5, pv, GZ)];
       const a = st === 'done' ? 0.8 : st === 'now' ? 0.55 + (red ? 0.35 : 0.35 * Math.sin(time * 6)) : 0;
@@ -674,8 +775,8 @@ export function buildScene(state: FloorState, layout: Layout, input: SceneInput)
       level = idle ? 1 - 0.6 * r : 0.4 + 0.6 * r;
     }
     const bU = layout.bustU, bu = gu + opts.spacing * 0.06;
-    const bBase = P(bu, -4, GZ + bU * 0.08);
-    const bustSlot: BustSlot = { x: bBase[0], y: bBase[1], heightPx: bU * k, idle, level, emitter: P(bu, -4, GZ) };
+    const bBase = P(bu, gv - 4, GZ + bU * 0.08);
+    const bustSlot: BustSlot = { x: bBase[0], y: bBase[1], heightPx: bU * k, idle, level, emitter: P(bu, gv - 4, GZ) };
     // the card (the mockup's DOM .gcard, painted on the canvas here)
     const running = shown.filter((w) => w.status === 'running').length;
     const queued = shown.filter((w) => w.status === 'queued').length;
@@ -693,7 +794,7 @@ export function buildScene(state: FloorState, layout: Layout, input: SceneInput)
     if (failedNow && !running) segs = segs.map(() => 'bad');
     const gw = opts.spacing * s * cardK - 14 * cardK;
     const card: Card = {
-      x: X(gu) - gw / 2, y: Y(layout.cardTop), w: gw, h: opts.cardPx * cardK, k: cardK,
+      x: X(gu) - gw / 2, y: Y(gv + layout.cardTop), w: gw, h: opts.cardPx * cardK, k: cardK,
       name: g.name, role: g.role, count: `${nSlabs} today`, state: stateText,
       busy: !idle, hover, segs,
     };
@@ -715,8 +816,8 @@ export function buildScene(state: FloorState, layout: Layout, input: SceneInput)
     /* worker pads and figures (drawPad, figure) */
     offsets.forEach((off, i) => {
       const u = gu + off, w = shown[i];
-      const pb = isoBox(view, u, layout.padV, WH * scale, 0, 3);
-      const p = P(u, layout.padV, 3);
+      const pb = isoBox(view, u, gv + layout.padV, WH * scale, 0, 3);
+      const p = P(u, gv + layout.padV, 3);
       if (!w) { pads.push({ box: pb, lit: false, a: 0 }); return; }
       const spawnAt = fx.spawns[w.jobId];
       const spawning = spawnAt != null && !red && since(spawnAt) < FX.SPAWN_TO;
@@ -725,7 +826,7 @@ export function buildScene(state: FloorState, layout: Layout, input: SceneInput)
       const failed = w.status === 'failed';
       const active = w.status === 'running';
       pads.push({ box: pb, lit: vis > 0, a: vis });
-      const link = wkLink(layout, gu, u, cardBot);
+      const link = wkLink(layout, gu, u, cardBot, gv);
       if (vis > 0) {
         const fanP = spawning && since(spawnAt) <= FX.FANOUT ? ease(lin(now, spawnAt, spawnAt + FX.FANOUT)) : 1;
         litLinks.push({ curve: link, t1: fanP, col: failed ? BAD : CORE, alpha: vis * (active ? 0.75 : 0.35), lit: true });
@@ -735,7 +836,7 @@ export function buildScene(state: FloorState, layout: Layout, input: SceneInput)
         if (active && !red && !spawning) flow(pulses, link, time + i * 0.4, 1.1, CORE, 'core', 0.7, false, 11 * k);
       }
       const lines = workerLines(w);
-      const lp = P(u, layout.padV + WH * scale + 4);
+      const lp = P(u, gv + layout.padV + WH * scale + 4);
       figs.push({
         jobId: w.jobId, owner: g.id, x: p[0], y: p[1], k: k * scale, lx: lp[0], ly: lp[1],
         col: failed ? BAD : CORE, vis, active, returned: false, dying: 0, spawnK, failed, i: gi * 3 + i,
@@ -748,7 +849,7 @@ export function buildScene(state: FloorState, layout: Layout, input: SceneInput)
       const t0 = e.at, endT = t0 + FX.RETURN + FX.VERIFY + FX.FADE;
       if (now < t0 || now > endT) return;
       const { offsets: o2, scale: sc2 } = slotOffsets(e.slots, opts.spacing);
-      const u = gu + (o2[e.slot] ?? 0), p = P(u, layout.padV, 3), link = wkLink(layout, gu, u, cardBot);
+      const u = gu + (o2[e.slot] ?? 0), p = P(u, gv + layout.padV, 3), link = wkLink(layout, gu, u, cardBot, gv);
       const dying = lin(now, t0 + FX.RETURN + FX.VERIFY, endT);
       figs.push({
         jobId: e.jobId, owner: g.id, x: p[0], y: p[1], k: k * sc2, lx: p[0], ly: p[1], col: e.ok ? CORE : BAD,
@@ -818,10 +919,37 @@ export function buildScene(state: FloorState, layout: Layout, input: SceneInput)
 
 /* ---------- hit test (port of `hit`) ---------- */
 
+/** One General's tap area in canvas px: `x0 <= x < x1`, `y0 <= y < y1` (the old column test is strict on x, the pyramid's half-open). */
+export interface HitArea { id: GeneralId; x0: number; y0: number; x1: number; y1: number }
+
+/**
+ * Every General's tap area at `cam`. One row: the old column rectangle (x within 0.48 of the spacing, y from the
+ * platform top minus 70 to the foot), untouched. Pyramid (`layout.opts.pyramid`): the column's x-range, and a y-range
+ * from the row's bust top down to the next row's bust top (the last row's, to its foot), so a row's labels and pads
+ * belong to it and no two areas meet.
+ */
+export function hitAreas(layout: Layout, cam: Cam): HitArea[] {
+  const view: View = { W: layout.W, H: layout.H, cam };
+  const half = layout.opts.spacing * cam.k * 0.48;
+  if (!layout.opts.pyramid) {
+    return GENERALS.map(({ id }) => {
+      const cx = toX(view, layout.GU[id]);
+      return { id, x0: cx - half, y0: toY(view, -GEO.GH - 70), x1: cx + half, y1: toY(view, layout.bot) };
+    });
+  }
+  const bustTop = -4 - GEO.GZ - layout.bustU * 1.08; // the bust's top from its row's v (`camFor`, `pyramidLayout`)
+  const starts = [...new Set(GENERALS.map(({ id }) => layout.GV[id]))].sort((a, b) => a - b);
+  return GENERALS.map(({ id }) => {
+    const cx = toX(view, layout.GU[id]), gv = layout.GV[id], next = starts.find((v) => v > gv);
+    return { id, x0: cx - half, y0: toY(view, gv + bustTop), x1: cx + half, y1: toY(view, next != null ? next + bustTop : gv + layout.bot) };
+  });
+}
+
 /** Which General's column (station, card or pads) a canvas-local point falls in, or null. */
 export function hitGeneral(layout: Layout, cam: Cam, x: number, y: number): GeneralId | null {
   const view: View = { W: layout.W, H: layout.H, cam };
   if (x < 0 || y < 0 || x > layout.W || y > layout.H) return null;
+  if (layout.opts.pyramid) return hitAreas(layout, cam).find((a) => x > a.x0 && x < a.x1 && y >= a.y0 && y < a.y1)?.id ?? null;
   let best: GeneralId | null = null;
   for (const g of GENERALS) {
     const cx = toX(view, layout.GU[g.id]);
@@ -860,14 +988,14 @@ export interface PhoneLabels {
  * the mockup.
  */
 export function phoneLabels(scene: Scene, layout: Layout, state: FloorState, zeusDrawn: boolean): PhoneLabels {
-  const v = scene.view, y = toY(v, layout.cardTop);
+  const v = scene.view;
   const generals = scene.stations.map((st): PhoneGeneralLabel => {
     const ws = state.generals[st.id]?.workers ?? [];
     const busy = !st.idle;
     const label = !busy ? 'Idle'
       : ws.some((w) => w.status === 'running') ? 'Running'
         : ws.some((w) => w.status === 'queued') ? 'Queued' : 'Working';
-    return { id: st.id, name: st.name, state: label, busy, x: st.cx, y };
+    return { id: st.id, name: st.name, state: label, busy, x: st.cx, y: toY(v, layout.GV[st.id] + layout.cardTop) };
   });
   const nodeX = toX(v, 0), nodeY = toY(v, layout.samV - GEO.COREZ);
   const zs = scene.zeusSlot;
