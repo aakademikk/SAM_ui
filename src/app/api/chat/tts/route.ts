@@ -4,7 +4,8 @@
  * Body: { text: string, voice?: number, edgeVoice?: string, edgeRate?: string }
  * Returns: audio/mpeg
  *
- * `edgeVoice` picks the Edge voice; `edgeRate` its pace ("+0%", "-5%"). The
+ * `edgeVoice` picks the Edge voice, or "elevenlabs" for the paid SAM (ElevenLabs)
+ * voice (voice-line falls back to Edge if ElevenLabs fails); `edgeRate` its pace ("+0%", "-5%"). The
  * rate exists for the practice agent's buyer, who must not inherit SAM's
  * configured +15% — rushed delivery is most of what reads as robotic.
  *
@@ -18,6 +19,7 @@
 import { requireSession } from '@/lib/server/auth/guard';
 import { failure, readJson } from '@/lib/server/respond';
 import { synthesize } from '@/lib/server/voice/tts';
+import { buildVoiceLineBody } from '@/lib/server/voice/voiceLineBody';
 import { VOICES } from '@/lib/voiceData';
 
 export const dynamic = 'force-dynamic';
@@ -58,11 +60,7 @@ export async function POST(request: Request) {
     const upstream = await fetch(VOICE_LINE_TTS_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        text,
-        ...(edgeVoice ? { voice: edgeVoice } : {}),
-        ...(edgeRate ? { rate: edgeRate } : {}),
-      }),
+      body: JSON.stringify(buildVoiceLineBody(text, edgeVoice, edgeRate)),
       signal: AbortSignal.timeout(VOICE_LINE_TIMEOUT_MS),
     });
     if (upstream.ok) {

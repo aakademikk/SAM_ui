@@ -188,7 +188,7 @@ function VoiceSection() {
 
       <div className="pt-2 space-y-2">
         <label htmlFor="settings-voice-edge" className="text-xs text-dim-300">
-          TTS voice (Edge) — used for chat and push-to-talk
+          TTS voice (Edge; ElevenLabs is paid) — used for chat and push-to-talk
         </label>
         <select
           id="settings-voice-edge"

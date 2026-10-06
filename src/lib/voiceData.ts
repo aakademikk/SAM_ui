@@ -50,7 +50,18 @@ export const DEFAULT_VOICE = 21; // bf_emma — British Female
  * The `id` is the ShortName passed straight to edge-tts.
  */
 
+/**
+ * Sent as the voice id to select ElevenLabs. voice-line treats this value as
+ * "synthesise via ElevenLabs, fall back to Edge on any failure". Paid, so it is
+ * never the default.
+ */
+export const ELEVENLABS_VOICE_ID = 'elevenlabs';
+
 export const EDGE_VOICE_GROUPS: { label: string; voices: { id: string; name: string }[] }[] = [
+  {
+    label: 'Fancy (paid)',
+    voices: [{ id: ELEVENLABS_VOICE_ID, name: 'SAM (ElevenLabs) — paid' }],
+  },
   {
     label: 'British',
     voices: [
