@@ -388,7 +388,7 @@ Do not touch: any repo file, `/home/col/SAM_ui`, system files.
 Proof: `results/summary.md` has all 22 rows filled, zero gaps, check 20 marked Colin's; the four project commands pass with counts pasted verbatim; the UX run shows zero serious or critical axe findings AFTER; the golden test passes and its file is unedited.
 
 ## T25: Install the staged system script (deploy time, Colin's go required)
-Status: TODO
+Status: DONE 2026-10-06 (pinned quotaLog.test 0/3 before, 3/3 after on live; fleetUsage.test 1/4 before, 4/4 after on live; test-dispatch-routing 23/0; .bak-20261005-usage of both kept; sam-quota-log.timer active; check 6 live half pending first chat turn)
 Spec: must-do #U6, #U9, check #6 (live), #22 (live)
 Depends on: T1, T24, T26
 Blocked by: Colin's go to deploy (the foreman runs this ticket together with the deploy, never earlier)
