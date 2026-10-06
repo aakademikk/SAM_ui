@@ -457,13 +457,13 @@ class EstateSimulator {
 
   getSystem(): SystemHealthPayload {
     const degradedCount = this.services.filter((s) => s.state !== 'operational').length;
-    const failureRate = this.automationFailures24h / Math.max(1, this.automationRuns24h);
+    // The machine only: services, CPU, memory. Fleet job failures are mostly
+    // seat-limit refusals and are reported in their own tile (Colin, 2026-10-06).
     const overallScore = clamp(
       100 -
         degradedCount * 6 -
         Math.max(0, this.cpuPct - 75) * 0.45 -
-        Math.max(0, this.memPct - 80) * 0.6 -
-        failureRate * 260,
+        Math.max(0, this.memPct - 80) * 0.6,
       0,
       100,
     );
