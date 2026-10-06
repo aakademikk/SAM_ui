@@ -18,3 +18,14 @@ export function buildVoiceLineBody(
     ...(typeof edgeRate === 'string' && edgeRate ? { rate: edgeRate } : {}),
   };
 }
+
+/**
+ * The abort signal for the upstream voice-line fetch: the deadline, or the
+ * browser giving up on the request, whichever comes first. The browser aborts
+ * its fetch when speech is stopped or a new turn starts; without following
+ * `requestSignal` the chunk in flight (and the prefetched one) still ran to the
+ * end at ElevenLabs and was billed for audio nobody heard.
+ */
+export function voiceLineSignal(requestSignal: AbortSignal, timeoutMs: number): AbortSignal {
+  return AbortSignal.any([requestSignal, AbortSignal.timeout(timeoutMs)]);
+}

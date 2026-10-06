@@ -19,7 +19,7 @@
 import { requireSession } from '@/lib/server/auth/guard';
 import { failure, readJson } from '@/lib/server/respond';
 import { synthesize } from '@/lib/server/voice/tts';
-import { buildVoiceLineBody } from '@/lib/server/voice/voiceLineBody';
+import { buildVoiceLineBody, voiceLineSignal } from '@/lib/server/voice/voiceLineBody';
 import { VOICES } from '@/lib/voiceData';
 
 export const dynamic = 'force-dynamic';
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(buildVoiceLineBody(text, edgeVoice, edgeRate)),
-      signal: AbortSignal.timeout(VOICE_LINE_TIMEOUT_MS),
+      signal: voiceLineSignal(request.signal, VOICE_LINE_TIMEOUT_MS),
     });
     if (upstream.ok) {
       const mp3 = await upstream.arrayBuffer();
