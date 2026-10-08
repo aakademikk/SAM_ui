@@ -62,7 +62,7 @@ Do not touch: the real vault, the daily note for any real date, `write_ledger`, 
 Proof: `bash /home/col/.sam/tests/test-closer-dailynote.sh | tail -1` prints `0 failed`. Before: the fixture ends with no note and a needs line.
 
 ## T4: closer.py drains the collectors and its exceptions become housekeeping
-Status: TODO
+Status: DONE 2026-10-08 (test-closer-housekeeping.sh 24/0, fails 12/12 on live closer.py; outside-store.sh.next 5/0; live test-closer-all red 3 by design until T21 (staged closer.py differs from stage.sums and from live outside-store test))
 Spec: must-do #1, #13, #15; check #11 (exception rows)
 Depends on: T1
 Blocked by: none
