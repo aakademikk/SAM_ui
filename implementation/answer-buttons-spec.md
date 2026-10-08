@@ -1,6 +1,6 @@
 # Answer buttons on SAM's questions: spec
 
-Status: DRAFT (2026-10-08). Not locked. Not grilled: this is written from Colin's message of 2026-10-08 and the brief that followed it, so the open questions at the end are real.
+Status: LOCKED 2026-10-08 (Colin answered all six open questions, SAM's recommendations taken). Was: DRAFT. Not grilled: this is written from Colin's message of 2026-10-08 and the brief that followed it, so the open questions at the end are real.
 
 Priorities entry: Job closer. Scope: business.
 
@@ -150,5 +150,5 @@ Each check fails before the build and passes after it. Numbers in brackets map t
 2. ANSWERED 2026-10-08 (Colin: "yes", SAM's recommendation taken): Step-up for non-gated Accept. A lock screen press uses the cookie session only, because biometric step-up cannot be asked from a notification. SAM recommends this for non-gated questions, since Accept only starts jobs through `sam-dispatch` and its seat and folder guards, and anything in must-do 6 is gated and needs the step-up in the app. The alternative is step-up for every Accept, which defeats the lock screen button.
 3. ANSWERED 2026-10-08 (Colin: "yes", SAM's recommendation taken): Session expiry. If the session cookie has expired the lock screen press cannot answer (6 re-shows the notification). SAM recommends leaving the session lifetime as it is and checking on the phone how often this happens before changing anything.
 4. ANSWERED 2026-10-08 (Colin: "yes", SAM's recommendation taken): Relaunch cap. Does Colin's Accept on a blocked-job question count towards the two-relaunch cap (Job_Closer_Spec must-do 16)? SAM recommends it does not, because it is Colin's explicit instruction, but each question can be accepted once so it cannot loop.
-5. OPEN: Gated default. Should a `colin` decision with no `gated` field be treated as gated (as 10 says)? SAM recommends yes, as the safe default. It means some harmless questions show Open instead of Accept and Decline until the decision brief is updated to set `gated: false`.
-6. OPEN: Information-only messages. Housekeeping and rollback notices no longer ask anything. SAM recommends they show on the dashboard's finished-jobs list only, with no ping (a ping only for failure, as must-do 18). Colin may prefer a once-a-day housekeeping digest instead.
+5. ANSWERED 2026-10-08 (Colin: "yes", SAM's recommendation taken): Gated default. Should a `colin` decision with no `gated` field be treated as gated (as 10 says)? SAM recommends yes, as the safe default. It means some harmless questions show Open instead of Accept and Decline until the decision brief is updated to set `gated: false`.
+6. ANSWERED 2026-10-08 (Colin: "yes", SAM's recommendation taken): Information-only messages. Housekeeping and rollback notices no longer ask anything. SAM recommends they show on the dashboard's finished-jobs list only, with no ping (a ping only for failure, as must-do 18). Colin may prefer a once-a-day housekeeping digest instead.
