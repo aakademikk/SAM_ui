@@ -162,7 +162,7 @@ Do not touch: the live `send.mjs`, `~/.sam/push-subs.json`, `~/.sam/push-vapid.j
 Proof: `bash /home/col/.sam/tests/test-sam-push-question.sh | tail -1` prints `0 failed`. Before: `sam-push --question` exits 2 (unknown flag usage) and the test fails.
 
 ## T11: notify-colin.sh passes the question through and gains test seams
-Status: TODO
+Status: DONE 2026-10-09 (test-notify-colin-question.sh 16/0, 2/14 against live script; test-closer-all only known reds. Worker slip: one live-script run in its before-check may have sent a stray Telegram [T] B)
 Spec: must-do #3, #17; check #17 (script half)
 Depends on: T10
 Blocked by: none
