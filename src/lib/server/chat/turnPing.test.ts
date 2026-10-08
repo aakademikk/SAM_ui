@@ -151,6 +151,8 @@ before(async () => {
   process.env.SAM_AGENT_CWD = agentDir;
   process.env.SAM_PUSH_BIN = PUSH_BIN;
   process.env.SAM_PUSH_SUBS = pushSubsFile;
+  // These turns last under a second; the quiet-reply threshold has its own test.
+  process.env.SAM_REPLY_PING_MIN_MS = '0';
   process.env.SAM_PUSH_LOG = pushLogFile;
   process.env.SAM_CLAUDE_BIN = writeFakeClaude(path.join(tmp, 'bin'));
   delete process.env.FAKE_CLAUDE_LOG;

@@ -32,6 +32,26 @@ import type { TurnExitEvent } from './startTurn';
 /** Longest slice of the answer that goes into the push body. */
 const ANSWER_CHARS = 100;
 
+/** A reply ping is only worth a buzz when the turn took this long. */
+export const REPLY_PING_MIN_MS = 120_000;
+
+/** `SAM_REPLY_PING_MIN_MS` overrides the threshold; read per call so tests can set it. */
+export function replyPingMinMs(): number {
+  const raw = process.env.SAM_REPLY_PING_MIN_MS;
+  if (raw === undefined || raw.trim() === '') return REPLY_PING_MIN_MS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : REPLY_PING_MIN_MS;
+}
+
+/** Failed turns always ping; a clean one only when it ran past the threshold. */
+export function shouldPingReply(event: TurnExitEvent, now: number = Date.now()): boolean {
+  if (event.exitCode !== 0) return true;
+  const started = event.record?.startedAt ? Date.parse(event.record.startedAt) : NaN;
+  if (!Number.isFinite(started)) return true;
+  const ended = event.record?.endedAt ? Date.parse(event.record.endedAt) : NaN;
+  return (Number.isFinite(ended) ? ended : now) - started >= replyPingMinMs();
+}
+
 export function pushBin(): string {
   return process.env.SAM_PUSH_BIN ?? path.join(os.homedir(), '.local', 'bin', 'sam-push');
 }
@@ -82,6 +102,7 @@ function sendPing(chatId: string, body: string): void {
 export async function pingOffScreenChat(event: TurnExitEvent): Promise<void> {
   if (event.internal) return;
   if (isOnScreen(event.chatId)) return;
+  if (!shouldPingReply(event)) return;
 
   const title = event.chat?.title ?? 'Chat';
   let body = title;

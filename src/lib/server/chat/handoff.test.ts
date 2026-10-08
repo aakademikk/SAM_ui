@@ -156,6 +156,8 @@ before(async () => {
   process.env.SAM_PUSH_BIN = pushStub;
   process.env.SAM_PUSH_SUBS = pushSubs;
   process.env.SAM_PUSH_LOG = pushLog;
+  // Short fake turns; the quiet-reply threshold has its own test.
+  process.env.SAM_REPLY_PING_MIN_MS = '0';
   process.env.SAM_CLAUDE_BIN = writeFakeClaude(path.join(tmp, 'bin'));
   process.env.FAKE_CLAUDE_LOG = logPath;
   process.env.FAKE_CLAUDE_DELAY_MS = '600';

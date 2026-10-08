@@ -12,10 +12,9 @@ process.env.HOME = HOME;
 
 const LOG = path.join(BIN_DIR, 'pushes.log');
 const PUSH = path.join(BIN_DIR, 'push.sh');
-const FAIL_FLAG = path.join(BIN_DIR, 'fail');
 fs.writeFileSync(
   PUSH,
-  `#!/bin/sh\nprintf '%s\\n' "$*" >> "${LOG}"\n[ -e "${FAIL_FLAG}" ] && exit 1\nexit 0\n`,
+  `#!/bin/sh\nprintf '%s\\n' "$*" >> "${LOG}"\nexit 0\n`,
   { mode: 0o755 },
 );
 process.env.SAM_PUSH_BIN = PUSH;
@@ -46,7 +45,6 @@ function writeRow(over: Record<string, unknown>): void {
 function reset(): void {
   fs.rmSync(QUOTA, { recursive: true, force: true });
   fs.rmSync(LOG, { force: true });
-  fs.rmSync(FAIL_FLAG, { force: true });
 }
 
 const pushes = (): string[] =>
@@ -60,68 +58,24 @@ for (const [key, resetKey, label] of [
   ['fiveHour', 'fiveHourResetsAt', '5-hour'],
   ['sevenDay', 'sevenDayResetsAt', 'weekly'],
 ] as const) {
-  test(`${label}: 0.79 sends nothing, 0.80 sends one push naming seat, 80% and reset`, async () => {
+  test(`${label}: a reading over 80% stays logged and sends no push`, async () => {
     reset();
     const resetAt = secs(NOW + 2 * H);
     writeRow({ [key]: 0.79, [resetKey]: resetAt });
+    writeRow({ [key]: 0.95, [resetKey]: resetAt });
     assert.deepEqual(await runner.runUsageAlerts(NOW), []);
     assert.equal(pushes().length, 0);
-
-    writeRow({ [key]: 0.8, [resetKey]: resetAt });
-    const sent = await runner.runUsageAlerts(NOW);
-    assert.equal(sent.length, 1);
-    const lines = pushes();
-    assert.equal(lines.length, 1);
-    assert.match(lines[0], /main/);
-    assert.match(lines[0], /80%/);
-    assert.match(lines[0], /resets/);
-    assert.match(lines[0], /--url \//);
-    assert.match(lines[0], new RegExp(label));
-  });
-
-  test(`${label}: one ping per window, a new reset epoch pings again`, async () => {
-    reset();
-    const first = secs(NOW + 2 * H);
-    writeRow({ [key]: 0.81, [resetKey]: first });
-    await runner.runUsageAlerts(NOW);
-    writeRow({ [key]: 0.9, [resetKey]: first });
-    await runner.runUsageAlerts(NOW);
-    writeRow({ [key]: 0.95, [resetKey]: first });
-    await runner.runUsageAlerts(NOW);
-    assert.equal(pushes().length, 1);
-
-    const later = NOW + 30 * H;
-    writeRow({ [key]: 0.85, [resetKey]: secs(later + 5 * H) });
-    await runner.runUsageAlerts(later);
-    assert.equal(pushes().length, 2);
+    assert.equal(fs.existsSync(path.join(QUOTA, 'alerts.json')), false);
+    const rows = fs.readFileSync(path.join(QUOTA, 'runs.jsonl'), 'utf8').split('\n').filter(Boolean);
+    assert.equal(rows.length, 2);
+    assert.equal(JSON.parse(rows[1])[key], 0.95);
   });
 }
 
-test('a failing push leaves the state unmarked, so the next call retries', async () => {
-  reset();
-  writeRow({ fiveHour: 0.9, fiveHourResetsAt: secs(NOW + 2 * H) });
-  fs.writeFileSync(FAIL_FLAG, '');
-  assert.deepEqual(await runner.runUsageAlerts(NOW), []);
-  assert.equal(fs.existsSync(path.join(QUOTA, 'alerts.json')), false);
-  fs.rmSync(FAIL_FLAG);
-  assert.equal((await runner.runUsageAlerts(NOW)).length, 1);
-  assert.equal(pushes().length, 2);
-  assert.equal((await runner.runUsageAlerts(NOW)).length, 0);
-});
-
-test('a corrupt alerts.json does not throw', async () => {
-  reset();
-  writeRow({ fiveHour: 0.9, fiveHourResetsAt: secs(NOW + 2 * H) });
-  fs.writeFileSync(path.join(QUOTA, 'alerts.json'), '{not json');
-  const sent = await runner.runUsageAlerts(NOW);
-  assert.equal(sent.length, 1);
-  assert.doesNotThrow(() => JSON.parse(fs.readFileSync(path.join(QUOTA, 'alerts.json'), 'utf8')));
-});
-
-test('two concurrent calls send one push', async () => {
+test('two concurrent calls send nothing', async () => {
   reset();
   writeRow({ fiveHour: 0.9, fiveHourResetsAt: secs(NOW + 2 * H) });
   const [a, b] = await Promise.all([runner.runUsageAlerts(NOW), runner.runUsageAlerts(NOW)]);
-  assert.equal(a.length + b.length, 1);
-  assert.equal(pushes().length, 1);
+  assert.equal(a.length + b.length, 0);
+  assert.equal(pushes().length, 0);
 });

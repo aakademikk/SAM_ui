@@ -42,7 +42,7 @@ test.before(async () => {
   sweep = await import('./usageSweep.js');
 });
 
-test('a hand-written 0.81 row pings once within two intervals; later sweeps and a second start add nothing; no network, only the push binary spawned', async () => {
+test('a hand-written 0.81 row sends no push; later sweeps and a second start add nothing; no network', async () => {
   const spawned: string[] = [];
   const otherProcess: string[] = [];
   let fetched = 0;
@@ -66,21 +66,19 @@ test('a hand-written 0.81 row pings once within two intervals; later sweeps and 
   try {
     appendFleetRow();
     await sleep(INTERVAL * 2 + 60);
-    assert.equal(pushes().length, 1, 'exactly one push within two intervals');
-    assert.match(pushes()[0], /main/);
+    assert.equal(pushes().length, 0, 'no usage push');
 
     // (b) further sweeps in the same window send nothing more.
     await sleep(INTERVAL * 5);
-    assert.equal(pushes().length, 1);
+    assert.equal(pushes().length, 0);
 
     // (c) starting again gives the same timer, so still one push.
     assert.equal(sweep.startUsageSweep(INTERVAL), stop);
     await sleep(INTERVAL * 3);
-    assert.equal(pushes().length, 1);
+    assert.equal(pushes().length, 0);
 
-    // (d) the push binary is the only process, and fetch is never called.
-    assert.ok(spawned.length > 0);
-    assert.deepEqual([...new Set(spawned)], [PUSH]);
+    // (d) nothing is spawned, and fetch is never called.
+    assert.deepEqual(spawned, []);
     assert.deepEqual(otherProcess, []);
     assert.equal(fetched, 0);
   } finally {
@@ -90,7 +88,7 @@ test('a hand-written 0.81 row pings once within two intervals; later sweeps and 
   }
 });
 
-test('starting twice from fresh gives one timer and one push; stop allows a restart', async () => {
+test('starting twice from fresh gives one timer and no push; stop allows a restart', async () => {
   fs.rmSync(QUOTA, { recursive: true, force: true });
   fs.rmSync(LOG, { force: true });
   const a = sweep.startUsageSweep(INTERVAL);
@@ -99,7 +97,7 @@ test('starting twice from fresh gives one timer and one push; stop allows a rest
     assert.equal(a, b);
     appendFleetRow();
     await sleep(INTERVAL * 4);
-    assert.equal(pushes().length, 1);
+    assert.equal(pushes().length, 0);
   } finally {
     a();
   }

@@ -113,27 +113,17 @@ test('a harvester that fails or a missing binary does not throw', { skip: SKIP }
   assert.equal(pushes().length, 0);
 });
 
-test('a finished turn is harvested and pings once, with no timer (U9, U8)', { skip: SKIP }, async () => {
-  const endedAt = new Date();
+test('a finished turn is harvested and sends no usage push (fewer pings, 2026-10-08)', { skip: SKIP }, async () => {
   const resetsAt = Math.floor(Date.now() / 1000) + 2 * 3600;
-  fakeJob('job_1', 0.81, resetsAt, endedAt);
+  fakeJob('job_1', 0.81, resetsAt, new Date());
 
   await collect.collectUsage();
+  assert.equal(pushes().length, 0, `expected no push, got: ${pushes().join(' | ')}`);
 
-  const lines = pushes();
-  assert.equal(lines.length, 1, `expected one push, got: ${lines.join(' | ')}`);
-  assert.match(lines[0], /main/);
-  assert.match(lines[0], /81%/);
-  assert.match(lines[0], /resets/);
-  const pushedAt = Number(lines[0].split(' ')[0]) / 1e6;
-  const elapsedS = (pushedAt - endedAt.getTime()) / 1000;
-  console.log(`# endedAt to push: ${elapsedS.toFixed(2)} s`);
-  assert.ok(elapsedS >= 0 && elapsedS < 300, `took ${elapsedS} s`);
-
-  // A later turn in the same window, higher: still one push in total (U8).
+  // The reading is still logged: the harvester's row is what the dashboard shows.
   fakeJob('job_2', 0.82, resetsAt, new Date());
   await collect.collectUsage();
-  assert.equal(pushes().length, 1);
+  assert.equal(pushes().length, 0);
 });
 
 test('the turn exit hooks include the collect hook, and it runs the harvester', { skip: SKIP }, async () => {
