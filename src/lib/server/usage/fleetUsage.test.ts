@@ -170,8 +170,8 @@ test(
     const [jd] = jobDirs(r);
     assert.ok(jd, 'one job dir');
 
-    // (a) stdout.log is the report plus the notify line, no JSON.
-    assert.equal(fs.readFileSync(path.join(jd, 'stdout.log'), 'utf8'), 'REPORT TEXT\nNOTIFY-LINE\n');
+    // (a) stdout.log is the report only, no JSON. A clean exit with no closer sends no push (fewer pings, 2026-10-08).
+    assert.equal(fs.readFileSync(path.join(jd, 'stdout.log'), 'utf8'), 'REPORT TEXT\n');
 
     // (b) the side file holds the raw stream lines.
     assert.equal(fs.readFileSync(path.join(jd, 'claude-stream.jsonl'), 'utf8'), r.stream);
@@ -225,7 +225,7 @@ test('a non-JSON line on claude stdout does not kill the job or lose the report'
   );
   assert.equal(dispatch(r, 0), 0);
   const [jd] = jobDirs(r);
-  assert.equal(fs.readFileSync(path.join(jd, 'stdout.log'), 'utf8'), 'REPORT TEXT\nNOTIFY-LINE\n');
+  assert.equal(fs.readFileSync(path.join(jd, 'stdout.log'), 'utf8'), 'REPORT TEXT\n');
   assert.ok(
     fs.readFileSync(path.join(jd, 'claude-stream.jsonl'), 'utf8').includes('Warning: test'),
     'the stream file holds every line, including the stray one',

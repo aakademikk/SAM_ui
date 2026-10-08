@@ -33,6 +33,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { tempDir } from '@/lib/server/testing/tempDir';
@@ -91,6 +92,8 @@ function runDispatch(
         ...process.env,
         // sam-dispatch execs the job, so it never removes its mktemp work copy of the brief; keep it in the sandbox.
         TMPDIR: ctx.tmp,
+        // The seat guard must not read the box's real quota file (2026-10-08: max2 at 101% failed a deploy).
+        SAM_QUOTA_RUNS: path.join(os.tmpdir(), 'no-quota.jsonl'),
         SAM_JOB_BIN: ctx.jobBin,
         SAM_DISPATCH_LOG: ctx.dispatchLog,
         ARGV_FILE: ctx.argvFile,

@@ -49,6 +49,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { tempDir } from '@/lib/server/testing/tempDir';
@@ -258,6 +259,8 @@ test(
         SAM_ORIGIN: 'schedule',
         SAM_CHAT_ID: '',
         SAM_JOB_STORE: store,
+        // The seat guard must not read the box's real quota file (2026-10-08: max2 at 101% failed a deploy).
+        SAM_QUOTA_RUNS: path.join(os.tmpdir(), 'no-quota.jsonl'),
         SAM_JOB_BIN: jobShim,
         SAM_JOB_RUN_SH: runStub,
         SAM_DISPATCH_LOG: dispatchLog,
@@ -282,6 +285,8 @@ test(
           ...Object.entries(env).map(([k, v]) => `--setenv=${k}=${v}`),
           DISPATCH_BIN,
           '--tier', 'haiku', '--brief', brief, '--cwd', cwd, '--name', NAME,
+          // A test dummy must never start a real closer: it messaged Colin and wrote the vault (2026-10-08).
+          '--no-closer', 'test dummy',
         ],
         { encoding: 'utf8', timeout: 15_000 },
       );
