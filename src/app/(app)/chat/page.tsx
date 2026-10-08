@@ -66,6 +66,7 @@ import { clearedHandoffFields } from '@/lib/chatHandoff';
 import { tabId } from '@/lib/tabId';
 import { handleChatLink, mountOpenTarget } from '@/lib/chatOpen';
 import { holdPendingMessage, recoverPendingMessage, supersedePendingMessage } from '@/lib/pendingSend';
+import { isNearBottom, newUserMessageId, shouldFollow } from '@/lib/chatFollow';
 import {
   adopt as adoptChat,
   handoff as handoffChat,
@@ -622,8 +623,19 @@ function ChatPageInner() {
     } catch { /* quota */ }
   }, [messages, currentId]);
 
+  // Follow new text only while pinned to the bottom, or right after you send
+  // (src/lib/chatFollow.ts): scrolling up mid-reply is never dragged back down.
+  const pinnedRef = useRef(true);
+  const lastUserIdRef = useRef<string | null>(null);
+  useEffect(() => { pinnedRef.current = true; }, [currentId]);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const sent = newUserMessageId(messages, lastUserIdRef.current);
+    if (sent) lastUserIdRef.current = sent;
+    const el = messagesRef.current;
+    if (el && shouldFollow(pinnedRef.current, sent !== null)) {
+      el.scrollTop = el.scrollHeight;
+      pinnedRef.current = true;
+    }
   }, [messages, phase]);
 
   useEffect(() => () => {
@@ -2022,7 +2034,11 @@ function ChatPageInner() {
         )}
 
       {/* Messages */}
-      <div ref={messagesRef} className="chat-messages flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-4">
+      <div
+        ref={messagesRef}
+        onScroll={(e) => { pinnedRef.current = isNearBottom(e.currentTarget); }}
+        className="chat-messages flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-4"
+      >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-20">
             <div className="glass-strong flex flex-col items-center gap-3 rounded-2xl px-10 py-8">

@@ -48,6 +48,7 @@ import { tryOsIntent } from '@/lib/osIntentRunner';
 import { primeSpeech, speakChunked, stopAllSpeech, type SpeechHandle } from '@/lib/speech';
 import { tabId } from '@/lib/tabId';
 import { formatRelative } from '@/lib/utils';
+import { isNearBottom, newUserMessageId, shouldFollow } from '@/lib/chatFollow';
 import type { ChatMessage, ChatSummary, ChatTier, TierId } from '@/types/chat';
 
 import { messageLine, pickMostRecentChat, pickerChats, sendTierFor } from './dashboardChat';
@@ -477,11 +478,19 @@ export default function DashboardChatWidget({
     if (reconnectRef.current) clearTimeout(reconnectRef.current);
   }, []);
 
-  /* ── Keep the newest message in view ── */
+  /* ── Keep the newest message in view, only while pinned to the bottom or right after a send (src/lib/chatFollow.ts) ── */
 
+  const pinnedRef = useRef(true);
+  const lastUserIdRef = useRef<string | null>(null);
+  useEffect(() => { pinnedRef.current = true; }, [currentId]);
   useEffect(() => {
+    const sent = newUserMessageId(messages, lastUserIdRef.current);
+    if (sent) lastUserIdRef.current = sent;
     const el = msgsRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && shouldFollow(pinnedRef.current, sent !== null)) {
+      el.scrollTop = el.scrollHeight;
+      pinnedRef.current = true;
+    }
   }, [messages, phase]);
 
   /* ── Send: the open chat, its own tier, the same endpoint as the Chat page ── */
@@ -672,7 +681,12 @@ export default function DashboardChatWidget({
         </div>
       ) : null}
 
-      <div className="dcw-msgs" ref={msgsRef} aria-live="polite">
+      <div
+        className="dcw-msgs"
+        ref={msgsRef}
+        aria-live="polite"
+        onScroll={(e) => { pinnedRef.current = isNearBottom(e.currentTarget); }}
+      >
         {loading && shown.length === 0 ? <p className="dcw-note">Loading the chat…</p> : null}
         {!loading && listLoaded && !currentId && shown.length === 0 ? (
           <p className="dcw-note">No chats yet. Ask SAM anything to start one.</p>
