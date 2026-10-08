@@ -177,7 +177,7 @@ Do not touch: the live script, the bridge token handling, the log format.
 Proof: `bash /home/col/.sam/tests/test-notify-colin-question.sh | tail -1` prints `0 failed`. Before: the script ignores the flags and has no seam, so the test fails.
 
 ## T12: the closer's message sends one pinged question per notification
-Status: TODO
+Status: DONE 2026-10-09 (test-closer-message-questions.sh 24/0, 7/17 on live modules; .sh.next copies message 32/0 images 36/0 blocked 120/0 classify 30/0 (hygiene.next 40/0 per worker, not reproducible by me without an overlay, re-prove in T20); live test-closer-all now 5 red by design (blocked, classify overlay .next on the fly))
 Spec: must-do #2, #10, #17; check #2 (payload action count for gated), check #10 (one Open action), check #17, check #11 (message half)
 Depends on: T9, T11
 Blocked by: none
