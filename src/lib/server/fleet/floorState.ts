@@ -216,7 +216,12 @@ async function readJob(id: string): Promise<JobResult | null> {
 
     if (started?.at) startedAt = started.at;
 
-    if (ended) {
+    // meta.json is sam-job's own record: while it says running with no
+    // endedAt, a stray `ended` line (a test run inside the job inherited its
+    // SAM_JOB_EVENTS, 2026-10-07) must not end the job on the floor.
+    const metaSaysRunning = meta.status === 'running' && !meta.endedAt;
+
+    if (ended && !metaSaysRunning) {
       if (ended.at) endedAt = ended.at;
       if (typeof ended.exitCode === 'number') exitCode = ended.exitCode;
       status = exitCode === 0 ? 'done' : 'failed';

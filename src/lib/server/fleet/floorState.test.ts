@@ -339,3 +339,55 @@ test('readFloorState exposes meta.json\'s own summary/tier fields unchanged on F
   assert.equal(withoutFields?.summary, null);
   assert.equal(withoutFields?.tier, null);
 });
+
+// 2026-10-07: tests run inside a live job inherited its SAM_JOB_EVENTS and wrote
+// started/ended lines into its events.jsonl, and the floor dropped the running
+// job as finished. meta.json is sam-job's own record: while it says running with
+// no endedAt, a stray `ended` event must not end the job.
+test('a running job stays on the floor whatever stray ended events say', async () => {
+  await ready;
+
+  writeMeta('job-leaked-running', {
+    id: 'job-leaked-running',
+    command: 'claude -p "closer build"',
+    status: 'running',
+    exitCode: null,
+    createdAt: iso(-60_000),
+    startedAt: iso(-59_000),
+    endedAt: null,
+    general: 'cerberus',
+  });
+  writeEvents('job-leaked-running', [
+    { type: 'dispatched', at: iso(-60_000), general: 'cerberus' },
+    { type: 'started', at: iso(-59_000) },
+    { type: 'started', at: iso(-30_000) },
+    { type: 'ended', at: iso(-29_000), exitCode: 0 },
+    { type: 'started', at: iso(-20_000) },
+    { type: 'ended', at: iso(-19_000), exitCode: 3 },
+  ]);
+
+  // Control: a job sam-job has finished still ends on its `ended` event.
+  writeMeta('job-really-ended', {
+    id: 'job-really-ended',
+    command: 'claude -p "audit"',
+    status: 'exited',
+    exitCode: 0,
+    createdAt: iso(-60_000),
+    startedAt: iso(-59_000),
+    endedAt: iso(-10_000),
+    general: 'cerberus',
+  });
+  writeEvents('job-really-ended', [
+    { type: 'started', at: iso(-59_000) },
+    { type: 'ended', at: iso(-10_000), exitCode: 0 },
+  ]);
+
+  const state = await readFloorState();
+  const workers = state.generals.cerberus.workers;
+  const leaked = workers.find((w) => w.jobId === 'job-leaked-running');
+  assert.ok(leaked, 'the running job is still on the floor');
+  assert.equal(leaked.status, 'running');
+  assert.equal(leaked.endedAt, null);
+  assert.equal(state.generals.cerberus.idle, false);
+  assert.equal(workers.some((w) => w.jobId === 'job-really-ended'), false, 'a finished job still leaves the floor');
+});
