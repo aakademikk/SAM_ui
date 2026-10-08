@@ -82,7 +82,7 @@ Answering
 Housekeeping
 
 13. Every "Stops being a question" row in section 3 is written to `housekeeping` and the log, never to `questions` or `needsYou`, and never creates a notification of its own. A job whose only findings are housekeeping, with a PASS verdict, sends nothing (`needs_message`, `closer_message.py:238-252`, keeps working: it already sends nothing for a quiet PASS).
-14. When the daily note for the day does not exist, SAM creates it from the vault's daily note template (`/home/col/ai-memory-vault/templates`, `templates.md`) in the month folder `01 - Daily Notes/<MM> - <Month> <YYYY>/`, then writes the Job closed line as now. A brief with no Priorities entry line, or one that matches 0 or 2 entries, is logged to `housekeeping` with the job id and the line the author should fix.
+14. When the daily note for the day does not exist, SAM creates it from the vault's daily note template (`/home/col/ai-memory-vault/01 - Daily Notes/Daily Note Template.md`, the one CLAUDE.md names; SAM corrected the path 2026-10-08) in the month folder `01 - Daily Notes/<MM> - <Month> <YYYY>/`, then writes the Job closed line as now. A brief with no Priorities entry line, or one that matches 0 or 2 entries, is logged to `housekeeping` with the job id and the line the author should fix.
 15. Every `needsYou` line in the closer's code is classified by section 3. None is left unclassified: a line that is not a decision becomes housekeeping or information by default, and only a source listed as "Stays a question" can create a `questions` record.
 
 The Notifications tab
