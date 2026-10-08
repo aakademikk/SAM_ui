@@ -91,7 +91,7 @@ Do not touch: the swap and rollback mechanics, the Opus decision flow, `MAX_UNBL
 Proof: `bash /home/col/.sam/tests/test-closer-housekeeping.sh | tail -1` prints `0 failed`; and `bash /home/col/.sam/tests/test-closer-all.sh | tail -1` ends `0 failed`.
 
 ## T6: blocked-job questions with kind, gated and accept action
-Status: TODO
+Status: DONE 2026-10-09 (test-closer-ask-blocked.sh 32/0, 30/32 fail without change; test-closer-all only the 3 known staged-file reds)
 Spec: must-do #1, #10; check #1, check #10 (creation half)
 Depends on: T4
 Blocked by: none
