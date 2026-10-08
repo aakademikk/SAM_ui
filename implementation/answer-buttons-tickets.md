@@ -34,7 +34,7 @@ Do not touch: any live closer file, `closer-fixtures.sh`, `~/.sam/logs/` (the te
 Proof: `bash /home/col/.sam/tests/test-closer-questions.sh | tail -1` prints `N passed, 0 failed`. Before the ticket it prints `FAIL  closer_questions.py.next does not exist` and exits 1.
 
 ## T2: vault problems become housekeeping
-Status: TODO
+Status: DONE 2026-10-08 (test-closer-housekeeping.sh 12/0, fails 1/11 on live vault; test-closer-all 93/0)
 Spec: must-do #13, #15; check #11 (vault fixtures)
 Depends on: T1
 Blocked by: none
