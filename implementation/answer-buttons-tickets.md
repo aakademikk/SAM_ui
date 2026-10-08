@@ -105,7 +105,7 @@ Do not touch: `MAX_UNBLOCKS`, `category()`, the seat and folder guard handling, 
 Proof: `bash /home/col/.sam/tests/test-closer-ask-blocked.sh | tail -1` prints `0 failed`. Before: `closer.json` has no `questions` key and the test fails on its first assertion.
 
 ## T7: relaunch and refused-step questions
-Status: TODO
+Status: DONE 2026-10-09 (test-closer-ask-others.sh 14/0, 3/11 without change; relaunch 72/0, refuse 32/0 live; test-closer-all only the known reds)
 Spec: must-do #1, #10; check #1 (other sources), check #10 (refused category gated)
 Depends on: T6
 Blocked by: none
