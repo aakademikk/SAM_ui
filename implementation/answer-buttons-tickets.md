@@ -77,7 +77,7 @@ Do not touch: verdict logic, `core.new_record` (keys are added in `closer.py`), 
 Proof: `bash /home/col/.sam/tests/test-closer-housekeeping.sh | tail -1` prints `0 failed`. Before: the six lines are in `needsYou`.
 
 ## T5: remaining housekeeping and information rows
-Status: TODO
+Status: DONE 2026-10-09 (test-closer-housekeeping.sh 60/0, fails 36/24 without change; test-closer-all red only by design (outside-store, 2 re-stage); old tests needing .sh.next copies noted for T21: next, preview, blocked)
 Spec: must-do #13, #15; check #11 (follow-on, decision, preview rows)
 Depends on: T4
 Blocked by: none
