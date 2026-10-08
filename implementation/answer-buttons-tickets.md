@@ -48,7 +48,7 @@ Do not touch: `write_ledger`, `atomic_write`, the vault lock, the daily note cre
 Proof: `bash /home/col/.sam/tests/test-closer-housekeeping.sh | tail -1` prints `0 failed`. Before: the same fixtures give a non-empty `needsYou` and the test fails.
 
 ## T3: SAM creates the missing daily note
-Status: TODO
+Status: DONE 2026-10-08 (test-closer-dailynote.sh 14/0, fails 6/8 without change; housekeeping 12/0; test-closer-all 95/0)
 Spec: must-do #14; check #12
 Depends on: T2
 Blocked by: none
