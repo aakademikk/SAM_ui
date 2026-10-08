@@ -125,7 +125,8 @@ test('a good brief passes General and Stages through to sam-job', { skip: SKIP }
   const ctx = makeCtx();
   const r = runDispatch(
     ctx,
-    'Task type: build\nGeneral: cerberus\nStages: Scan, Report\n',
+    // A checkable proof line: sam-dispatch refuses a brief without one (exit 6, proof guard 2026-10-08).
+    'Task type: build\nGeneral: cerberus\nStages: Scan, Report\n\n## Proof required\n\n- run: true\n',
     'good-brief',
   );
   assert.equal(r.status, 0, `expected success, got status ${r.status}: ${r.stderr}`);

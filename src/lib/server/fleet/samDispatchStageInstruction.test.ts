@@ -154,6 +154,11 @@ test(
       '',
       'Run the acceptance suite against the bad fixture.',
       '',
+      // sam-dispatch refuses a brief with no checkable proof line (exit 6, proof guard 2026-10-08).
+      '## Proof required',
+      '',
+      '- run: true',
+      '',
     ].join('\n');
     const briefFile = path.join(ctx.tmp, 'stage-instr.md');
     fs.writeFileSync(briefFile, originalBrief);

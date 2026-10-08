@@ -209,7 +209,9 @@ test(
 
     const r = spawnSync(
       DISPATCH_BIN,
-      ['--tier', 'sonnet', '--brief', brief, '--cwd', ctx.cwd, '--name', uniqueName('dtier')],
+      // --no-closer: this case starts a real sam-job, and a real closer would message Colin and write the vault
+      // (2026-10-08). It also exempts the brief from the proof guard (exit 6).
+      ['--tier', 'sonnet', '--brief', brief, '--cwd', ctx.cwd, '--name', uniqueName('dtier'), '--no-closer', 'test: tier threading only'],
       {
         encoding: 'utf8',
         timeout: 15_000,
