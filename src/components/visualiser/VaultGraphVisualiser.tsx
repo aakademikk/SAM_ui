@@ -36,6 +36,7 @@ import snapshotJson from '@/data/vault-graph.json';
 import type { VisualiserState } from '@/hooks/useVisualiserState';
 import { useSamActivity } from '@/lib/samActivity';
 import { makeRng } from '@/lib/utils';
+import { watchContextLoss } from '@/lib/webglContextLoss';
 import type { VaultGraph } from '@/types/vaultGraph';
 
 /* ========================================================================== */
@@ -857,8 +858,14 @@ export function VaultGraphVisualiser({
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
+  // A lost WebGL context is composited as an opaque white layer once Chrome
+  // gives up restoring it (two GPU crashes close together). Hide the canvas
+  // while lost, but keep it mounted so a later restore brings the graph back.
+  const [glLost, setGlLost] = useState(false);
+  const unwatchGl = useRef<(() => void) | null>(null);
 
   useEffect(() => setMounted(true), []);
+  useEffect(() => () => unwatchGl.current?.(), []);
 
   useEffect(() => {
     const onVisibility = () => setVisible(document.visibilityState === 'visible');
@@ -922,6 +929,11 @@ export function VaultGraphVisualiser({
         <WebGLBoundary>
           <Canvas
             className="absolute inset-0"
+            style={{ display: glLost ? 'none' : undefined }}
+            onCreated={({ gl }) => {
+              unwatchGl.current?.();
+              unwatchGl.current = watchContextLoss(gl.domElement, setGlLost);
+            }}
             dpr={[1, 1.8]}
             frameloop={animate ? 'always' : 'demand'}
             gl={{
