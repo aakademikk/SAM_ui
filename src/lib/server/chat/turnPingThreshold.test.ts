@@ -1,6 +1,6 @@
 /**
  * SAM — turnPing.ts: a clean reply pings only when the turn ran past
- * SAM_REPLY_PING_MIN_MS (default 2 minutes); a failed turn always pings.
+ * SAM_REPLY_PING_MIN_MS (default 5 minutes, Colin 2026-10-08; was 2); a failed turn always pings.
  * Uses a stub push binary and synthetic exit events, so it needs no systemd.
  */
 
@@ -49,8 +49,14 @@ test('a clean 30 s turn sends no reply ping', async () => {
   assert.equal(count(), 0);
 });
 
-test('a clean 3 minute turn pings once', async () => {
-  await pingOffScreenChat(ev(180_000, 0, 'c-long'));
+test('a clean 3 minute turn sends no reply ping (under 5 minutes)', async () => {
+  await pingOffScreenChat(ev(180_000, 0, 'c-mid'));
+  await sleep(400);
+  assert.equal(count(), 0);
+});
+
+test('a clean 6 minute turn pings once', async () => {
+  await pingOffScreenChat(ev(360_000, 0, 'c-long'));
   await sleep(400);
   assert.equal(count(), 1);
 });

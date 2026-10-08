@@ -33,7 +33,7 @@ import type { TurnExitEvent } from './startTurn';
 const ANSWER_CHARS = 100;
 
 /** A reply ping is only worth a buzz when the turn took this long. */
-export const REPLY_PING_MIN_MS = 120_000;
+export const REPLY_PING_MIN_MS = 300_000; // 5 minutes (Colin 2026-10-08; was 2)
 
 /** `SAM_REPLY_PING_MIN_MS` overrides the threshold; read per call so tests can set it. */
 export function replyPingMinMs(): number {
