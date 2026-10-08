@@ -133,7 +133,7 @@ Do not touch: swap and rollback mechanics, the approved previews list.
 Proof: `bash /home/col/.sam/tests/test-closer-ask-others.sh | tail -1` prints `0 failed`.
 
 ## T9: classification is complete
-Status: TODO
+Status: DONE 2026-10-09 (test-closer-classify.sh 30/0, 22/8 without closer.py change, flags a new bare string; test-closer-all only the known reds)
 Spec: must-do #15; check #13
 Depends on: T5, T6, T7, T8
 Blocked by: none
