@@ -19,7 +19,7 @@ Priorities entry: Job closer: spec LOCKED. Scope: business. Branch: `spec/answer
 10. Existing closer suite: `bash /home/col/.sam/tests/test-closer-all.sh | tail -1` must keep ending with `0 failed` after each closer ticket (it runs against live files, so it only proves you touched nothing live; the overlay test proves the change).
 
 ## T1: question records, housekeeping log and test helper (new module)
-Status: TODO
+Status: DONE 2026-10-08 (test-closer-questions.sh 8 passed 0 failed, fails 1/0 without module; test-closer-all 91/0)
 Spec: must-do #1, #15, #19; check #1 (module half)
 Depends on: none
 Blocked by: none
