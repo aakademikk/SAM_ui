@@ -147,7 +147,7 @@ Do not touch: the sources themselves (T2 to T8), the message module.
 Proof: `bash /home/col/.sam/tests/test-closer-classify.sh | tail -1` prints `0 failed`. Before: there is no list and no test; the made-up line stays in `needsYou`.
 
 ## T10: sam-push takes --question and --options
-Status: TODO
+Status: DONE 2026-10-09 (test-sam-push-question.sh 16/0, 6/10 against live send.mjs; real push log has no question lines)
 Spec: must-do #3, #19; check #2
 Depends on: none
 Blocked by: none
