@@ -1,71 +1,72 @@
 /**
- * SAM — Voice recognizer singleton.
+ * SAM — Voice recognizer, run out of process.
  *
- * Wraps sherpa-onnx-node with the NVIDIA Parakeet TDT 0.6B INT8 model.
- * Loaded once on first use; cached on globalThis.
+ * Wraps sherpa-onnx-node with the NVIDIA Parakeet TDT 0.6B INT8 model, loaded
+ * in a child process (scripts/voice-worker.cjs) that exits after
+ * SAM_VOICE_IDLE_MS without a request. Loading the model in the server put
+ * about 1.55 GB on the glibc brk heap and releasing it handed back almost none
+ * (2026-10-07 leak diagnosis), so one voice note pinned it for the life of the
+ * server. A worker that exits gives all of it back to the OS.
  *
  * The transducer decoder emits blanks during silence, so it does not
  * hallucinate phantom text from room noise — the key advantage over Whisper
  * for command transcription where false positives turn into executed commands.
  */
 
-import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
+import { fork, spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
 import { Readable } from 'node:stream';
 
-const MODEL_DIR = path.join(
-  os.homedir(),
-  '.sam/models/parakeet/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8',
-);
+const modelDir = () =>
+  path.join(os.homedir(), '.sam/models/parakeet/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8');
+const workerScript = () =>
+  process.env.SAM_VOICE_WORKER ?? path.join(process.cwd(), 'scripts', 'voice-worker.cjs');
+const idleMs = () => Number(process.env.SAM_VOICE_IDLE_MS ?? 120_000);
 
-// We import sherpa-onnx-node lazily — it's a native addon that should not
-// be loaded during Next.js compilation.
-const sherpaRequire = createRequire(import.meta.url);
+interface Pending { resolve: (text: string) => void; reject: (err: Error) => void }
 
-let sherpaModule: ReturnType<typeof sherpaRequire> | null = null;
+let worker: ChildProcess | null = null;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+let nextId = 0;
+const pending = new Map<number, Pending>();
 
-function getSherpa() {
-  if (!sherpaModule) {
-    sherpaModule = sherpaRequire('sherpa-onnx-node');
-  }
-  return sherpaModule;
+function getWorker(): ChildProcess {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = null;
+  if (worker) return worker;
+  const child = fork(workerScript(), [modelDir()], { serialization: 'advanced', stdio: 'inherit' });
+  child.on('message', (m: { id: number; text?: string; error?: string }) => {
+    const p = pending.get(m.id);
+    if (!p) return;
+    pending.delete(m.id);
+    if (m.error) p.reject(new Error(m.error));
+    else p.resolve(m.text ?? '');
+    armIdle();
+  });
+  child.on('exit', (code) => {
+    if (worker === child) worker = null;
+    for (const p of pending.values()) p.reject(new Error(`voice worker exited ${code}`));
+    pending.clear();
+  });
+  worker = child;
+  return child;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-interface RecognizerInstance { recognizer: any }
-
-const globalForSam = globalThis as unknown as { __samVoiceRecognizer?: RecognizerInstance };
-
-function createRecognizer(): RecognizerInstance {
-  const sherpa = getSherpa();
-
-  const config = {
-    featConfig: {
-      sampleRate: 16000,
-      featureDim: 128,
-    },
-    modelConfig: {
-      transducer: {
-        encoder: path.join(MODEL_DIR, 'encoder.int8.onnx'),
-        decoder: path.join(MODEL_DIR, 'decoder.int8.onnx'),
-        joiner: path.join(MODEL_DIR, 'joiner.int8.onnx'),
-      },
-      tokens: path.join(MODEL_DIR, 'tokens.txt'),
-      numThreads: 4,
-    },
-  };
-
-  const recognizer = new sherpa.OfflineRecognizer(config);
-  return { recognizer };
+/** Kill the worker once nothing is in flight for idleMs(). */
+function armIdle() {
+  if (pending.size > 0 || !worker) return;
+  const child = worker;
+  idleTimer = setTimeout(() => child.kill(), idleMs());
+  idleTimer.unref();
 }
 
-function getRecognizerInstance(): RecognizerInstance {
-  if (!globalForSam.__samVoiceRecognizer) {
-    globalForSam.__samVoiceRecognizer = createRecognizer();
-  }
-  return globalForSam.__samVoiceRecognizer;
+function recognise(pcm: Buffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const id = ++nextId;
+    pending.set(id, { resolve, reject });
+    getWorker().send({ id, pcm });
+  });
 }
 
 /* ========================================================================== */
@@ -94,20 +95,11 @@ export async function transcribe(audioBuffer: Buffer): Promise<TranscriptionResu
     return { text: '', latencyMs: Date.now() - start };
   }
 
-  // 2. Run sherpa-onnx inference.
-  const { recognizer } = getRecognizerInstance();
-
-  const samples = new Float32Array(pcm.buffer, pcm.byteOffset, pcm.length / 4);
-
-  const stream = recognizer.createStream();
-  stream.acceptWaveform({ samples, sampleRate: 16000 });
-
-  recognizer.decode(stream);
-
-  const result = recognizer.getResult(stream);
+  // 2. Run sherpa-onnx inference in the worker.
+  const text = await recognise(pcm);
 
   return {
-    text: (result?.text ?? '').trim(),
+    text: text.trim(),
     latencyMs: Date.now() - start,
   };
 }

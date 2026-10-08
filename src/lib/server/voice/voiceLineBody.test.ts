@@ -73,3 +73,21 @@ test('finding 4: the chat TTS route passes request.signal to the upstream fetch'
   assert.match(source, /voiceLineSignal\(\s*request\.signal\s*,\s*VOICE_LINE_TIMEOUT_MS\s*\)/);
   assert.doesNotMatch(source, /signal:\s*AbortSignal\.timeout\(/);
 });
+
+/*
+ * Leak diagnosis 2026-10-07: every Kokoro fallback that day was a client
+ * abort (ResponseAborted), so the route ran up to 12 s of synth for nobody
+ * and, on the first long one, grew a ~300 MB onnxruntime arena that stays
+ * for the life of the process. An aborted request must return before Kokoro.
+ */
+
+test('an aborted request returns before the Kokoro fallback', () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, '../../../../src/app/api/chat/tts/route.ts'),
+    'utf8',
+  );
+  const guard = source.search(/if \(request\.signal\.aborted\) return new Response\(null, \{ status: 499 \}\);/);
+  const kokoro = source.indexOf('synthesize(text, voiceId)');
+  assert.ok(guard !== -1, 'route checks request.signal.aborted');
+  assert.ok(guard < kokoro, 'the check comes before the Kokoro synth');
+});

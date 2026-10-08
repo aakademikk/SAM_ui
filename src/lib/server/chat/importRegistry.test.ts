@@ -25,6 +25,7 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 
 import { writeFakeClaude } from '@/lib/server/testing/fakeClaude';
+import { settleBeforeRemoving, tempDir } from '@/lib/server/testing/tempDir';
 
 type ImportModule = typeof import('./importRegistry.js');
 type ActionsModule = typeof import('./chatActions.js');
@@ -33,7 +34,11 @@ type ChatStoreModule = typeof import('./chatStore.js');
 type ManagerModule = typeof import('../jobs/manager.js');
 type TurnExitEvent = import('./startTurn.js').TurnExitEvent;
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'import-registry-'));
+// tempDir removes it after the last test; a finished turn's title and ping
+// hooks still write into it a moment later, so wait for them first (the
+// first ./deploy.sh on 2026-10-08 failed its TEMP LEAK gate on this dir).
+const tmp = tempDir('import-registry-');
+settleBeforeRemoving(1_500);
 const home = path.join(tmp, 'home');
 const agentDir = path.join(tmp, 'agent-cwd');
 const max2Dir = path.join(tmp, 'claude-max2');
@@ -228,7 +233,6 @@ before(async () => {
 
 after(() => {
   manager?.getJobManager().stopSweep();
-  fs.rmSync(tmp, { recursive: true, force: true });
 });
 
 test('import: exactly the 3 ids with a transcript land in Archived, none in the main list', () => {

@@ -87,6 +87,11 @@ export async function POST(request: Request) {
 
   // Fallback: local sherpa-onnx Kokoro. no-store so a stale fallback WAV is
   // never served once the voice-line service is back.
+  // The client has gone (stopping speech aborts this request, 243782b), so
+  // nobody will hear a fallback. Kokoro here only blocks the event loop for up
+  // to 12 s and grows a ~300 MB onnxruntime arena the process never returns.
+  if (request.signal.aborted) return new Response(null, { status: 499 });
+
   try {
     const result = synthesize(text, voiceId);
 
