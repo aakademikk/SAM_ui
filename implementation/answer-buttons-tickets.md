@@ -119,7 +119,7 @@ Do not touch: the 12 hour rule, the relaunch cap, `classify`, the refusal catego
 Proof: `bash /home/col/.sam/tests/test-closer-ask-others.sh | tail -1` prints `0 failed`; `bash /home/col/.sam/tests/test-closer-relaunch.sh | tail -1` and `bash /home/col/.sam/tests/test-closer-refuse.sh | tail -1` still end `0 failed` (live copies, unchanged).
 
 ## T8: follow-on and preview questions
-Status: TODO
+Status: DONE 2026-10-09 (test-closer-ask-others.sh 32/0, 15/17 without change; test-closer-all only the known reds)
 Spec: must-do #1, #10; check #1 (other sources), check #10
 Depends on: T7
 Blocked by: none
