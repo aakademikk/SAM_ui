@@ -251,7 +251,7 @@ Do not touch: the push handler logic (T15), caching rules, `public/sw.js`.
 Proof: `npm test 2>&1 | grep -E "swAnswer|# (pass|fail)"` shows 0 failing. Before: no handler logic for `event.action` and the new tests do not exist.
 
 ## T17: question state API and the push log carries questionId
-Status: TODO
+Status: DONE 2026-10-09 (7 new tests pass (questions, notifications questionId, 401 no cookie); tsc clean; npm test only the 6 baseline fails (renumbered))
 Spec: must-do #16 (data half), #19; check #14 (data half)
 Depends on: T1
 Blocked by: none
