@@ -193,7 +193,7 @@ Do not touch: `needs_message` rules, `send_images`, the 600 character cap.
 Proof: `bash /home/col/.sam/tests/test-closer-message-questions.sh | tail -1` prints `0 failed`. Before: one combined message, "Yes or no?" present, no `--question`.
 
 ## T13: closer_answer.py records an answer, once, under a lock
-Status: TODO
+Status: DONE 2026-10-09 (test-closer-answer.sh 69/0, fails at once without module; test-closer-all only the 5 known reds)
 Spec: must-do #8 (record and none), #9, #11, #19; check #7, check #9
 Depends on: T1
 Blocked by: none
