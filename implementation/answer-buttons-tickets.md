@@ -266,7 +266,7 @@ Do not touch: the notifications page (T19), `POST` answer route (T18).
 Proof: `npm test 2>&1 | grep -E "questions|notifications|# (pass|fail)"` shows 0 failing; `npm run typecheck` passes.
 
 ## T18: POST /api/questions/answer
-Status: TODO
+Status: DONE 2026-10-09 (route tests 9 to 15 pass against real closer_answer.py.next; tsc clean; npm test only the 6 baseline fails; test-closer-all only the 5 known reds; sw already sends x-answer-via)
 Spec: must-do #7, #10, #18, #19; check #6, check #7 (route half), check #10 (step-up half)
 Depends on: T17, T13
 Blocked by: none
