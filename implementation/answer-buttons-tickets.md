@@ -280,7 +280,7 @@ Do not touch: `guard.ts`, `session.ts`, any other route, `closer.json` directly 
 Proof: `npm test 2>&1 | grep -E "answer|# (pass|fail)"` shows 0 failing; `npm run typecheck` passes. Before: the route does not exist (404).
 
 ## T19: Notifications tab buttons
-Status: TODO
+Status: DONE 2026-10-09 (9 questionView tests pass; check-answer-tab.cjs ALL PASS (17), 9 FAIL against the original page; gated Open path unit-tested only, no WebAuthn in browser; tsc clean; npm test only the 6 baseline fails)
 Spec: must-do #16; check #14
 Depends on: T17, T18, T16
 Blocked by: none

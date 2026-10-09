@@ -19,7 +19,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
 
 import { notificationTarget } from '@/lib/notificationTarget';
+import { rowView, type QuestionLike } from '@/lib/questionView';
 import { cn } from '@/lib/utils';
+
+import { QuestionRow } from './QuestionRow';
 
 /** Mirrors `NotificationEntry` in `src/lib/server/push/notifications.ts` —
  *  the shape `GET /api/notifications` serves. Kept as its own client-side
@@ -34,10 +37,12 @@ interface NotificationEntry {
   tag: string;
   chatId: string | null;
   jobId: string | null;
+  questionId?: string | null;
 }
 
 export default function NotificationsPage() {
   const [entries, setEntries] = useState<NotificationEntry[] | null>(null);
+  const [questions, setQuestions] = useState<QuestionLike[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const rowRefs = useRef<Record<string, HTMLLIElement | null>>({});
@@ -55,6 +60,20 @@ export default function NotificationsPage() {
         if (!res.ok) throw new Error(`notifications fetch failed (${res.status})`);
         const json = (await res.json()) as { data: NotificationEntry[] };
         if (alive) setEntries(json.data);
+        // Questions only matter for pings that carry one. no-store: the
+        // service worker would otherwise serve /api/ GETs for up to 60 s.
+        // A failed fetch leaves the rows as plain links.
+        if (json.data.some((e) => e.questionId)) {
+          try {
+            const qr = await fetch('/api/questions', { cache: 'no-store' });
+            if (qr.ok) {
+              const qj = (await qr.json()) as { data: QuestionLike[] };
+              if (alive && Array.isArray(qj.data)) setQuestions(qj.data);
+            }
+          } catch {
+            // plain rows
+          }
+        }
       } catch (err) {
         if (alive) setError(err instanceof Error ? err.message : 'Could not load notifications.');
       }
@@ -129,6 +148,10 @@ export default function NotificationsPage() {
                   <span className="text-xs text-dim-400 truncate">{entry.body}</span>
                 )}
               </a>
+              {(() => {
+                const view = rowView(entry, questions);
+                return view.question ? <QuestionRow question={view.question} /> : null;
+              })()}
             </li>
           ))}
         </ul>
