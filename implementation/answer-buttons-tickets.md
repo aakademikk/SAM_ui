@@ -223,7 +223,7 @@ Do not touch: `sam-dispatch`, the guards, `--seat-override`, `--folder-override`
 Proof: `bash /home/col/.sam/tests/test-closer-answer.sh | tail -1` prints `0 failed`. Before: Accept reports `failed` with result "not built".
 
 ## T15: the service worker shows the buttons
-Status: TODO
+Status: DONE 2026-10-09 (swPush unit tests pass; check-push-actions.cjs ALL PASS (7) on a copy build, 6 FAIL with original sw.ts; tsc clean; npm test only the 6 baseline fails (test 412 flaked once, passed on rerun))
 Spec: must-do #4; check #3
 Depends on: none
 Blocked by: none

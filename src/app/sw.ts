@@ -12,6 +12,7 @@
 import { defaultCache } from '@serwist/next/worker';
 import type { PrecacheEntry, SerwistGlobalConfig } from 'serwist';
 import { Serwist, NetworkFirst, NetworkOnly, ExpirationPlugin } from 'serwist';
+import { buildNotification } from '@/lib/swPush';
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -94,29 +95,17 @@ serwist.addEventListeners();
 // absolute paths, never full origins.
 
 self.addEventListener('push', (event) => {
-  let payload: { title?: unknown; body?: unknown; url?: unknown; tag?: unknown } = {};
+  let payload: unknown = {};
   try {
     const data = event.data?.json();
-    if (data && typeof data === 'object') payload = data as typeof payload;
+    if (data && typeof data === 'object') payload = data;
   } catch {
     // Malformed payload — show a minimal fallback rather than nothing.
   }
 
-  const title =
-    typeof payload.title === 'string' && payload.title ? payload.title : 'SAM';
-  const body = typeof payload.body === 'string' ? payload.body : '';
-  const url = typeof payload.url === 'string' ? payload.url : '/';
-  const tag = typeof payload.tag === 'string' ? payload.tag : 'sam';
+  const { title, options } = buildNotification(payload);
 
-  event.waitUntil(
-    self.registration.showNotification(title, {
-      body,
-      tag,
-      data: { url, ts: Date.now() },
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
-    }),
-  );
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener('notificationclick', (event) => {
