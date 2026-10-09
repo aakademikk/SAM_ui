@@ -307,7 +307,7 @@ Do not touch: any other file; if something fails, fix it in the ticket that owns
 Proof: `bash /home/col/.sam/tests/test-answer-buttons-secrets.sh | tail -1` prints `0 failed`; `npm test` exits 0; `test-closer-all.sh` ends `0 failed`; `test-closer-quiet-pass.sh` ends `0 failed`.
 
 ## T21: write the one install line
-Status: TODO
+Status: DONE 2026-10-09 (install line rewritten: guard refuses and names a live file newer than its parked copy; line run end to end on the overlay exit 0 (test-closer-all 120/0, five fixed suites e2e 37, next 48, preview 69, refuse 32, vault 63, all 0 failed; questions 8, answer 125, sam-push-question 16, notify-colin-question 16, secrets 23, all 0 failed); rollback restores 23 files byte for byte; no live file touched; stops at T22 gate)
 Spec: must-do #13, #19; check #15 (after install), plan for check #16
 Depends on: T20
 Blocked by: none
