@@ -27,7 +27,7 @@ Shared definitions (every ticket uses these exactly; they keep TypeScript, Pytho
 - Stuck workers end with exactly one last line: `BLOCKED: <reason>; unblock: <what>`.
 
 ## T1: Find the job-folder pruner, record it, make the worktree
-Status: TODO
+Status: DONE 2026-10-09 (Pruner line recorded, worktree on build/job-ticket-panel at 6ace90e, tsc 0, Baseline 559/554/3 fail/2 skip)
 Spec: must-do #16, check #13
 Depends on: none
 Blocked by: none
@@ -37,14 +37,15 @@ Steps:
 1. Search for anything that deletes under `~/.sam/jobs`: user timers (`systemctl --user list-timers --all`, the matching `.service` ExecStart files in `~/.config/systemd/user`), `crontab -l`, `~/.sam/*.sh` and `~/.sam/*.py` (including `sam-janitor.py`, which sweeps `/tmp` only, and `jobs-watch.sh`), `~/bin`, `~/.local/bin`, `~/.config/logrotate/sam.conf`, and the Job Closer (`~/.sam/closer/*.py`, `*.sh`). Read-only: run nothing that deletes.
 2. Read `sweepDisk()` and `prune()` in `manager.ts` and state in one line what each deletes and what it never deletes.
 3. Add one line to the end of this ticket, replacing the placeholder: `Pruner: <absolute path of the file and function>; deletes <what>; schedule <when>; other candidates ruled out: <list>.` T9 reads this line.
-4. Create the worktree: `git -C /home/col/SAM_ui worktree add -b build/job-ticket-panel /home/col/SAM_ui-job-ticket-panel 72c32d2`. Then `ln -s /home/col/SAM_ui/node_modules /home/col/SAM_ui-job-ticket-panel/node_modules` (if `npx tsc --noEmit` rejects the symlink, run `npm ci` in the worktree instead and say so).
+4. Create the worktree: `git -C /home/col/SAM_ui worktree add -b build/job-ticket-panel /home/col/SAM_ui-job-ticket-panel HEAD` (SAM 2026-10-09: the live branch moved past `72c32d2`; branch from its current HEAD so the deploy is not stale). Record the commit, then run `npm test` in the worktree once and add `Baseline: <commit> <tests> tests, <pass> pass, <fail> fail, <skipped> skipped` under the Pruner line; T21 and T23 compare against that line, not 557. Then `ln -s /home/col/SAM_ui/node_modules /home/col/SAM_ui-job-ticket-panel/node_modules` (if `npx tsc --noEmit` rejects the symlink, run `npm ci` in the worktree instead and say so).
 5. In the worktree run `git status --short` (must be clean apart from the symlink, which `.gitignore` should cover) and `git log -1 --format=%h`.
 Do not touch: anything under `~/.sam/jobs`, any timer or unit, `sam-ui.service`, the live tree's code, the live branch.
 Proof: `grep -c '^Pruner: /home/col/SAM_ui' /home/col/SAM_ui/implementation/job-ticket-panel-tickets.md` prints 1 (it prints 0 before this ticket); `git -C /home/col/SAM_ui worktree list | grep -c 'job-ticket-panel .*build/job-ticket-panel'` prints 1 (0 before); `cd /home/col/SAM_ui-job-ticket-panel && git rev-parse --abbrev-ref HEAD` prints `build/job-ticket-panel`.
-Pruner: (T1 fills this line in)
+Pruner: /home/col/SAM_ui/src/lib/server/jobs/manager.ts, JobManager.sweepDisk() (plus the in-process prune() for completedIds); deletes only directories named job_* directly under ~/.sam/jobs (fsp.rm recursive), older than RETENTION_MS 7 days or beyond the newest MAX_JOBS 128, skipping jobs live in the process, running jobs with a live pid, and unfinished pid-less (sam-job) jobs touched inside the window, and never touches ~/.sam/builds or any non-job_* entry; schedule at sam-ui.service boot then every SWEEP_INTERVAL_MS (1 hour); other candidates ruled out: sam-job (rm -rf only of its own just-created JOB_DIR when systemd-run fails), sam-dispatch (rm -f of its temp work brief only), sam-janitor.py and tmp-remotion-sweep.sh (/tmp only), jobs-watch.sh and delegation-check.sh (no delete commands), sam-quota-log.py (reads only, the docstring "prunes after 7 days" refers to the SAM_ui sweep), logrotate sam.conf (audit.log and ~/.sam/logs only, no jobs entry), crontab (vault-backup.sh only), Job Closer modules and shell scripts (no delete calls), systemd user timers (none reference ~/.sam/jobs for deletion).
+Baseline: 6ace90e 559 tests, 554 pass, 3 fail, 2 skipped (the 3 failures are tests 471-473 in the sam-dispatch fleet-job group, each exiting 7 from live sam-dispatch's General guard where 0 was expected; they fail on an untouched checkout)
 
 ## T2: Tickets-file parser (TypeScript)
-Status: TODO
+Status: DONE 2026-10-09 (ticketsFile.test 6 pass 0 fail, tsc 0)
 Spec: must-do #2, #3, #5, check #1, #2
 Depends on: T1
 Blocked by: none
@@ -59,7 +60,7 @@ Do not touch: `floorState.ts`, any component, the original kitchen tickets file.
 Proof: `cd /home/col/SAM_ui-job-ticket-panel && node scripts/run-tests.cjs src/lib/server/fleet/ticketsFile.test.ts` (or the form `npm test` accepts for one file; read `scripts/run-tests.cjs`) shows 0 failures and at least 4 passing tests; before the ticket the test file does not exist, so the command fails. Also `npx tsc --noEmit` exits 0.
 
 ## T3: Ticket-job resolver (TypeScript)
-Status: TODO
+Status: DONE 2026-10-09 (ticketJob.test 8 pass 0 fail, tsc 0)
 Spec: must-do #1, #9, #10, check #7
 Depends on: T2
 Blocked by: none
@@ -73,7 +74,7 @@ Do not touch: the real `~/.sam/jobs` folders, `floorState.ts`.
 Proof: `node scripts/run-tests.cjs src/lib/server/fleet/ticketJob.test.ts` (same invocation form as T2) shows 0 failures and at least 5 passing tests; the file does not exist before, so it fails then. `npx tsc --noEmit` exits 0.
 
 ## T4: Live ticket count on every worker
-Status: TODO
+Status: DONE 2026-10-09 (floorState.test 6 pass 0 fail incl 3 new, tsc 0, pollMs 3000 intact)
 Spec: must-do #5, #15, check #1, #12
 Depends on: T2, T3
 Blocked by: none
@@ -88,7 +89,7 @@ Do not touch: `floorRender.ts`, any component, other fields of `FloorWorker`, th
 Proof: `node scripts/run-tests.cjs src/lib/server/fleet/floorState.test.ts` shows 0 failures and the three new tests passing (they fail before: the field does not exist); `npx tsc --noEmit` exits 0; `grep -n "pollMs = 3000" src/components/floor/FloorCanvas.tsx` still matches.
 
 ## T5: Floor canvas label shows live ticket progress
-Status: TODO
+Status: DONE 2026-10-09 (floorRender.tickets 5 pass, floor folder 74 pass 0 fail, tsc 0)
 Spec: must-do #15, check #12
 Depends on: T4
 Blocked by: none
@@ -102,7 +103,7 @@ Do not touch: the scene geometry, `FloorCanvas.tsx`, label size or font.
 Proof: the new test passes and fails before the edit (assert the `20 of 24 tickets done` string); `npx tsc --noEmit` exits 0; all other `src/components/floor` tests still pass.
 
 ## T6: Active-jobs list and phone floor view show live ticket progress
-Status: TODO
+Status: DONE 2026-10-09 (phoneView+activeJobs tests 17 pass 0 fail, tsc 0)
 Spec: must-do #15, check #12
 Depends on: T4
 Blocked by: none
@@ -116,7 +117,7 @@ Do not touch: `floorRender.ts` (T5), the layout and look of the rows beyond the 
 Proof: `node scripts/run-tests.cjs src/components/dashboard/fleet/phoneView.test.ts src/components/dashboard/fleet/activeJobs.test.ts` (or the single-file form twice) shows 0 failures; the new asserts fail before the edit; `npx tsc --noEmit` exits 0.
 
 ## T7: Stream tail reader, last real activity
-Status: TODO
+Status: DONE 2026-10-09 (streamTail.test 4 pass 0 fail, tsc 0, heartbeat real shape confirmed)
 Spec: must-do #7, check #5
 Depends on: T1
 Blocked by: none
@@ -130,7 +131,7 @@ Do not touch: `jobCosts.ts` (it reads `stdout.log`), `floorState.ts`.
 Proof: `node scripts/run-tests.cjs src/lib/server/fleet/streamTail.test.ts` shows 0 failures and the heartbeat test passing; before the ticket the file does not exist; `npx tsc --noEmit` exits 0.
 
 ## T8: Stream tail reader, failed and timed-out runs
-Status: TODO
+Status: DONE 2026-10-09 (streamTail.test 6 pass 0 fail incl failedRuns, tsc 0)
 Spec: must-do #8, check #6
 Depends on: T7
 Blocked by: none
@@ -144,7 +145,7 @@ Do not touch: T7's `lastActivity` behaviour.
 Proof: `node scripts/run-tests.cjs src/lib/server/fleet/streamTail.test.ts` shows 0 failures and the new tests pass (they fail before: the export does not exist); `npx tsc --noEmit` exits 0.
 
 ## T9: Build log reader, and proof the pruner leaves builds alone
-Status: TODO
+Status: DONE 2026-10-09 (buildLog+sweepBuilds tests 5 pass 0 fail, tsc 0; pruner test shows ~/.sam/builds untouched)
 Spec: must-do #4, #16, check #3
 Depends on: T1, T2
 Blocked by: none
@@ -158,7 +159,7 @@ Do not touch: `manager.ts` itself (the proof is that it needs no change).
 Proof: `node scripts/run-tests.cjs src/lib/server/fleet/buildLog.test.ts src/lib/server/jobs/sweepBuilds.test.ts` (or twice) shows 0 failures; both files are new so the command fails before; `npx tsc --noEmit` exits 0.
 
 ## T10: Panel data assembler
-Status: TODO
+Status: DONE 2026-10-09 (jobTicketPanel.test 7 pass 0 fail, tsc 0; one retry: failedRuns not limited by recency)
 Spec: must-do #2, #3, #4, #5, #6, #7, #8, #9, #10, check #1, #4, #7
 Depends on: T2, T3, T7, T8, T9
 Blocked by: none
@@ -174,7 +175,7 @@ Do not touch: `floorState.ts`, `FleetPersonaJob` types, the legacy `/api/fleet/j
 Proof: `node scripts/run-tests.cjs src/lib/server/fleet/jobTicketPanel.test.ts` shows 0 failures with at least 6 tests; before, the file does not exist; `npx tsc --noEmit` exits 0.
 
 ## T11: API route for the panel data
-Status: TODO
+Status: DONE 2026-10-09 (job-tickets route.test 4 pass 0 fail, tsc 0)
 Spec: must-do #2, #4, #11
 Depends on: T10
 Blocked by: none
@@ -187,7 +188,7 @@ Do not touch: the floor route, auth code, `middleware`/proxy rules.
 Proof: `node scripts/run-tests.cjs src/app/api/fleet/job-tickets/route.test.ts` shows 0 failures; fails before (file absent); `npx tsc --noEmit` exits 0.
 
 ## T12: Panel view model (pure formatters)
-Status: TODO
+Status: DONE 2026-10-09 (jobTicketView+jobDetail tests 20 pass 0 fail, tsc 0; formatAge logic copied to avoid import cycle)
 Spec: must-do #3, #4, #5, #6, #7, #8, check #2, #4, #5, #6
 Depends on: T10
 Blocked by: none
@@ -200,7 +201,7 @@ Do not touch: `formatJobDetail`'s existing outputs or `jobDetail.test.ts` expect
 Proof: `node scripts/run-tests.cjs src/components/dashboard/fleet/jobTicketView.test.ts src/components/dashboard/fleet/jobDetail.test.ts` shows 0 failures (the first fails before: file absent); `npx tsc --noEmit` exits 0.
 
 ## T13: Panel component, phone and desktop
-Status: TODO
+Status: DONE 2026-10-09 (render+jobDetail tests 19 pass 0 fail, dashboard folder 100 pass, tsc 0)
 Spec: must-do #2, #4, #5, #9, #10, #11, check #7, #8
 Depends on: T11, T12
 Blocked by: none
@@ -215,7 +216,7 @@ Do not touch: `ActiveJobsModule.tsx`, `StageEventsModule.tsx`, the Fleet pages, 
 Proof: `node scripts/run-tests.cjs src/components/dashboard/fleet/jobTicketPanel.render.test.ts src/components/dashboard/fleet/jobDetail.test.ts` shows 0 failures; `npx tsc --noEmit` exits 0; `grep -n "job-tickets" src/components/dashboard/fleet/JobDetailModule.tsx` matches and `grep -n "3000" src/components/dashboard/fleet/JobDetailModule.tsx` shows the interval floor.
 
 ## T14: Shared Python module for tickets files and the build log
-Status: TODO
+Status: IN PROGRESS job_job-ticket-panel-implement_20261009-092426
 Spec: must-do #13, #16, check #3, #10
 Depends on: T1
 Blocked by: none
@@ -318,14 +319,14 @@ Status: TODO
 Spec: check #13 (first two halves), all checks
 Depends on: T1 to T13
 Blocked by: none
-Context: Baseline on the live branch at `72c32d2` (2026-10-08): `npm test` gives 559 tests, 557 pass, 0 fail, 2 skipped. The build must add tests and break none. Nothing is committed, merged or deployed here; the foreman may commit on `build/job-ticket-panel` only if Colin has said so (the `/implement` rule), otherwise the changes stay uncommitted in the worktree.
+Context: Baseline: the `Baseline:` line T1 records (it was 559 tests, 557 pass, 0 fail, 2 skipped at `72c32d2` on 2026-10-08). The build must add tests and break none. Nothing is committed, merged or deployed here; the foreman may commit on `build/job-ticket-panel` only if Colin has said so (the `/implement` rule), otherwise the changes stay uncommitted in the worktree.
 Files: none (verification only; list any defect found as BLOCKED)
 Steps:
 1. In `/home/col/SAM_ui-job-ticket-panel`: `npx tsc --noEmit` and `npm test`. Record the totals.
 2. `git -C /home/col/SAM_ui-job-ticket-panel status --short` and `git diff --stat`: confirm every changed file is in some ticket's Files list and that nothing under `/home/col/SAM_ui` (live tree) changed except this tickets file (`git -C /home/col/SAM_ui status --short`).
 3. Confirm the leak gate: `npm test` must not report leftover temp directories.
 Do not touch: anything. If a test fails, report which ticket owns it.
-Proof: `cd /home/col/SAM_ui-job-ticket-panel && npx tsc --noEmit; echo $?` prints 0 and `npm test 2>&1 | tail -15` shows 0 failures with a pass count above 557.
+Proof: `cd /home/col/SAM_ui-job-ticket-panel && npx tsc --noEmit; echo $?` prints 0 and `npm test 2>&1 | tail -15` shows 0 failures with a pass count above T1's Baseline pass count.
 
 ## T22: Write the install line
 Status: TODO
@@ -350,7 +351,7 @@ Blocked by: Colin's approval (an explicit word; nothing in T1 to T22 is approval
 Context: The foreman stops here and reports. It does not install, merge, build for production or restart anything on its own. When Colin approves: SAM first checks the proof (below), then runs the line in `job-ticket-panel-INSTALL.txt`; then SAM_ui is deployed only through `/home/col/SAM_ui/deploy.sh`, the one sanctioned build and restart wrapper (read its header; build and restart are one atomic step; never `next dev` while `sam-ui.service` is up), after merging `build/job-ticket-panel` into the live branch with Colin's separate word for the merge and for the restart.
 Files: none
 Steps:
-1. Proof check (all must hold, SAM runs them): T21's proof (`npx tsc --noEmit` exit 0, `npm test` 0 failures, pass count above 557); `bash /home/col/.sam/tests/test-closer-all.sh | tail -1` shows `0 failed` apart from the install-time lines T20 listed; T22's proof.
+1. Proof check (all must hold, SAM runs them): T21's proof (`npx tsc --noEmit` exit 0, `npm test` 0 failures, pass count above T1's Baseline pass count); `bash /home/col/.sam/tests/test-closer-all.sh | tail -1` shows `0 failed` apart from the install-time lines T20 listed; T22's proof.
 2. Run the install line, read its test output (every test `0 failed`).
 3. Merge, then run `deploy.sh` per its header.
 4. Browser check on the live dashboard (check #8): at 390x844 and 1440x900 open a ticket job's panel by tap; assert no sideways scroll at 390 (`document.documentElement.scrollWidth <= 390`) and that the kitchen R4 job lists 24 tickets in order with a heading matching the file's DONE count.
