@@ -237,7 +237,7 @@ Do not touch: `notificationclick` (T16), the Serwist caching rules, `public/sw.j
 Proof: `npm test 2>&1 | tail -5` shows 0 failing including `swPush`; `node scripts/check-push-actions.cjs` prints `PASS` for: one notification, tag `q-<id>`, `actions.length === 2`, titles Accept and Decline, `data.url` `/jobs/<jobId>`, three actions show two, action id `c` dropped. Before: `actions` is empty and it prints `FAIL`.
 
 ## T16: the click handler answers from the lock screen
-Status: TODO
+Status: DONE 2026-10-09 (11 swAnswer tests pass, mutation (ignore a/b) fails them; tsc clean; npm test only the 6 baseline fails)
 Spec: must-do #5, #6; check #4, check #5
 Depends on: T15
 Blocked by: none
