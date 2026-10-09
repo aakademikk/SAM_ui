@@ -294,7 +294,7 @@ Do not touch: `notificationTarget`, the push log writer, unread counts or deleti
 Proof: `npm test 2>&1 | grep -E "questionView|# (pass|fail)"` shows 0 failing; `node scripts/check-answer-tab.cjs` prints `PASS` for each assertion above. Before: no buttons exist in the page and it prints `FAIL`.
 
 ## T20: whole-system proof on the staged copies
-Status: TODO
+Status: DONE 2026-10-09 (test-answer-buttons-secrets.sh 23/0, 0 secret matches in 119 files, canary catches 5 kinds; hygiene.next 40/0 on overlay; npm test only the 6 baseline fails; tsc clean; test-closer-all 100/5 red by design until install; quiet-pass RESULT: PASS)
 Spec: must-do #13, #19; check #15, check #16
 Depends on: T12, T14, T19, T9
 Blocked by: none
