@@ -216,7 +216,7 @@ Do not touch: `ActiveJobsModule.tsx`, `StageEventsModule.tsx`, the Fleet pages, 
 Proof: `node scripts/run-tests.cjs src/components/dashboard/fleet/jobTicketPanel.render.test.ts src/components/dashboard/fleet/jobDetail.test.ts` shows 0 failures; `npx tsc --noEmit` exits 0; `grep -n "job-tickets" src/components/dashboard/fleet/JobDetailModule.tsx` matches and `grep -n "3000" src/components/dashboard/fleet/JobDetailModule.tsx` shows the interval floor.
 
 ## T14: Shared Python module for tickets files and the build log
-Status: IN PROGRESS job_job-ticket-panel-implement_20261009-092426
+Status: DONE 2026-10-09 (test-closer-tickets.sh 11 passed, 0 failed)
 Spec: must-do #13, #16, check #3, #10
 Depends on: T1
 Blocked by: none
@@ -230,7 +230,7 @@ Do not touch: any live `.py` in `~/.sam/closer/`, `MANIFEST`, `stage.sums` (T20)
 Proof: `bash /home/col/.sam/tests/test-closer-tickets.sh | tail -1` prints `N passed, 0 failed` with N at least 5; before the ticket the script does not exist.
 
 ## T15: sam-dispatch.next, the tickets guard (exit 8)
-Status: TODO
+Status: DONE 2026-10-09 (tickets-guard test 11 passed on .next, live fails 5/6; proof-guard 9 passed; one retry: guard gated on brief naming a tickets path)
 Spec: must-do #13, check #10
 Depends on: T14
 Blocked by: none
@@ -244,7 +244,7 @@ Do not touch: the live `sam-dispatch`, the proof guard block, the General guard 
 Proof: `SAM_DISPATCH_BIN=/home/col/.local/bin/sam-dispatch.next bash /home/col/.sam/tests/test-dispatch-tickets-guard.sh | tail -1` prints `N passed, 0 failed` (N at least 5) and the same script against the live `sam-dispatch` (`SAM_DISPATCH_BIN=/home/col/.local/bin/sam-dispatch`) reports failures (fails before); `SAM_DISPATCH_BIN=/home/col/.local/bin/sam-dispatch.next bash /home/col/.sam/tests/test-dispatch-proof-guard.sh | tail -1` prints `9 passed, 0 failed`.
 
 ## T16: sam-dispatch.next, one build-log line per ticket job
-Status: TODO
+Status: DONE 2026-10-09 (test-dispatch-build-log.sh 20 passed on .next, live 14/6 fail; all 11 dispatch tests 0 failed)
 Spec: must-do #16, check #3
 Depends on: T14, T15
 Blocked by: none
@@ -258,7 +258,7 @@ Do not touch: the live `sam-dispatch`, the seat and folder guards, the closer co
 Proof: `SAM_DISPATCH_BIN=/home/col/.local/bin/sam-dispatch.next bash /home/col/.sam/tests/test-dispatch-build-log.sh | tail -1` prints `N passed, 0 failed` (N at least 5); against the live binary it fails (fails before); T15's proof command still passes.
 
 ## T17: Closer writes the end line to the build log
-Status: TODO
+Status: DONE 2026-10-09 (test-closer-build-log.sh 16 passed 0 failed; closer-all only re-stage line fails; one retry: tolerant import)
 Spec: must-do #16, check #3
 Depends on: T14
 Blocked by: none
@@ -272,7 +272,7 @@ Do not touch: the live `closer.py`, `closer_proof.py`, `closer_core.py`, the sta
 Proof: `bash /home/col/.sam/tests/test-closer-build-log.sh | tail -1` prints `N passed, 0 failed` (N at least 4); before the ticket the script fails on the missing line; the three named existing tests still end `0 failed`.
 
 ## T18: Closer flags stalled IN PROGRESS and unproven DONE tickets
-Status: TODO
+Status: DONE 2026-10-09 (test-closer-ticket-flags.sh 15 passed 0 failed, live fails 7; closer-all only re-stage line fails)
 Spec: must-do #14, check #11
 Depends on: T14, T17
 Blocked by: none
@@ -287,7 +287,7 @@ Do not touch: live closer files, the proof-check code, the "BLOCKED" handling (T
 Proof: `bash /home/col/.sam/tests/test-closer-ticket-flags.sh | tail -1` prints `N passed, 0 failed` (N at least 5); it fails before the ticket (no flags produced); the two re-run tests end `0 failed`.
 
 ## T19: /implement skill and brief template write IN PROGRESS
-Status: TODO
+Status: DONE 2026-10-09 (test-implement-in-progress.sh 7 passed 0 failed; SKILL.md.next has IN PROGRESS x2, live has 0; template created, none existed)
 Spec: must-do #12, check #9
 Depends on: none
 Blocked by: none
@@ -301,7 +301,7 @@ Do not touch: the live `SKILL.md`, other skills, existing briefs.
 Proof: `bash /home/col/.sam/tests/test-implement-in-progress.sh | tail -1` prints `N passed, 0 failed` (N at least 5); `grep -c 'IN PROGRESS' /home/col/.claude/skills/implement/SKILL.md.next` is at least 2. The second half of check #9 (the next real ticket job shows IN PROGRESS on the panel while it runs) is T23's job.
 
 ## T20: Closer suite bookkeeping and shell suites on the .next files
-Status: TODO
+Status: DONE 2026-10-09 (closer-all: 1 FAIL, re-stage needed closer.py = install bookkeeping; six new suites 0 failed, two dispatch ones with the .next seam)
 Spec: must-do #13, #14, #16, check #3, #10, #11
 Depends on: T15, T16, T17, T18, T19
 Blocked by: none
@@ -315,7 +315,7 @@ Do not touch: `MANIFEST`, `stage.sums`, any live closer file, any other test.
 Proof: `bash /home/col/.sam/tests/test-closer-all.sh | grep -c '^FAIL'` prints a number the report lists line by line, each explained as install-time bookkeeping; `bash /home/col/.sam/tests/test-closer-tickets.sh`, `test-closer-build-log.sh`, `test-closer-ticket-flags.sh`, `test-dispatch-tickets-guard.sh`, `test-dispatch-build-log.sh`, `test-implement-in-progress.sh` each end with `0 failed`.
 
 ## T21: Whole-build verification in the worktree
-Status: TODO
+Status: DONE 2026-10-09 (tsc 0; npm test x2: 615 tests, 610 pass, 3 fail = the same 3 baseline sam-dispatch exit-7 fails, 2 skipped; no leak complaint; one full-run flake in scheduleTrigger 447 did not recur)
 Spec: check #13 (first two halves), all checks
 Depends on: T1 to T13
 Blocked by: none
@@ -329,7 +329,7 @@ Do not touch: anything. If a test fails, report which ticket owns it.
 Proof: `cd /home/col/SAM_ui-job-ticket-panel && npx tsc --noEmit; echo $?` prints 0 and `npm test 2>&1 | tail -15` shows 0 failures with a pass count above T1's Baseline pass count.
 
 ## T22: Write the install line
-Status: TODO
+Status: DONE 2026-10-09 (INSTALL.txt written, not run: 10 mv -f lines, 9 bak lines, 1 cd line, bash -n ok, live files unchanged)
 Spec: must-do #12, #13, #14, #16, check #3, #9, #10, #11
 Depends on: T20, T21
 Blocked by: none
