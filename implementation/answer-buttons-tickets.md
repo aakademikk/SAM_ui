@@ -209,7 +209,7 @@ Do not touch: `closer.json` fields other than the question state fields, the oth
 Proof: `bash /home/col/.sam/tests/test-closer-answer.sh | tail -1` prints `0 failed`. Before: no module, test fails at once.
 
 ## T14: Accept runs the machinery, failure sends one ping
-Status: TODO
+Status: DONE 2026-10-09 (test-closer-answer.sh 125/0, 94/31 against the T13 stub; no override flags; test-closer-all only the 5 known reds)
 Spec: must-do #8 (relaunch and decision), #12; check #7 (dispatcher called once), check #8
 Depends on: T13, T6
 Blocked by: none
