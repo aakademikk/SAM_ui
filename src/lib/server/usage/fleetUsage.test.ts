@@ -107,7 +107,7 @@ function rig(): Rig {
   fs.writeFileSync(
     path.join(home, 'brief.md'),
     // A checkable proof line: sam-dispatch refuses a brief without one (exit 6, proof guard 2026-10-08).
-    'Task type: build\nGeneral: sam\nStages: Do\nDo the thing.\n\n## Proof required\n\n- run: true\n',
+    'Task type: build\nGeneral: hephaestus\nStages: Do\nDo the thing.\n\n## Proof required\n\n- run: true\n',
   );
   return {
     home,
