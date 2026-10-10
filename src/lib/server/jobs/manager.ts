@@ -33,6 +33,14 @@ const RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MIN_PLAUSIBLE_TS = Date.UTC(2024, 0, 1);
 /** How often the on-disk retention sweep runs after the one at boot. */
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+/**
+ * The "Waiting on Colin" question mirror: a fixed directory in the job store
+ * that holds only a closer.json (Kill/Park questions answered through the
+ * pings tab and lock-screen buttons). It is not a job and has no meta.json,
+ * so the retention sweep must never collect it. Must match MIRROR_JOB in
+ * ~/.sam/waiting/waiting.py.
+ */
+const WAITING_MIRROR_JOB = 'job_waiting-on-colin';
 
 /* ========================================================================== */
 /* Helpers                                                                    */
@@ -1348,6 +1356,9 @@ class JobManager {
     for (const entry of entries) {
       if (!entry.isDirectory() || !entry.name.startsWith('job_')) continue;
       const id = entry.name;
+
+      // Not a job: the waiting-on-colin question mirror (see WAITING_MIRROR_JOB).
+      if (id === WAITING_MIRROR_JOB) continue;
 
       // Live in this process — the close handler owns its lifecycle.
       if (this.jobs.has(id)) continue;
