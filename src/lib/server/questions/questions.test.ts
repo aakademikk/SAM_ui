@@ -41,7 +41,7 @@ before(async () => {
   fs.mkdirSync(home, { recursive: true });
   process.env.HOME = home;
   process.env.SAM_JOB_STORE = store;
-  writeJob('job_good_1', JSON.stringify({ questions: [{ ...record, text: 'x'.repeat(900), result: 'y'.repeat(500) }] }));
+  writeJob('job_good_1', JSON.stringify({ questions: [{ ...record, text: 'x'.repeat(5000), result: 'y'.repeat(500) }] }));
   writeJob('job_nojobid_2', JSON.stringify({ questions: [{ ...record, id: 'q_bbbb2222' }, 'junk', { nope: 1 }] }));
   writeJob('job_bad_3', '{not json');
   writeJob('not_a_job', JSON.stringify({ questions: [{ ...record, id: 'q_cccc3333' }] }));
@@ -57,7 +57,7 @@ test('reader returns only the safe fields, capped, mapping id to questionId', ()
   const good = all.find((q) => q.questionId === 'q_aaaa1111');
   assert.ok(good);
   assert.equal(good.jobId, 'job_good_1');
-  assert.equal(good.text.length, 600);
+  assert.equal(good.text.length, 4000); // a decision question runs to a few hundred characters: read whole
   assert.equal(good.result?.length, 300);
   assert.deepEqual(Object.keys(good).sort(), [
     'answeredAt', 'answeredVia', 'gated', 'jobId', 'kind', 'options', 'questionId', 'result', 'state', 'text',
@@ -66,6 +66,17 @@ test('reader returns only the safe fields, capped, mapping id to questionId', ()
   assert.equal(json.includes('acceptAction'), false);
   assert.equal(json.includes('hidden-'), false);
   assert.equal(json.includes(tmp), false);
+});
+
+test('a question with six choices keeps all six options, and a seventh is dropped', () => {
+  writeJob('job_choices_5', JSON.stringify({ questions: [{ ...record, id: 'q_dddd4444', kind: 'choice',
+    options: ['a) one', 'b) two', 'c) three', 'd) four', 'e) five', 'f) six', 'g) seven'] }] }));
+  try {
+    const q = questions.readQuestions(['job_choices_5']).find((x) => x.questionId === 'q_dddd4444');
+    assert.deepEqual(q?.options, ['a) one', 'b) two', 'c) three', 'd) four', 'e) five', 'f) six']);
+  } finally {
+    fs.rmSync(path.join(store, 'job_choices_5'), { recursive: true, force: true }); // the other tests count the store
+  }
 });
 
 test('a question with no jobId on disk gets the directory name', () => {

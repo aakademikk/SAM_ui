@@ -28,7 +28,7 @@ export interface QuestionView {
 const JOB_DIR = /^job_[A-Za-z0-9._-]+$/;
 const MAX_JOBS = 200;
 const MAX_FILE_BYTES = 1_000_000;
-const TEXT_CAP = 600;
+const TEXT_CAP = 4000;
 const RESULT_CAP = 300;
 const OPTION_CAP = 40;
 
@@ -48,7 +48,7 @@ function toView(raw: unknown, dirName: string): QuestionView | null {
   const options = Array.isArray(q.options)
     ? q.options
         .filter((o): o is string => typeof o === 'string')
-        .slice(0, 4)
+        .slice(0, 6)
         .map((o) => o.slice(0, OPTION_CAP))
     : [];
   const jobId = typeof q.jobId === 'string' && JOB_DIR.test(q.jobId) ? q.jobId : dirName;

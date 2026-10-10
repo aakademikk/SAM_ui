@@ -52,6 +52,17 @@ test('questionView: a choice2 question uses its own two labels', () => {
   assert.deepEqual(v.buttons, ['Red', 'Blue']);
 });
 
+test('questionView: a choice question shows one button per choice, two to six', () => {
+  for (const n of [3, 4, 6]) {
+    const options = ['a) one', 'b) two', 'c) three', 'd) four', 'e) five', 'f) six'].slice(0, n);
+    assert.deepEqual(rowView(entry, [q({ kind: 'choice', options })]).buttons, options);
+  }
+  // Nothing else is a choice: seven, or one, falls back to Accept and Decline.
+  const seven = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+  assert.deepEqual(rowView(entry, [q({ kind: 'choice', options: seven })]).buttons, ['Accept', 'Decline']);
+  assert.deepEqual(rowView(entry, [q({ kind: 'choice', options: ['a'] })]).buttons, ['Accept', 'Decline']);
+});
+
 test('questionView: accepted and declined carry the label, time and result, no buttons', () => {
   const a = rowView(entry, [q({ state: 'accepted', result: 'Accepted', answeredAt: '2026-10-09T10:00:00Z' })]);
   assert.equal(a.state, 'accepted');

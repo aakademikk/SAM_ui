@@ -29,6 +29,7 @@ let stepUpCookie = '';
 const ORDINARY = 'q_aaaa1111';
 const GATED = 'q_bbbb2222';
 const CHOICE = 'q_cccc3333';
+const THREE = 'q_dddd4444';
 
 function question(id: string, gated: boolean, kind = 'yesno', options = ['Accept', 'Decline']) {
   return {
@@ -56,7 +57,9 @@ function writeJob(root: string, name: string) {
   fs.writeFileSync(
     path.join(root, name, 'closer.json'),
     JSON.stringify({
-      questions: [question(ORDINARY, false), question(GATED, true), question(CHOICE, false, 'choice2', ['Red', 'Blue'])],
+      questions: [question(ORDINARY, false), question(GATED, true), question(CHOICE, false, 'choice2', ['Red', 'Blue']),
+        question(THREE, false, 'choice', ['a) Approve', 'b) keep the check', 'c) accept sfx-onset']),
+      ],
     }),
   );
 }
@@ -80,6 +83,13 @@ before(async () => {
   }
   if (fs.existsSync(path.join(CLOSER, 'unblock-brief.md.next'))) {
     fs.copyFileSync(path.join(CLOSER, 'unblock-brief.md.next'), path.join(overlay, 'unblock-brief.md'));
+  }
+  // SAM_TEST_CLOSER_OVERLAY: a folder of staged closer modules laid over the lot (before they are installed).
+  const extra = process.env.SAM_TEST_CLOSER_OVERLAY;
+  if (extra) {
+    for (const f of fs.readdirSync(extra)) {
+      if (f.endsWith('.py')) fs.copyFileSync(path.join(extra, f), path.join(overlay, f));
+    }
   }
   process.env.SAM_CLOSER_ANSWER_PY = path.join(overlay, 'closer_answer.py');
 
@@ -208,4 +218,27 @@ test('the x-answer-via push header is recorded, and a choice2 answer names its l
   assert.equal(body.data.result, 'Chose Blue');
   const rec = JSON.parse(fs.readFileSync(closerFile('job_four'), 'utf8')) as { questions: { id: string; answeredVia: string }[] };
   assert.equal(rec.questions.find((q) => q.id === CHOICE)?.answeredVia, 'push');
+});
+
+test('a three-choice question: c records the third choice by name, once', async () => {
+  const res = await route.POST(post({ jobId: 'job_one', questionId: THREE, answer: 'c' }, { cookie: sessionOnly() }));
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { data: { state: string; result: string; changed: boolean } };
+  assert.equal(body.data.state, 'accepted');
+  assert.equal(body.data.result, 'Chose c) accept sfx-onset');
+  assert.equal(body.data.changed, true);
+  const again = await route.POST(post({ jobId: 'job_one', questionId: THREE, answer: 'a' }, { cookie: sessionOnly() }));
+  const two = (await again.json()) as { data: { result: string; changed: boolean } };
+  assert.equal(two.data.changed, false);
+  assert.equal(two.data.result, 'Chose c) accept sfx-onset');
+});
+
+test('a letter past the last choice is refused with 400 and nothing changes', async () => {
+  const before = fs.readFileSync(closerFile('job_two'));
+  const cases: [string, string][] = [[THREE, 'd'], [THREE, 'f'], [CHOICE, 'c'], [ORDINARY, 'c'], [THREE, 'g']];
+  for (const [questionId, answer] of cases) {
+    const res = await route.POST(post({ jobId: 'job_two', questionId, answer }, { cookie: withStepUp() }));
+    assert.equal(res.status, 400, questionId + ' ' + answer);
+  }
+  assert.deepEqual(fs.readFileSync(closerFile('job_two')), before);
 });

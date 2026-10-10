@@ -33,7 +33,7 @@ export interface RowView {
   state: RowState;
   /** The words for the row: the question while open, else the outcome. */
   label: string;
-  /** Button labels for an open row ([] otherwise). a first, then b. */
+  /** Button labels for an open row ([] otherwise). a first, then b, and so on to f (two to six choices). */
   buttons: string[];
   /** The `result` line to show under an answered or failed row, or null. */
   detail: string | null;
@@ -62,6 +62,7 @@ export function questionFor(
 
 function buttonLabels(q: QuestionLike): string[] {
   if (q.kind === 'choice2' && q.options.length === 2) return [q.options[0], q.options[1]];
+  if (q.kind === 'choice' && q.options.length >= 3 && q.options.length <= 6) return [...q.options];
   return ['Accept', 'Decline'];
 }
 

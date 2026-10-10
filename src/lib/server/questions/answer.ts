@@ -9,6 +9,7 @@
 
 import { execFile } from 'node:child_process';
 
+import { ANSWER_LETTERS, type AnswerLetter } from '../../answerLetters';
 import { readQuestions } from './questions';
 
 const JOB_ID = /^job_[A-Za-z0-9._-]+$/;
@@ -23,7 +24,7 @@ export type AnswerVia = 'push' | 'tab';
 export interface AnswerRequest {
   jobId: string;
   questionId: string;
-  answer: 'a' | 'b';
+  answer: AnswerLetter;
 }
 
 export interface AnswerResult {
@@ -46,12 +47,17 @@ export function checkAnswer(body: Record<string, unknown>): Checked {
   if (typeof questionId !== 'string' || !QUESTION_ID.test(questionId)) {
     return { ok: false, status: 400, error: 'bad questionId' };
   }
-  if (answer !== 'a' && answer !== 'b') {
+  if (typeof answer !== 'string' || !(ANSWER_LETTERS as readonly string[]).includes(answer)) {
     return { ok: false, status: 400, error: 'bad answer' };
   }
   const found = readQuestions([jobId]).find((q) => q.questionId === questionId);
   if (!found) return { ok: false, status: 404, error: 'unknown question' };
-  return { ok: true, request: { jobId, questionId, answer }, gated: found.gated };
+  // c to f only mean something on a question that lists that many choices.
+  const choices = found.kind === 'choice' ? found.options.length : 2;
+  if (ANSWER_LETTERS.indexOf(answer as AnswerLetter) >= choices) {
+    return { ok: false, status: 400, error: 'bad answer' };
+  }
+  return { ok: true, request: { jobId, questionId, answer: answer as AnswerLetter }, gated: found.gated };
 }
 
 /** `tab` unless the service worker said `push`. */

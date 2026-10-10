@@ -1,5 +1,5 @@
 /**
- * POST /api/questions/answer  { jobId, questionId, answer: 'a' | 'b' }
+ * POST /api/questions/answer  { jobId, questionId, answer: 'a' to 'f' }
  *
  * Order: same-origin (403), session (401), validate (400/404, nothing
  * changed), step-up when the question record says gated (401 stepUpRequired),

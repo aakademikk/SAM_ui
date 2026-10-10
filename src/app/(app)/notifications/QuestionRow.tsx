@@ -1,8 +1,8 @@
 /**
  * The question part of a Notifications row (answer buttons, spec must-do 16).
  *
- * Open: the question text with two buttons (a gated one shows Open first, and
- * the buttons appear after the biometric step-up). Answered: "Accepted" or
+ * Open: the question text with one button per choice, two to six (a gated one
+ * shows Open first, and the buttons appear after the biometric step-up). Answered: "Accepted" or
  * "Declined" with the time and result, no buttons. Failed: the reason. A press
  * POSTs /api/questions/answer and the row updates from the response, no reload.
  */
@@ -13,10 +13,13 @@ import { useState } from 'react';
 
 import { authService } from '@/lib/authService';
 import { viewOfQuestion, type QuestionLike } from '@/lib/questionView';
+import { ANSWER_LETTERS, type AnswerLetter } from '@/lib/answerLetters';
 import { cn } from '@/lib/utils';
 
 const BUTTON =
   'min-h-[44px] min-w-[44px] flex-1 rounded-lg border px-4 text-sm font-medium transition-colors disabled:opacity-50';
+// Three or more choices wrap two to a row on a phone; a long label wraps inside its button.
+const BUTTON_MANY = 'min-w-[calc(50%-0.25rem)] break-words py-2';
 
 function when(iso: string | null): string {
   if (!iso) return '';
@@ -47,7 +50,7 @@ export function QuestionRow({ question }: { question: QuestionLike }) {
     }
   }
 
-  async function press(answer: 'a' | 'b') {
+  async function press(answer: AnswerLetter) {
     setBusy(true);
     setMessage(null);
     try {
@@ -90,27 +93,26 @@ export function QuestionRow({ question }: { question: QuestionLike }) {
     const showButtons = view.state === 'open' || unlocked;
     return (
       <div className="px-4 pb-3 bg-void-900/60 space-y-2" data-question-state={view.state}>
-        <p className="text-sm text-void-100" data-role="question-text">{view.label}</p>
-        <div className="flex gap-2">
+        <p className="text-sm text-void-100 break-words" data-role="question-text">{view.label}</p>
+        <div className="flex flex-wrap gap-2" data-role="question-buttons">
           {showButtons ? (
-            <>
+            view.buttons.map((label, i) => (
               <button
+                key={ANSWER_LETTERS[i]}
                 type="button"
                 disabled={busy}
-                onClick={() => void press('a')}
-                className={cn(BUTTON, 'border-accent/40 bg-accent/20 text-accent hover:bg-accent/30')}
+                onClick={() => void press(ANSWER_LETTERS[i])}
+                className={cn(
+                  BUTTON,
+                  view.buttons.length > 2 && BUTTON_MANY,
+                  i === 0
+                    ? 'border-accent/40 bg-accent/20 text-accent hover:bg-accent/30'
+                    : 'border-void-700 text-void-100 hover:bg-void-900',
+                )}
               >
-                {view.buttons[0]}
+                {label}
               </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void press('b')}
-                className={cn(BUTTON, 'border-void-700 text-void-100 hover:bg-void-900')}
-              >
-                {view.buttons[1]}
-              </button>
-            </>
+            ))
           ) : (
             <button
               type="button"
