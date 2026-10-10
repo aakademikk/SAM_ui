@@ -1,8 +1,10 @@
 /**
  * /notifications — every ping T9's `sam-push` logged, newest first.
  *
- * Spec must-do 17, 18, 19; check 12. Each entry is a link to
- * `notificationTarget(entry)` (its chat, else its job output, else itself).
+ * Spec must-do 17, 18, 19; check 12. Each entry's text is one line until
+ * tapped (then the whole of it; see NotificationRow) and an expanded row
+ * shows an Open link to `notificationTarget(entry)` (its chat, else its job
+ * output, else itself).
  * An entry with neither a chat nor a job links to its own
  * `/notifications?n=<id>` — arriving here with that query string does not
  * navigate away, it just scrolls to and highlights the matching row in
@@ -18,10 +20,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
 
-import { notificationTarget } from '@/lib/notificationTarget';
 import { rowView, type QuestionLike } from '@/lib/questionView';
 import { cn } from '@/lib/utils';
 
+import { NotificationRow, toggleExpanded } from './NotificationRow';
 import { QuestionRow } from './QuestionRow';
 
 /** Mirrors `NotificationEntry` in `src/lib/server/push/notifications.ts` —
@@ -45,6 +47,7 @@ export default function NotificationsPage() {
   const [questions, setQuestions] = useState<QuestionLike[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(() => new Set());
   const rowRefs = useRef<Record<string, HTMLLIElement | null>>({});
 
   useEffect(() => {
@@ -129,29 +132,16 @@ export default function NotificationsPage() {
                 highlightId === entry.id && 'bg-accent/10',
               )}
             >
-              <a
-                href={notificationTarget(entry)}
-                className="flex flex-col gap-0.5 px-4 py-3 bg-void-900/60 hover:bg-void-900"
+              <NotificationRow
+                entry={entry}
+                expanded={expandedIds.has(entry.id)}
+                onToggle={() => setExpandedIds((open) => toggleExpanded(open, entry.id))}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium text-void-100 truncate">{entry.title}</span>
-                  <span className="text-[12px] font-mono text-dim-500 shrink-0">
-                    {new Date(entry.ts).toLocaleString([], {
-                      day: 'numeric',
-                      month: 'short',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                </div>
-                {entry.body && (
-                  <span className="text-xs text-dim-400 truncate">{entry.body}</span>
-                )}
-              </a>
-              {(() => {
-                const view = rowView(entry, questions);
-                return view.question ? <QuestionRow question={view.question} /> : null;
-              })()}
+                {(() => {
+                  const view = rowView(entry, questions);
+                  return view.question ? <QuestionRow question={view.question} /> : null;
+                })()}
+              </NotificationRow>
             </li>
           ))}
         </ul>
