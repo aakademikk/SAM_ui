@@ -87,8 +87,13 @@ const CSS = `
 .fp-top>header{margin:0;position:relative;top:auto;border-radius:0;border-bottom:1px solid ${LINE};gap:5px;padding-left:12px;padding-right:10px;
   background:rgba(3,12,8,.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 /* Must 3c, check 32: the top bar keeps its health chip, sync badge and UTC clock on the phone too (TopBar hides them under sm/md/lg) */
-.fp-top>header [class~="md:flex"]{display:flex;flex:0 0 auto}
+.fp-top>header [class~="md:flex"]{display:flex;flex:1 1 auto;min-width:0;overflow:hidden}
+.fp-top>header [class~="md:flex"]>div{min-width:0}
+.fp-top>header [class~="md:flex"]>div>*{flex:none}
+.fp-top>header [class~="md:flex"]>div>.label{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fp-top>header [class~="lg:inline-flex"]{display:inline-flex;letter-spacing:0;gap:4px}
+/* The sync badge goes icon-only on the phone (label stays for screen readers and in the title) so the gear never leaves the screen at any width or text scale */
+.fp-top>header .sync-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .fp-top>header [class~="sm:inline"]{display:inline;letter-spacing:0}
 .fp-top>header>div:last-child{gap:6px}
 .fp-top>header .label{letter-spacing:.03em}
