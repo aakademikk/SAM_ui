@@ -187,12 +187,10 @@ export interface ChatSummary {
 
 /** Convenience: the spoken text for a completed assistant turn. */
 export function spokenText(message: ChatMessage): string {
-  // Deliberately the LAST text block only. A tool-using turn emits a text
-  // block before each tool call plus the actual answer; joining them would
-  // narrate the whole working. The final text block is the answer.
-  const texts = message.blocks.filter(
-    (b): b is Extract<ChatBlock, { kind: 'text' }> => b.kind === 'text',
-  );
-  const answer = texts[texts.length - 1];
-  return answer ? answer.text.trim() : '';
+  // Every text block, in order, exactly as the chat bubble shows them: a Stop
+  // hook can force a continuation, and the follow-up must not replace the answer.
+  return message.blocks
+    .map((b) => (b.kind === 'text' ? b.text.trim() : ''))
+    .filter(Boolean)
+    .join('\n\n');
 }

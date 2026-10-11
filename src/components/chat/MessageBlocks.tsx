@@ -253,24 +253,20 @@ export function MessageBlocks({ blocks }: { blocks: ChatBlock[] }) {
 
 /**
  * Split a turn's blocks into what belongs on the main chat (the answer) and
- * what belongs in the work panel. The answer is the LAST text block — the
- * parser merges consecutive text, so any earlier text blocks are the model
- * narrating its working mid-turn. Thinking and tool calls are always work.
- * Errors stay on the main chat: they are outcomes, not process.
+ * what belongs in the work panel. The answer is EVERY text block, in order: a
+ * Stop hook can block the end of a turn so Claude Code continues it, and the
+ * follow-up must land after the real answer rather than replace it. Thinking
+ * and tool calls are always work. Errors stay on the main chat: they are
+ * outcomes, not process.
  */
 export function splitBlocks(blocks: ChatBlock[]): { answer: ChatBlock[]; work: ChatBlock[] } {
-  let lastText = -1;
-  for (let i = 0; i < blocks.length; i++) {
-    if (blocks[i].kind === 'text') lastText = i;
-  }
-
   const answer: ChatBlock[] = [];
   const work: ChatBlock[] = [];
-  blocks.forEach((b, i) => {
+  blocks.forEach((b) => {
     if (b.kind === 'error') {
       answer.push(b);
     } else if (b.kind === 'text') {
-      (i === lastText ? answer : work).push(b);
+      answer.push(b);
     } else if (b.kind === 'side') {
       answer.push(b); // shows in the chat, not behind "View work" (must-do 4)
     } else {
