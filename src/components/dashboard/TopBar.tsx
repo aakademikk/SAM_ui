@@ -35,7 +35,7 @@ function SyncBadge() {
       title={syncError ?? label}
     >
       <Icon size={11} className={cn(spinning && 'animate-spin')} />
-      {label}
+      <span className="sync-label">{label}</span>
     </span>
   );
 }

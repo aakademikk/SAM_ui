@@ -22,3 +22,46 @@ test('splitBlocks: a side block joins the main-thread answer, not the work panel
   assert.deepEqual(work, [tool]);
   assert.deepEqual(answer, [side, text]);
 });
+
+/*
+ * Real shape of a Stop-hook continuation (chat 3a252a4b, 2026-10-11): the answer
+ * text, then the hook blocks the end of the turn, so Claude Code continues with
+ * a tool call and a short follow-up text.
+ */
+const hookTurn: ChatBlock[] = [
+  { kind: 'thinking', text: 'working it out' },
+  { kind: 'text', text: 'Her working book does the fire-safety count in two steps.' },
+  { kind: 'tool', id: 't1', name: 'Bash', input: { command: 'sam-waiting add' }, status: 'ok', result: 'w_f1df7a3d' },
+  { kind: 'text', text: "I've added the draft to the waiting list as w_f1df7a3d." },
+];
+
+test('splitBlocks: a Stop-hook continuation shows the answer then the follow-up in the chat', () => {
+  const { answer, work } = splitBlocks(hookTurn);
+
+  assert.deepEqual(answer, [hookTurn[1], hookTurn[3]]);
+  assert.deepEqual(work, [hookTurn[0], hookTurn[2]]);
+});
+
+test('splitBlocks: a single-segment turn is unchanged', () => {
+  const tool: ChatBlock = { kind: 'tool', id: 't1', name: 'Bash', input: {}, status: 'ok' };
+  const text: ChatBlock = { kind: 'text', text: 'only answer' };
+
+  const { answer, work } = splitBlocks([tool, text]);
+
+  assert.deepEqual(answer, [text]);
+  assert.deepEqual(work, [tool]);
+});
+
+test('splitBlocks: the long version after a <!-- more --> line goes to View work, the short answer stays (2026-10-12)', () => {
+  const blocks: ChatBlock[] = [
+    { kind: 'text', text: 'Done, the kitchen build is running.\n<!-- more -->\nThe long version: tickets 25 to 33.' },
+  ];
+  const { answer, work } = splitBlocks(blocks);
+  assert.deepEqual(answer, [{ kind: 'text', text: 'Done, the kitchen build is running.' }]);
+  assert.deepEqual(work, [{ kind: 'text', text: 'The long version: tickets 25 to 33.' }]);
+});
+
+test('splitBlocks: a reply with no marker is unchanged', () => {
+  const blocks: ChatBlock[] = [{ kind: 'text', text: 'Short and done.' }];
+  assert.deepEqual(splitBlocks(blocks), { answer: blocks, work: [] });
+});

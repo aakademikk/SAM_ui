@@ -147,3 +147,55 @@ test('check 3: 20 polls start no process, make no network call, and write no job
   const jobs = path.join(HOME_A, '.sam', 'jobs');
   assert.ok(!fs.existsSync(jobs) || fs.readdirSync(jobs).length === 0);
 });
+
+test('a running job updates the tile from its live stream before it finishes (2026-10-12)', async () => {
+  const HOME_LIVE = tempDir('usage-runs-live-');
+  process.env.HOME = HOME_LIVE;
+  const now = Date.now();
+  // The last finished max2 run read 85% hours ago.
+  writeRuns(HOME_LIVE, [
+    {
+      endedAt: new Date(now - 8 * H).toISOString(),
+      seat: 'max2',
+      fiveHour: 0.09,
+      sevenDay: 0.85,
+      fiveHourResetsAt: secs(now + 3 * H),
+      sevenDayResetsAt: secs(now + 1 * H),
+    },
+  ]);
+  const event = (u5: number, u7: number) =>
+    JSON.stringify({
+      type: 'rate_limit_event',
+      rate_limit_info: {
+        status: 'allowed_warning',
+        unifiedWindows: {
+          five_hour: { utilization: u5, resetsAt: secs(now + 3 * H) },
+          seven_day: { utilization: u7, resetsAt: secs(now + 1 * H) },
+        },
+      },
+    });
+  const job = (id: string, status: string, seatDir: string, lines: string[]) => {
+    const dir = path.join(HOME_LIVE, '.sam', 'jobs', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ id, status }));
+    fs.writeFileSync(path.join(dir, 'cmd.sh'), `bash -c 'cd /x && CLAUDE_CONFIG_DIR=${seatDir} claude -p'`);
+    fs.writeFileSync(path.join(dir, 'claude-stream.jsonl'), lines.join('\n') + '\n');
+  };
+  const max2Dir = path.join(HOME_LIVE, '.claude-max2');
+  // Events are sparse: on 2026-10-12 the newest sat 939 KB from the end of a live stream.
+  const filler = Array.from({ length: 3000 }, () => JSON.stringify({ type: 'assistant', text: 'x'.repeat(500) }));
+  job('job_live_max2', 'running', max2Dir, [
+    event(0.2, 0.86), '{"type":"assistant"}', event(0.31, 0.87), ...filler,
+  ]);
+  // A finished job's stream is the harvester's business, not the live reading's.
+  job('job_done_max2', 'exited', max2Dir, [event(0.99, 0.99)]);
+
+  try {
+    const [main, max2] = (await poll()).seats;
+    assert.equal(max2.sevenDay?.pct, 87, "the running job's latest reading wins over the stale 85%");
+    assert.equal(max2.fiveHour?.pct, 31);
+    assert.equal(main.sevenDay, null, 'a max2 job never lands on the main seat');
+  } finally {
+    fs.rmSync(HOME_LIVE, { recursive: true, force: true });
+  }
+});

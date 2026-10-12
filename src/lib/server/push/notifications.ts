@@ -33,6 +33,8 @@ export interface NotificationEntry {
   tag: string;
   chatId: string | null;
   jobId: string | null;
+  /** The question this ping asks, when it asks one (answer buttons). */
+  questionId: string | null;
 }
 
 function logFile(): string {
@@ -52,7 +54,8 @@ function isNotificationEntry(value: unknown): value is NotificationEntry {
     typeof v.url === 'string' &&
     typeof v.tag === 'string' &&
     (v.chatId === null || typeof v.chatId === 'string') &&
-    (v.jobId === null || typeof v.jobId === 'string')
+    (v.jobId === null || typeof v.jobId === 'string') &&
+    (v.questionId === undefined || v.questionId === null || typeof v.questionId === 'string')
   );
 }
 
@@ -69,7 +72,9 @@ function readAllEntries(): NotificationEntry[] {
   for (const line of lines) {
     try {
       const parsed = JSON.parse(line);
-      if (isNotificationEntry(parsed)) entries.push(parsed);
+      if (isNotificationEntry(parsed)) {
+        entries.push({ ...parsed, questionId: parsed.questionId ?? null });
+      }
     } catch {
       // Corrupt line — skipped, not thrown.
     }

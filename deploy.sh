@@ -14,6 +14,8 @@
 #
 # Usage:
 #   ./deploy.sh           test, build, restart, wait for health (exit non-zero on failure)
+#   ./deploy.sh --phone-fit-only
+#                         run only the phone-fit gate (copy build + check), nothing else
 #   ./deploy.sh --force   on health failure, kill whatever holds :3000 by port
 #                         (systemd Restart=always brings the service back), retry
 #
@@ -76,8 +78,43 @@ wait_healthy() {
 # so CI cannot run them honestly and reports them skipped. That makes this
 # the gate for them. Added 2026-10-02, after CI had sat red for a day on
 # those ten and nothing else ran them at all.
+# The phone-fit gate (2026-10-10): the phone top bar and the gear Settings panel
+# must fit a 360 to 412 px screen, also at 130% text. It builds into a COPY under
+# ~/.cache and serves that through the local proof harness, so the live .next is
+# never touched and the running server is never left on a deleted build (see the
+# ChunkLoadError note at the top). A failing check (exit 1) or a taken harness
+# port (exit 2) stops the deploy before the live build step.
+phone_fit_gate() {
+  local copy="${HOME}/.cache/phone-fit/deploy-copy"
+  echo "==> phone-fit check (build in a copy)"
+  rm -rf "$copy"
+  mkdir -p "$copy"
+  rsync -a --exclude=node_modules --exclude=.next --exclude=.git ./ "$copy/"
+  ln -s "$PWD/node_modules" "$copy/node_modules"
+  local rc=0
+  ( cd "$copy" && npm run build >/dev/null ) || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    node scripts/check-phone-fit.cjs "$copy" || rc=$?
+  else
+    echo "!! phone-fit copy build failed (exit $rc)" >&2
+  fi
+  rm -rf "$copy"
+  if [ "$rc" -ne 0 ]; then
+    echo "!! phone-fit gate failed (exit $rc); deploy stopped before the live build" >&2
+    exit "$rc"
+  fi
+}
+
+if [ "${1:-}" = "--phone-fit-only" ]; then
+  phone_fit_gate
+  echo "==> phone-fit gate passed"
+  exit 0
+fi
+
 echo "==> test"
 npm test
+
+phone_fit_gate
 
 echo "==> build"
 npm run build

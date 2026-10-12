@@ -185,14 +185,25 @@ export interface ChatSummary {
   running: boolean;
 }
 
+/**
+ * A reply is the short spoken answer, then optionally a line reading `<!-- more -->` and the long version
+ * (Colin, 2026-10-12: "the short version, and the long version in the thoughts"). The long part shows in
+ * View work and is never read aloud. ~/.claude/hooks/chat-length-guard.sh counts only the short part.
+ */
+const MORE_LINE = /^[ \t]*<!--\s*more\s*-->[ \t]*$/m;
+
+export function splitMore(text: string): { short: string; more: string } {
+  const m = MORE_LINE.exec(text);
+  if (!m) return { short: text, more: '' };
+  return { short: text.slice(0, m.index).trim(), more: text.slice(m.index + m[0].length).trim() };
+}
+
 /** Convenience: the spoken text for a completed assistant turn. */
 export function spokenText(message: ChatMessage): string {
-  // Deliberately the LAST text block only. A tool-using turn emits a text
-  // block before each tool call plus the actual answer; joining them would
-  // narrate the whole working. The final text block is the answer.
-  const texts = message.blocks.filter(
-    (b): b is Extract<ChatBlock, { kind: 'text' }> => b.kind === 'text',
-  );
-  const answer = texts[texts.length - 1];
-  return answer ? answer.text.trim() : '';
+  // Every text block, in order, exactly as the chat bubble shows them: a Stop
+  // hook can force a continuation, and the follow-up must not replace the answer.
+  return message.blocks
+    .map((b) => (b.kind === 'text' ? splitMore(b.text).short.trim() : ''))
+    .filter(Boolean)
+    .join('\n\n');
 }

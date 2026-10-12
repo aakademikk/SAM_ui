@@ -59,8 +59,8 @@ export function pushBin(): string {
 /**
  * Re-parses a finished turn's job output the same way the chat UI does
  * (`AgentStreamParser`, fed the whole stream then `finish()`), and returns
- * the spoken answer (`spokenText` — the last text block, never the tool
- * narration before it). The whole buffer is decoded at once rather than
+ * the spoken answer (`spokenText` — every text block in order, never the tool
+ * calls between them). The whole buffer is decoded at once rather than
  * frame-by-frame, so a multi-byte character split across two written
  * frames is never mangled.
  */

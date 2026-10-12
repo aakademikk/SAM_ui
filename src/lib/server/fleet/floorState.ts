@@ -252,7 +252,8 @@ async function readJob(id: string): Promise<JobResult | null> {
       if (ended.at) endedAt = ended.at;
       if (typeof ended.exitCode === 'number') exitCode = ended.exitCode;
       status = exitCode === 0 ? 'done' : 'failed';
-    } else if (started) {
+    } else if (started || metaSaysRunning) {
+      // run.sh marks meta running just before it logs `started` (2026-10-12).
       status = 'running';
     } else if (dispatchedEvent) {
       status = 'queued';

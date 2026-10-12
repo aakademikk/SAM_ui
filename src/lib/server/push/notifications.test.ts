@@ -49,6 +49,7 @@ function entry(
     tag: 'tag',
     chatId: null,
     jobId: null,
+    questionId: null,
     ...overrides,
   };
 }
@@ -119,4 +120,16 @@ test('finding 13: findNotification finds an id older than readNotifications\' de
 test('finding 13: findNotification returns null for an id truly not in the log', () => {
   fs.writeFileSync(logFile, JSON.stringify(entry({ id: 'n_1' })) + '\n');
   assert.equal(notifications.findNotification('n_does_not_exist'), null);
+});
+
+test('old log lines without questionId still parse (questionId null); a line with one keeps it', () => {
+  const old = { id: 'n_old', ts: 1, title: 't', body: 'b', url: '/u', tag: 'x', chatId: null, jobId: null };
+  const withQ = { ...old, id: 'n_q', ts: 2, questionId: 'q_abc12345' };
+  const nullQ = { ...old, id: 'n_nq', ts: 3, questionId: null };
+  const badQ = { ...old, id: 'n_bad', ts: 4, questionId: 7 };
+  fs.writeFileSync(logFile, [old, withQ, nullQ, badQ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  const got = notifications.readNotifications();
+  assert.deepEqual(got.map((e) => e.id), ['n_nq', 'n_q', 'n_old']);
+  assert.equal(got.find((e) => e.id === 'n_old')?.questionId, null);
+  assert.equal(got.find((e) => e.id === 'n_q')?.questionId, 'q_abc12345');
 });
