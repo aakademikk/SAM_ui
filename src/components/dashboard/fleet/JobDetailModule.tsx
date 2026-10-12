@@ -27,6 +27,8 @@
 import { useEffect, useState } from 'react';
 
 import { formatCost } from '@/lib/costing';
+import type { JobTicketPanel } from '@/lib/server/fleet/jobTicketPanel';
+import { formatTicketPanel, type TicketsData } from '@/components/dashboard/fleet/jobTicketView';
 import type { FleetPersonaJob } from '@/types/fleet';
 import type { FloorState, FloorWorker, FloorWorkerStatus, GeneralId } from '@/types/floor';
 
@@ -193,6 +195,18 @@ function isJobsPayload(value: unknown): value is { persona: string; jobs: FleetP
   return !!v && typeof v === 'object' && Array.isArray(v.jobs);
 }
 
+/** The ticket panel's own refresh period: never faster than the floor poll (3000 ms). */
+export const TICKET_REFRESH_MS = 3000;
+
+interface TicketsEnvelope {
+  data?: JobTicketPanel;
+}
+
+function isPanelPayload(value: unknown): value is JobTicketPanel {
+  const v = value as { mode?: unknown } | null;
+  return !!v && typeof v === 'object' && (v.mode === 'tickets' || v.mode === 'stages');
+}
+
 export interface JobDetailModuleProps {
   /** The floor's current state, from a parent that already polls `/api/fleet/floor` (T5/T11). */
   state: FloorState | null;
@@ -244,6 +258,47 @@ export default function JobDetailModule({ state, selectedJobId, demo = false, cl
     };
   }, [jobId, general, demo, needsLegacy]);
 
+  // Ticket panel data. Fetched once on selection, then every 3000 ms only while
+  // the worker is queued or running (an ended job gets its first fetch only).
+  const live = worker?.status === 'queued' || worker?.status === 'running' || worker?.status === 'verifying';
+  const [ticketPanel, setTicketPanel] = useState<{ jobId: string; panel: JobTicketPanel } | null>(null);
+
+  useEffect(() => {
+    if (!jobId) {
+      setTicketPanel(null);
+      return;
+    }
+    let cancelled = false;
+    let ctl: AbortController | null = null;
+    const url = `/api/fleet/job-tickets?jobId=${encodeURIComponent(jobId)}` + (demo ? '&demo=1' : '');
+
+    const load = async () => {
+      ctl?.abort();
+      const mine = new AbortController();
+      ctl = mine;
+      try {
+        const res = await fetch(url, { cache: 'no-store', signal: mine.signal });
+        if (!res.ok) return;
+        const json = (await res.json()) as TicketsEnvelope;
+        if (cancelled || !isPanelPayload(json.data)) return;
+        setTicketPanel({ jobId, panel: json.data });
+      } catch {
+        // No refresh this round: the last panel (or today's stages view) stands.
+      }
+    };
+
+    void load();
+    const timer = live ? setInterval(() => void load(), TICKET_REFRESH_MS) : null;
+
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+      ctl?.abort();
+    };
+  }, [jobId, live, demo]);
+
+  const panel = ticketPanel && ticketPanel.jobId === jobId ? ticketPanel.panel : null;
+
   if (!worker) {
     return (
       <section
@@ -264,12 +319,28 @@ export default function JobDetailModule({ state, selectedJobId, demo = false, cl
     );
   }
 
-  const view = formatJobDetail(worker, meta);
+  return <JobDetailCard worker={worker} meta={meta} panel={panel} className={className} />;
+}
+
+export interface JobDetailCardProps {
+  worker: FloorWorker;
+  meta?: ResolvedJobMeta | null;
+  /** The fetched ticket panel; null (or `mode: 'stages'`) keeps today's stages view. */
+  panel?: JobTicketPanel | null;
+  now?: number;
+  className?: string;
+}
+
+/** The panel body, split out of the module so it renders without effects (tests, phone and desktop alike). */
+export function JobDetailCard({ worker, meta = null, panel = null, now = Date.now(), className }: JobDetailCardProps) {
+  const view = formatJobDetail(worker, meta, now);
+  const tickets = panel && panel.mode === 'tickets' ? panel : null;
+  const notice = panel && panel.mode === 'stages' ? (panel.notice ?? null) : null;
 
   return (
     <section
       aria-label="Job detail"
-      className={`rounded-xl border px-3.5 py-3 ${className ?? ''}`}
+      className={`min-w-0 max-w-full rounded-xl border px-3.5 py-3 ${className ?? ''}`}
       style={{
         background: 'linear-gradient(180deg, rgba(9,28,20,.82), rgba(5,17,12,.86))',
         borderColor: 'rgba(61,255,90,.12)',
@@ -288,9 +359,13 @@ export default function JobDetailModule({ state, selectedJobId, demo = false, cl
         </span>
       </header>
 
-      <h3 className="mt-1.5 truncate text-[16px] font-semibold" style={{ color: '#e8f7ee' }}>
-        {view.name}
-      </h3>
+      {tickets ? (
+        <TicketsBody data={tickets} name={view.name} now={now} />
+      ) : (
+        <h3 className="mt-1.5 truncate text-[16px] font-semibold" style={{ color: '#e8f7ee' }}>
+          {view.name}
+        </h3>
+      )}
 
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <Pill>{view.general}</Pill>
@@ -298,7 +373,7 @@ export default function JobDetailModule({ state, selectedJobId, demo = false, cl
       </div>
 
       <dl className="mt-3 grid grid-cols-3 gap-2 border-t pt-2.5" style={{ borderColor: 'rgba(157,255,112,.075)' }}>
-        <Stat label="Stages" value={view.stagesLabel} />
+        {tickets ? null : <Stat label="Stages" value={view.stagesLabel} />}
         <Stat label="Elapsed" value={view.elapsed} />
         <Stat label="Cost" value={view.cost} accent />
       </dl>
@@ -308,7 +383,107 @@ export default function JobDetailModule({ state, selectedJobId, demo = false, cl
           {view.last}
         </p>
       ) : null}
+
+      {notice ? (
+        <p className="mt-2 break-words text-[12px]" style={{ color: '#5f7d6e' }}>
+          {notice}
+        </p>
+      ) : null}
     </section>
+  );
+}
+
+const SUB_BORDER = 'rgba(157,255,112,.075)';
+
+/** Tickets mode: heading, name, ticket list, builds, activity, failed runs. Every row wraps or truncates (390 px phone). */
+function TicketsBody({ data, name, now }: { data: TicketsData; name: string; now: number }) {
+  const v = formatTicketPanel(data, now, name);
+  return (
+    <div className="min-w-0">
+      <h3 className="mt-1.5 break-words text-[16px] font-semibold" style={{ color: '#e8f7ee' }}>
+        {v.heading}
+      </h3>
+      {v.name ? (
+        <p className="truncate text-[12px]" style={{ color: '#98b6a6' }}>
+          {v.name}
+        </p>
+      ) : null}
+
+      <ul
+        aria-label="Tickets"
+        className="mt-2 max-h-64 min-w-0 list-none overflow-x-hidden overflow-y-auto border-t p-0"
+        style={{ borderColor: SUB_BORDER }}
+      >
+        {v.tickets.map((t) => (
+          <li key={t.n} className="min-w-0 border-b py-1.5 text-[12px]" style={{ borderColor: SUB_BORDER }}>
+            <div className="flex min-w-0 items-baseline gap-1.5">
+              <span className="shrink-0 tabular-nums" style={{ color: '#5f7d6e' }}>
+                T{t.n}
+              </span>
+              <span className="min-w-0 flex-1 break-words" style={{ color: '#e8f7ee' }}>
+                {t.title}
+              </span>
+              <span
+                className="max-w-[40%] shrink-0 truncate font-semibold"
+                style={{ color: t.stalled ? '#ff7a70' : '#98b6a6' }}
+              >
+                {t.label}
+              </span>
+            </div>
+            {t.claim ? (
+              <div className="min-w-0 break-all text-[12px]" style={{ color: t.stalled ? '#ff7a70' : '#3dff5a' }}>
+                {t.claim}
+              </div>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+
+      {v.jobs.length > 0 ? (
+        <ul
+          aria-label="Builds"
+          className="mt-2 max-h-40 min-w-0 list-none overflow-x-hidden overflow-y-auto border-t p-0"
+          style={{ borderColor: SUB_BORDER }}
+        >
+          {v.jobs.map((j) => (
+            <li key={j.id} className="min-w-0 border-b py-1.5 text-[12px]" style={{ borderColor: SUB_BORDER }}>
+              <div className="min-w-0 break-all" style={{ color: '#e8f7ee' }}>
+                {j.id}
+              </div>
+              <div className="min-w-0 break-words" style={{ color: '#5f7d6e' }}>
+                {j.state}
+                {j.start ? ` · ${j.start}` : ''}
+                {j.end ? ` to ${j.end}` : ''}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {v.lastActivity ? (
+        <p className="mt-2 truncate text-[12px]" style={{ color: '#98b6a6' }}>
+          {v.lastActivity}
+        </p>
+      ) : null}
+
+      <p className="mt-2 break-words text-[12px]" style={{ color: '#98b6a6' }}>
+        {v.failedHeading}
+      </p>
+      {v.failedRuns.length > 0 ? (
+        <ul aria-label="Failed runs" className="min-w-0 list-none overflow-x-hidden p-0">
+          {v.failedRuns.map((r, i) => (
+            <li key={i} className="flex min-w-0 items-baseline gap-1.5 py-0.5 text-[12px]">
+              <span className="min-w-0 flex-1 break-all" style={{ color: '#5f7d6e' }}>
+                {r.command}
+              </span>
+              <span className="shrink-0" style={{ color: '#ff7a70' }}>
+                {r.outcome}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

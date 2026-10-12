@@ -24,6 +24,8 @@ import path from 'node:path';
 import os from 'node:os';
 
 import { costFleetJob } from '@/lib/server/fleet/jobCosts';
+import { resolveTicketJob } from '@/lib/server/fleet/ticketJob';
+import { parseTickets, ticketProgress } from '@/lib/server/fleet/ticketsFile';
 
 import type { FloorState, FloorStage, FloorWorker, GeneralId } from '@/types/floor';
 
@@ -57,6 +59,31 @@ const GENERAL_IDS: readonly GeneralId[] = [
 // (Must 7's honesty for jobs with no `general` field yet) — read only, never
 // changed here.
 const FLEET_COMMAND_RE = /^fleet:([a-z0-9_-]+)(?:\s+\(([^)]+)\))?/;
+
+// Parsed ticket progress per tickets path, keyed on the file's mtime and size,
+// at most 16 entries (SAM_ui memory-growth item). Oldest entry is evicted.
+const TICKET_CACHE_MAX = 16;
+const ticketCache = new Map<string, { mtimeMs: number; size: number; progress: { done: number; total: number } }>();
+
+async function cachedTicketProgress(ticketsPath: string): Promise<{ done: number; total: number } | null> {
+  try {
+    const st = await fsp.stat(ticketsPath);
+    const hit = ticketCache.get(ticketsPath);
+    if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.progress;
+    const text = await fsp.readFile(ticketsPath, 'utf-8');
+    const progress = ticketProgress(parseTickets(text).tickets);
+    ticketCache.delete(ticketsPath);
+    ticketCache.set(ticketsPath, { mtimeMs: st.mtimeMs, size: st.size, progress });
+    while (ticketCache.size > TICKET_CACHE_MAX) {
+      const oldest = ticketCache.keys().next().value;
+      if (oldest === undefined) break;
+      ticketCache.delete(oldest);
+    }
+    return progress;
+  } catch {
+    return null;
+  }
+}
 
 /** A stored job's meta.json — both shapes, plus the Must 16/16a additions. */
 interface StoredMeta {
@@ -249,6 +276,13 @@ async function readJob(id: string): Promise<JobResult | null> {
     status = synthesizeStatus(meta);
   }
 
+  // Ticket jobs only, and only while the job is live: an ended job keeps null.
+  let tickets: { done: number; total: number } | null = null;
+  if (status !== 'done' && status !== 'failed') {
+    const ticketJob = await resolveTicketJob(dir);
+    if (ticketJob.kind === 'ok') tickets = await cachedTicketProgress(ticketJob.ticketsPath);
+  }
+
   const elapsedMs = computeElapsedMs(startedAt, endedAt);
   const costed = await costFleetJob(id, dispatchedModel);
 
@@ -269,6 +303,7 @@ async function readJob(id: string): Promise<JobResult | null> {
     // sam-job entirely) reports `null`, not `undefined`.
     summary: typeof meta.summary === 'string' ? meta.summary : null,
     tier: typeof meta.tier === 'string' ? meta.tier : null,
+    tickets,
   };
 
   const reachedDoneToday =

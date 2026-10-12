@@ -56,6 +56,11 @@ export function activeJobEntries(state: FloorState | null): ActiveJobEntry[] {
   return entries.sort((a, b) => b.worker.elapsedMs - a.worker.elapsedMs);
 }
 
+/** Live ticket progress line for a ticket worker ("20 of 24 tickets done"); null for any other worker. */
+export function activeJobProgress(worker: FloorWorker): string | null {
+  return worker.tickets ? `${worker.tickets.done} of ${worker.tickets.total} tickets done` : null;
+}
+
 const STATUS_COLOUR: Record<FloorWorkerStatus, string> = {
   queued: '#5f7d6e',
   running: '#3dff5a',
@@ -147,6 +152,11 @@ export default function ActiveJobsModule({
                   <span className="truncate text-[12px]" style={{ color: '#5f7d6e' }}>
                     {entry.worker.jobId}
                   </span>
+                  {activeJobProgress(entry.worker) !== null && (
+                    <span className="truncate text-[12px]" style={{ color: '#98b6a6' }}>
+                      {activeJobProgress(entry.worker)}
+                    </span>
+                  )}
                 </button>
               </li>
             );
