@@ -344,7 +344,7 @@ Do not touch: every live file, `MANIFEST`, `stage.sums`, `sam-ui.service`.
 Proof: `[ -s /home/col/.sam/logs/job-ticket-panel-INSTALL.txt ] && grep -c 'mv -f' /home/col/.sam/logs/job-ticket-panel-INSTALL.txt` prints a number of at least 8; `grep -c 'bak-20261009-jtp' /home/col/.sam/logs/job-ticket-panel-INSTALL.txt` is at least 8; the file contains exactly one line starting `cd /home/col` (`grep -c '^cd /home/col' ...` prints 1); it fails before (file absent).
 
 ## T23: GATE, SAM installs and deploys once Colin approves
-Status: TODO
+Status: IN PROGRESS 2026-10-12 (Colin go ~9:10 PM. Installed: dispatcher + closer + SKILL, live closer suites ticket-flags 13/0 and build-log 12/0; merged 716f6fa; tsc 0, npm test 683 pass 0 fail; deploy.sh healthy, /api/health gitSHA 716f6fa, job-tickets route 401 without login. Left: browser check at 390/1440, IN PROGRESS check on the next ticket job)
 Spec: must-do #11, #12, check #8, #9, #13
 Depends on: T22
 Blocked by: Colin's approval (an explicit word; nothing in T1 to T22 is approval)
