@@ -141,16 +141,27 @@ export const clearSpeechError = () => {
  * Split text into speakable chunks on sentence boundaries.
  *
  * Markdown fences, list bullets and inline code markers are stripped — they
- * are read aloud as noise otherwise.
+ * are read aloud as noise otherwise. So is anything that only makes sense on
+ * screen (2026-10-12, Colin): a link is read as its label, and web addresses,
+ * file paths, percent escapes and waiting item ids (w_xxxxxxxx) are dropped.
+ * Dashes become a comma pause; hyphens inside words stay.
  */
 export function splitForSpeech(text: string): string[] {
   const cleaned = text
     .replace(/```[\s\S]*?```/g, ' code block. ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/(^|[\s(])~?\/[^\s)]*\/[^\s)]*/g, '$1')
+    .replace(/%[0-9A-Fa-f]{2}/g, ' ')
+    .replace(/\bw_[0-9a-f]{8}\b/g, '')
+    .replace(/\(\s*\)/g, '')
     .replace(/^[\s]*[-*+]\s+/gm, '')
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\s*(?:—|–|\s-\s)\s*/g, ', ')
     .replace(/\s+/g, ' ')
+    .replace(/\s+([.,!?;:])/g, '$1')
     .trim();
 
   if (!cleaned) return [];

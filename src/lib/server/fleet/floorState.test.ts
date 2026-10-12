@@ -391,3 +391,26 @@ test('a running job stays on the floor whatever stray ended events say', async (
   assert.equal(state.generals.cerberus.idle, false);
   assert.equal(workers.some((w) => w.jobId === 'job-really-ended'), false, 'a finished job still leaves the floor');
 });
+
+test('a job meta.json marks running shows running before its started event lands', async () => {
+  await ready;
+
+  // run.sh writes meta "running" a moment before it logs the `started` event
+  // (2026-10-12: the floor read the gap as queued and failed a deploy).
+  writeMeta('job-started-gap', {
+    id: 'job-started-gap',
+    command: 'claude -p "sweep"',
+    status: 'running',
+    exitCode: null,
+    createdAt: iso(-2_000),
+    startedAt: iso(-1_000),
+    endedAt: null,
+    general: 'prometheus',
+  });
+  writeEvents('job-started-gap', [{ type: 'dispatched', at: iso(-2_000), general: 'prometheus' }]);
+
+  const state = await readFloorState();
+  const worker = state.generals.prometheus.workers.find((w) => w.jobId === 'job-started-gap');
+  assert.ok(worker, 'the job is on the floor');
+  assert.equal(worker.status, 'running');
+});
