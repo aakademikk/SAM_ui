@@ -1,8 +1,9 @@
 # Work area in SAM_ui: spec
 
-Status: DRAFT 2026-10-12, not locked. Colin locks it.
+Status: LOCKED 2026-10-12 (Colin, ~8:55 PM: "Lock that shit")
+Open questions answered by Colin 2026-10-12 ~8:10 PM and folded in below (Must 16, 28, 29, 31 to 35).
 Grilled: 2026-10-12 ~7:25 PM with Colin, recorded in the "Exact next action" section of [[2026-10-12 LumiLounge, phone speech and work-area handoff]] and in [[2026-10-12]]. Option B chosen.
-Touches: SAM_ui (`WorkPanel.tsx`, `MessageBlocks.tsx`, the chat page, `speech.ts`, `turnPing.ts`, `sw.ts`, a new read-only vault file route), `~/.claude/hooks/chat-length-guard.sh`, `/home/col/claude/CLAUDE.md`, the two vault ignore files, `/home/col/bin/sam-backup.sh`.
+Touches: the Storage drive's `Vault raw media/` folder, SAM_ui (`WorkPanel.tsx`, `MessageBlocks.tsx`, the chat page, `speech.ts`, `turnPing.ts`, `sw.ts`, a new read-only vault file route), `~/.claude/hooks/chat-length-guard.sh`, `/home/col/claude/CLAUDE.md`, the two vault ignore files, `/home/col/bin/sam-backup.sh`.
 
 ## Goal
 
@@ -38,14 +39,14 @@ Each one is a file in the vault, in the folder of the project it belongs to, and
 ### The work panel
 
 8. The work panel has two views. Work is today's view (thinking, tool calls, the long version), unchanged. Items shows the open item and the recent-items list. "View work" opens Work; an item card opens Items.
-9. The recent-items list shows the 20 most recent items, newest first, one entry per file, each with its title, project folder, when it was made and the chat it came from. Tapping one opens it. A file that has since moved or been deleted shows "moved or deleted" and opens nothing. The list is reachable from the chat page without first picking a message. Which chats it covers is Open question 2.
+9. The recent-items list shows the 20 most recent items, newest first, one entry per file, each with its title, project folder, when it was made and the chat it came from. Tapping one opens it. A file that has since moved or been deleted shows "moved or deleted" and opens nothing. The list is reachable from the chat page without first picking a message. It covers all chats, each entry labelled with its chat (Colin, 2026-10-12).
 10. Markdown items show formatted: headings, bold, italic, links, bulleted and numbered lists, quotes, code blocks, horizontal rules, tables, and task checklists (ticked and unticked, read-only).
 11. Wide tables and code blocks scroll sideways inside themselves. The panel and the page never scroll sideways at 390 px.
 12. Fenced `mermaid` blocks in a markdown item draw as diagrams. A block that fails to draw shows its source with a one-line "diagram could not be drawn" note, and the rest of the document still shows.
 13. Images show inline in a markdown item, written either as `![](path)` or the Obsidian way `![[file]]`, with the path found next to the item first and then from the vault root. They fit the panel width and open full size on tap. An image on its own (png, jpg, jpeg, gif, webp, svg) opens the same way.
 14. Videos (mp4, webm), on their own or inside a markdown item, play in the panel with controls, can be seeked, and never start playing with sound by themselves.
 15. Raw HTML written inside a markdown file never runs in SAM_ui's page: scripts, event handlers, frames and `javascript:` links inside markdown do nothing.
-16. HTML pages SAM makes (an `.html` file in the vault) show inside the panel in a locked-off frame with no same-origin access. From inside the frame a page cannot read SAM_ui's cookies or storage, cannot call SAM_ui's APIs as Colin, cannot change or cover the SAM_ui tab, and cannot open pop-ups. Whether it may run scripts is Open question 3.
+16. HTML pages SAM makes (an `.html` file in the vault) show inside the panel in a locked-off frame with no same-origin access. From inside the frame a page cannot read SAM_ui's cookies or storage, cannot call SAM_ui's APIs as Colin, cannot change or cover the SAM_ui tab, and cannot open pop-ups. Scripts may run inside the frame (Colin, 2026-10-12); forms, pop-ups and top-level navigation stay blocked, and the frame never gets same-origin.
 17. The same HTML page opened directly by its address in a browser tab is locked off the same way (it is sent with a sandbox policy), so its address cannot be used to run it with SAM_ui's access.
 18. Outside websites (any http or https address, as a marker or a link inside an item) are never framed. They show as a link that opens in a new browser tab with no referrer and no handle back to SAM_ui.
 19. If an item fails to load, or has not loaded after 15 seconds, the panel says "could not load" with a retry button. No endless spinner.
@@ -54,7 +55,7 @@ Each one is a file in the vault, in the folder of the project it belongs to, and
 ### Serving vault files
 
 21. SAM_ui serves a vault file only to a valid logged-in session (`sam-session`). Without one the answer is 401 and says nothing about the file.
-22. A file is served only if its real location, after following any symlink, is inside `/home/col/ai-memory-vault`, and only if its type is one of: md, html, png, jpg, jpeg, gif, webp, svg, mp4, webm. Always refused: `..` in any form (plain, URL-encoded, double-encoded, backslash), absolute paths outside the vault, null bytes, symlinks that lead out, and any path with a part starting with a dot (`.git`, `.obsidian`, `.trash`, `.env` and the like). Nothing in `~/.sam`, and no env, key or credential file, can be reached by any path.
+22. A file is served only if its real location, after following any symlink, is inside `/home/col/ai-memory-vault`, and only if its type is one of: md, html, png, jpg, jpeg, gif, webp, svg, mp4, webm, pdf. Always refused: `..` in any form (plain, URL-encoded, double-encoded, backslash), absolute paths outside the vault, null bytes, symlinks that lead out, and any path with a part starting with a dot (`.git`, `.obsidian`, `.trash`, `.env` and the like). Nothing in `~/.sam`, and no env, key or credential file, can be reached by any path.
 23. A refused request gets the same not-found answer whether or not the file exists, and adds one line to `~/.sam/audit.log` with the time, the path asked for and the reason. Never any file content.
 24. The route is read-only. Nothing in this build writes, renames or deletes a vault file through SAM_ui.
 25. Videos are served in byte ranges, so seeking works on the phone, and the SAM_ui server never holds a whole video in memory.
@@ -63,9 +64,17 @@ Each one is a file in the vault, in the folder of the project it belongs to, and
 
 ### Saving items and keeping media out of git
 
-28. SAM's standing instructions (`/home/col/claude/CLAUDE.md`) gain the work-area rule: when an answer is a diagram, a long write-up, a book excerpt, a table-heavy document, an image or a video, SAM saves it as a file in the vault folder of the project it belongs to and adds the marker line from Must 1. Personal items go only under `03 - Personal/`, never `02 - Atwood Systems/`. The marker never sits inside a spoken sentence.
-29. Videos (mp4, webm, mov) stay out of git in both vault repos: the root `.gitignore` gains `*.webm`; the `02 - Atwood Systems/` repo's own `.gitignore` gains `*.mp4`, `*.webm` and `*.mov`. The nightly backup's vault exclusions gain `*.webm` so they stay in step with the root `.gitignore`, as its comment requires. The `02 - Atwood Systems/` exclusion stays in `.git/info/exclude`, never the root `.gitignore` (VAULT-INDEX rule 5). Whether videos need a backup somewhere else is Open question 4.
+28. SAM's standing instructions (`/home/col/claude/CLAUDE.md`) gain the work-area rule: when an answer is a diagram, a long write-up, a book excerpt, a table-heavy document, an image or a video, SAM saves it as a file in the vault folder of the project it belongs to and adds the marker line from Must 1. Personal items go only under `03 - Personal/`, never `02 - Atwood Systems/`. A project that is a single note with no folder (e.g. `AI Receptionist Platform.md`) gets a new folder named after the note, beside it, and the folder index is updated in the same pass. The marker never sits inside a spoken sentence.
+29. Videos (mp4, webm, mov) stay out of git in both vault repos: the root `.gitignore` gains `*.webm`; the `02 - Atwood Systems/` repo's own `.gitignore` gains `*.mp4`, `*.webm` and `*.mov`. The nightly backup's vault exclusions gain `*.webm` so they stay in step with the root `.gitignore`, as its comment requires. The `02 - Atwood Systems/` exclusion stays in `.git/info/exclude`, never the root `.gitignore` (VAULT-INDEX rule 5). Videos get their own copy on the Storage drive (Must 31).
 30. SAM_ui keeps a recent-items record: one line per item per finished reply. Must 9 reads only this record.
+
+### Decided after the draft (Colin, 2026-10-12)
+
+31. Every video in the vault (mp4, webm, mov) is copied nightly to `/run/media/col/Storage/Vault raw media/`, under the same relative path it has in the vault. A copy is never deleted from the Storage drive because the vault file was deleted. If the Storage drive is not mounted, the copy step is skipped, the nightly backup still finishes, and the skip is written to the backup log and reported in the next morning brief.
+32. PDFs show inside the panel, page by page, on the phone and the PC, with zoom and scroll. The phone's browser does not show PDFs by itself, so SAM_ui draws them. Scripts, forms and links that run actions inside a PDF never run; ordinary web links in a PDF open as in Must 18. A PDF over 50 MB shows "too big to show here" and its vault path.
+33. The work area can go full screen on any device: one button in the panel makes the open item fill the whole screen on the phone and the PC, and the same button, the close button or the phone's back gesture returns to the normal panel without leaving the chat.
+34. Links inside an item to other vault notes (`[[wikilinks]]` and relative links) open the linked file in the work area if it passes the same checks as Must 22. A link that fails the checks shows as plain text.
+35. The long version of a reply (the text after `<!-- more -->` in the Work view) shows formatted with the same renderer as Must 10 to 15, with the same protections. The short answer in the chat bubble stays plain text.
 
 ## Won't do
 
@@ -78,9 +87,9 @@ Each one is a file in the vault, in the folder of the project it belongs to, and
 - No offline copies of items.
 - No video conversion or compression. A video that the phone's browser cannot play shows the browser's own error.
 - No new notification or Telegram message.
-- No change to how `<!-- more -->` splits a reply, to the Work view's thinking and tool cards, or to the 80-word limit itself.
+- No change to how `<!-- more -->` splits a reply, to the Work view's thinking and tool cards, or to the 80-word limit itself. (The long version does become formatted, Must 35.)
 - SAM-made pages cannot load other vault files. This follows from the locked-off frame: with no same-origin access the page's own requests carry no session cookie (`SameSite=Lax`). Images a page needs must be inside the page itself.
-- Other file types (Office documents, audio, mov) show "not available". PDFs are Open question 6.
+- Other file types (Office documents, audio, mov) show "not available".
 
 ## Constraints and locked decisions
 
@@ -121,12 +130,17 @@ Each one is a file in the vault, in the folder of the project it belongs to, and
 19. (M28) `grep -c "<!-- work:" /home/col/claude/CLAUDE.md` is at least 1. Colin asks SAM on his phone for a diagram about a business project and for a personal item: the first lands in that project's folder, the second under `03 - Personal/` (checked with `ls`), and both open from their cards.
 20. (M29) `git check-ignore -v` on `test.mp4`, `test.webm` and `test.mov` names a rule in both vault repos; the vault filters in `sam-backup.sh` include `*.webm`; `grep -c "02 - Atwood" /home/col/ai-memory-vault/.gitignore` is 0.
 21. (Backups) The day after the sample set is saved, `rclone ls` on the Drive copy of the vault lists the sample markdown and image, and not the video.
-22. (all) `npx tsc --noEmit` exits 0, `npm run build` succeeds, and `npm test` shows 0 failures against a baseline the first ticket records before any change.
+22. (M31) After the nightly run, the sample video exists under `/run/media/col/Storage/Vault raw media/` at the same relative path with the same size (`stat`). Deleting the vault copy and re-running leaves the Storage copy in place. A test run with the drive path absent finishes the backup, logs the skip, and the next morning brief mentions it. A test in `~/.sam/tests/` covers the copy and the skip; it fails before, passes after.
+23. (M32) A sample PDF of several pages, and one holding a script and a form, are added to the sample set. Browser check at 390x844 and 1440x900: pages show in the panel, zoom and scroll work, nothing in the hostile PDF runs. A 60 MB PDF shows "too big to show here". Colin confirms on his phone that the sample PDF reads well.
+24. (M33) Browser check at 390x844 and 1440x900: the full-screen button fills the screen with the item; the button, close and (on the phone) back each return to the panel with the chat still open. Colin confirms on his phone.
+25. (M34) Unit test: a wikilink and a relative link to a sample note open it in the work area; a link to `../x` or a `.git` path shows as plain text and opens nothing.
+26. (M35) Browser check: a reply whose long version has a heading, a table and a mermaid block shows them formatted in the Work view; its bubble is unchanged plain text; Done-means 2 still passes.
+27. (all) `npx tsc --noEmit` exits 0, `npm run build` succeeds, and `npm test` shows 0 failures against a baseline the first ticket records before any change.
 
 ## Robustness
 
 - Data model: items are plain files in the vault, identified by their path relative to the vault root; the marker line in the reply holds that path. The recent-items record holds one line per item per finished reply: time, vault path, chat id, message id, title. A record entry is identified by vault path plus message id; the list shows one entry per path.
-- Backups and restore: markdown, HTML and images are in the vault's git (hourly checkpoints) and in the nightly 04:15 rclone sync to Drive (`sam-backup.sh`). Videos are in neither, by Must 29 (Open question 4). The recent-items record is not backed up; losing it only empties the recent list. Restore is proven by Done-means 21 and by opening a restored file in the panel.
+- Backups and restore: markdown, HTML and images are in the vault's git (hourly checkpoints) and in the nightly 04:15 rclone sync to Drive (`sam-backup.sh`). Videos are in neither, by Must 29; they are copied nightly to the Storage drive's `Vault raw media/` (Must 31, Done-means 22). That is one local second copy, not off-site. The recent-items record is not backed up; losing it only empties the recent list. Restore is proven by Done-means 21 and by opening a restored file in the panel.
 - Rollback: revert the build's commits in SAM_ui and restart `sam-ui.service` (Colin's word), and remove the work-area rule from CLAUDE.md so SAM stops writing markers. The speech change (Must 4, 5) ships as its own ticket and is kept on a rollback, so markers left in old chats are still never spoken. Item files stay in the vault untouched.
 - Failures and timeouts: there is no outside call; everything reads local files. A load that fails or passes 15 seconds shows "could not load" with a retry that the user presses, never an automatic retry loop (Must 19). A diagram that fails to draw shows its source (Must 12). A missing file shows "not available" or "moved or deleted" (Must 7, 9). Video playback errors are shown by the browser's own player.
 - Monitoring and alerts: the work area runs only while Colin is looking at it, so a failure shows on his screen. Refused file requests go to `~/.sam/audit.log` (Must 23). Server errors go to the `sam-ui` journal. No new push alert.
@@ -135,12 +149,14 @@ Each one is a file in the vault, in the folder of the project it belongs to, and
 
 ## Open questions
 
-1. OPEN: How big should the work area be when an item is open? Today the desktop panel is 320 to 380 px wide and the phone sheet covers 68% of the screen. SAM suggests: desktop widens to about half the window while an item is open; on the phone an item opens full height.
-2. OPEN: Does the recent-items list cover all chats or only the chat that is open? SAM suggests all chats, each entry labelled with its chat.
-3. OPEN: May SAM-made HTML pages run scripts (interactive charts, animations) inside the locked-off frame? The frame stays without same-origin either way. SAM suggests yes, with forms, pop-ups and top-level navigation still blocked. If no, pages are static.
-4. OPEN: Videos end up with no backup: they are out of the vault's git and out of the nightly Drive sync. Accept that (videos can be remade or are throwaway), or back them up somewhere else, such as the Storage drive's "Vault raw media/" folder?
-5. OPEN: Images are small and are tracked in git today. Keep them in git (SAM suggests yes), or keep them out like videos?
-6. OPEN: Book excerpts may come as PDFs. Show PDFs in the panel, offer them as a download only, or leave them out of this build?
-7. OPEN: Links inside an item to other vault notes (`[[wikilinks]]` and relative links): open the linked file in the work area if it passes the same checks as Must 22, or show them as plain text? SAM suggests open them.
-8. OPEN: Where do items go for a project that has no folder of its own, only a single note (for example `AI Receptionist Platform.md` at the top of `02 - Atwood Systems/`)? SAM suggests a new folder named after the note, beside it.
-9. OPEN: Should the existing long version of a reply (the text after `<!-- more -->` in the Work view) also show as formatted markdown, using the same renderer? SAM suggests yes.
+None open. Colin's answers, 2026-10-12 ~8:10 PM:
+
+1. Work area size: DECIDED: it can go full screen on any device (Must 33). The normal panel sizes stay as today.
+2. Recent list: DECIDED: all chats, each labelled with its chat (Must 9).
+3. Scripts in SAM-made pages: DECIDED: yes, inside the locked-off frame (Must 16).
+4. Video backup: DECIDED: copy to the Storage drive (Must 31).
+5. Images in git: DECIDED: keep them in git (no change).
+6. PDFs: DECIDED: show in the panel (Must 32).
+7. Links to vault notes: DECIDED: open in the work area under the same checks (Must 34).
+8. Projects with only a note: DECIDED: a new folder named after the note, beside it (Must 28).
+9. Long version formatted: DECIDED: yes (Must 35).
