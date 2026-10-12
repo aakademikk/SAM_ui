@@ -30,3 +30,14 @@ test('spokenText: a single-segment turn is unchanged', () => {
   assert.equal(spokenText(turn([{ kind: 'text', text: '  just this  ' }])), 'just this');
   assert.equal(spokenText(turn([{ kind: 'tool', id: 't', name: 'Bash', input: {}, status: 'ok' }])), '');
 });
+
+test('spokenText reads only the short answer before a <!-- more --> line, in every block (2026-10-12)', () => {
+  const msg: ChatMessage = {
+    id: 'm', role: 'assistant', done: true,
+    blocks: [
+      { kind: 'text', text: 'Short answer.\n<!-- more -->\nLong detail nobody should hear.' },
+      { kind: 'text', text: 'Follow-up.' },
+    ],
+  };
+  assert.equal(spokenText(msg), 'Short answer.\n\nFollow-up.');
+});

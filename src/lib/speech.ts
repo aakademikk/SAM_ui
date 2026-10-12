@@ -12,6 +12,8 @@
  * that a `stop()` would waste.
  */
 
+import { splitMore } from '@/types/chat';
+
 const MAX_CHUNK_CHARS = 220;
 /** Below this, a trailing fragment is merged backwards rather than spoken alone. */
 const MIN_TAIL_CHARS = 24;
@@ -147,7 +149,7 @@ export const clearSpeechError = () => {
  * Dashes become a comma pause; hyphens inside words stay.
  */
 export function splitForSpeech(text: string): string[] {
-  const cleaned = text
+  const cleaned = splitMore(text).short
     .replace(/```[\s\S]*?```/g, ' code block. ')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/`([^`]+)`/g, '$1')

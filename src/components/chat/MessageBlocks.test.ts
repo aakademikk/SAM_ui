@@ -51,3 +51,17 @@ test('splitBlocks: a single-segment turn is unchanged', () => {
   assert.deepEqual(answer, [text]);
   assert.deepEqual(work, [tool]);
 });
+
+test('splitBlocks: the long version after a <!-- more --> line goes to View work, the short answer stays (2026-10-12)', () => {
+  const blocks: ChatBlock[] = [
+    { kind: 'text', text: 'Done, the kitchen build is running.\n<!-- more -->\nThe long version: tickets 25 to 33.' },
+  ];
+  const { answer, work } = splitBlocks(blocks);
+  assert.deepEqual(answer, [{ kind: 'text', text: 'Done, the kitchen build is running.' }]);
+  assert.deepEqual(work, [{ kind: 'text', text: 'The long version: tickets 25 to 33.' }]);
+});
+
+test('splitBlocks: a reply with no marker is unchanged', () => {
+  const blocks: ChatBlock[] = [{ kind: 'text', text: 'Short and done.' }];
+  assert.deepEqual(splitBlocks(blocks), { answer: blocks, work: [] });
+});

@@ -15,7 +15,7 @@ import {
   Wrench, ChevronRight, Check, X, Loader2, Brain,
 } from 'lucide-react';
 
-import type { ChatBlock, ToolStatus } from '@/types/chat';
+import { splitMore, type ChatBlock, type ToolStatus } from '@/types/chat';
 
 /* ========================================================================== */
 /* Tool presentation                                                          */
@@ -257,7 +257,8 @@ export function MessageBlocks({ blocks }: { blocks: ChatBlock[] }) {
  * Stop hook can block the end of a turn so Claude Code continues it, and the
  * follow-up must land after the real answer rather than replace it. Thinking
  * and tool calls are always work. Errors stay on the main chat: they are
- * outcomes, not process.
+ * outcomes, not process. Text after a `<!-- more -->` line is the long version and
+ * goes to the work panel (2026-10-12).
  */
 export function splitBlocks(blocks: ChatBlock[]): { answer: ChatBlock[]; work: ChatBlock[] } {
   const answer: ChatBlock[] = [];
@@ -266,7 +267,13 @@ export function splitBlocks(blocks: ChatBlock[]): { answer: ChatBlock[]; work: C
     if (b.kind === 'error') {
       answer.push(b);
     } else if (b.kind === 'text') {
-      answer.push(b);
+      const { short, more } = splitMore(b.text);
+      if (!more) {
+        answer.push(b);
+      } else {
+        if (short) answer.push({ kind: 'text', text: short });
+        work.push({ kind: 'text', text: more }); // the long version, behind "View work"
+      }
     } else if (b.kind === 'side') {
       answer.push(b); // shows in the chat, not behind "View work" (must-do 4)
     } else {

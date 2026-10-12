@@ -41,3 +41,7 @@ test('dashes become a pause, not a word; hyphenated words stay', () => {
   assert.equal(say('The fix landed — tests pass - all of them. A made-to-measure job.'),
     'The fix landed, tests pass, all of them. A made-to-measure job.');
 });
+
+test('nothing after a <!-- more --> line is read out', () => {
+  assert.equal(say('Short answer.\n<!-- more -->\nThe long version.'), 'Short answer.');
+});
