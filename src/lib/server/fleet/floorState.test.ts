@@ -391,3 +391,82 @@ test('a running job stays on the floor whatever stray ended events say', async (
   assert.equal(state.generals.cerberus.idle, false);
   assert.equal(workers.some((w) => w.jobId === 'job-really-ended'), false, 'a finished job still leaves the floor');
 });
+
+// --- Job ticket panel T4: live ticket count on FloorWorker -----------------
+
+function ticketJobFixture(id: string, summary: string, fixtureCopy: string): void {
+  const cwd = path.join(tmpHome, `cwd-${id}`);
+  fs.mkdirSync(path.join(cwd, 'implementation'), { recursive: true });
+  fs.copyFileSync(
+    path.join(process.cwd(), 'src/lib/server/fleet/fixtures/kitchen-v3-phone-flow-tickets.md'),
+    path.join(cwd, 'implementation', fixtureCopy),
+  );
+  writeMeta(id, {
+    id,
+    command: 'claude -p "build"',
+    status: 'running',
+    exitCode: null,
+    startedAt: iso(-60_000),
+    endedAt: null,
+    general: 'hephaestus',
+    summary,
+    closerCtx: { cwd, task: 'build' },
+  });
+  fs.writeFileSync(path.join(jobDir(id), 'brief.md'), `Build every ticket in implementation/${fixtureCopy}\n`);
+}
+
+function doneCount(file: string): number {
+  return (fs.readFileSync(file, 'utf-8').match(/^Status:\s*DONE\b/gim) ?? []).length;
+}
+
+test('a running ticket job carries the live DONE count and keeps the launch summary (T4)', async () => {
+  await ready;
+  const launch = 'Kitchen R4 build (resume, 19 of 24 done)';
+  ticketJobFixture('job-tickets-live', launch, 'kitchen-copy-tickets.md');
+  const file = path.join(tmpHome, 'cwd-job-tickets-live', 'implementation', 'kitchen-copy-tickets.md');
+
+  const state = await readFloorState();
+  const w = state.generals.hephaestus.workers.find((x) => x.jobId === 'job-tickets-live');
+  assert.ok(w);
+  assert.ok(w.tickets);
+  assert.equal(w.tickets.done, doneCount(file));
+  assert.equal(w.tickets.total, 24);
+  assert.equal(w.summary, launch);
+});
+
+test('a job with no tickets file has tickets === null (T4)', async () => {
+  await ready;
+  writeMeta('job-no-tickets', {
+    id: 'job-no-tickets',
+    command: 'claude -p "x"',
+    status: 'running',
+    startedAt: iso(-60_000),
+    endedAt: null,
+    general: 'hephaestus',
+    summary: 'Plain job',
+  });
+  const state = await readFloorState();
+  const w = state.generals.hephaestus.workers.find((x) => x.jobId === 'job-no-tickets');
+  assert.ok(w);
+  assert.strictEqual(w.tickets, null);
+});
+
+test('editing the tickets file between reads changes the count (T4 cache invalidates)', async () => {
+  await ready;
+  ticketJobFixture('job-tickets-edit', 'Edit job', 'edit-copy-tickets.md');
+  const file = path.join(tmpHome, 'cwd-job-tickets-edit', 'implementation', 'edit-copy-tickets.md');
+  const find = async () =>
+    (await readFloorState()).generals.hephaestus.workers.find((x) => x.jobId === 'job-tickets-edit');
+
+  const before = (await find())?.tickets;
+  assert.ok(before);
+
+  const text = fs.readFileSync(file, 'utf-8');
+  const edited = text.replace(/^Status:\s*DONE\b.*$/m, 'Status: TODO');
+  assert.notEqual(edited, text);
+  fs.writeFileSync(file, edited);
+
+  const after = (await find())?.tickets;
+  assert.ok(after);
+  assert.equal(after.done, before.done - 1);
+});

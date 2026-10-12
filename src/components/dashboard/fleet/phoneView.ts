@@ -145,6 +145,7 @@ export interface StageTimeline {
 }
 
 export function stageTimeline(w: FloorWorker): StageTimeline {
+  if (w.tickets) return { stages: w.stages, summary: `${w.tickets.done} of ${w.tickets.total} tickets done` };
   if (!w.stages || w.stages.length === 0) return { stages: null, summary: 'No stage events' };
   const done = w.stages.filter((s) => s.state === 'done').length;
   return { stages: w.stages, summary: `${done} of ${w.stages.length} stages` };

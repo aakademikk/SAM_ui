@@ -630,10 +630,20 @@ export function durText(ms: number): string {
   return m ? `${m}m ${String(s % 60).padStart(2, '0')}s` : `${s}s`;
 }
 
-function workerLines(w: FloorWorker): { line1: string; line2: string } {
+export function workerLines(w: FloorWorker): { line1: string; line2: string } {
   if (w.status === 'failed') return { line1: 'Failed', line2: 'Ended non-zero' };
   if (w.status === 'queued') return { line1: 'Queued', line2: 'Standing by' };
   const st = w.stages ?? null;
+  if (w.tickets) {
+    const line2 = `${w.tickets.done} of ${w.tickets.total} tickets done`;
+    if (st && st.length) {
+      const now = st.findIndex((x) => x.state === 'now');
+      const done = st.filter((x) => x.state === 'done').length;
+      const name = now >= 0 ? st[now].name : done === st.length ? 'Stages done' : st[Math.min(done, st.length - 1)].name;
+      return { line1: cap(name), line2 };
+    }
+    return { line1: 'Running', line2 };
+  }
   if (st && st.length) {
     const now = st.findIndex((x) => x.state === 'now');
     const done = st.filter((x) => x.state === 'done').length;

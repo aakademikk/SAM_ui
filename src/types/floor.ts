@@ -66,6 +66,14 @@ export interface FloorWorker {
    * string. Same optional-not-just-nullable reasoning as `lastAction`.
    */
   tier?: string | null;
+  /**
+   * Live ticket progress, counted from the job's tickets file at the moment
+   * of the read (job ticket panel, M5/M15). Set only for a ticket job whose
+   * tickets file exists and whose status is not `done`/`failed`; otherwise
+   * `null`. Same optional-not-just-nullable reasoning as `lastAction`:
+   * `floorState.ts` always sets it explicitly to a value or `null`.
+   */
+  tickets?: { done: number; total: number } | null;
 }
 
 export interface FloorState {

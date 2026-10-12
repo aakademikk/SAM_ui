@@ -220,3 +220,10 @@ test('a failed (red) job: found on the floor, captioned as failed, and its timel
   assert.equal(heroCaption(st, sam), 'SAM · failed');
   assert.deepEqual(lifecycleSteps('failed'), ['done', 'done', 'done', '', 'bad']);
 });
+
+test('stageTimeline: a ticket worker reads the live count, not the 19 of 24 stages', () => {
+  const stages = Array.from({ length: 24 }, (_, i) => ({ name: `T${i + 1}`, state: i < 19 ? ('done' as const) : ('todo' as const) }));
+  const t = stageTimeline(worker('job_kitchen-r4-implement-t20_20261008-205319', 'sam', 'running', { stages, tickets: { done: 20, total: 24 } }));
+  assert.equal(t.summary, '20 of 24 tickets done');
+  assert.equal(stageTimeline(worker('x', 'sam', 'running', { stages, tickets: null })).summary, '19 of 24 stages');
+});
