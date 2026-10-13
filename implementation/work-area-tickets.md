@@ -386,7 +386,7 @@ Do not touch: `/home/col/claude/CLAUDE.md`, any other paragraph.
 Proof: `grep -c "<!-- work:" /home/col/claude/CLAUDE.md.next` is at least 1 and `grep -c "<!-- work:" /home/col/claude/CLAUDE.md` is 0; `diff /home/col/claude/CLAUDE.md /home/col/claude/CLAUDE.md.next` shows only added lines.
 
 ## T25: Videos out of both vault repos (staged as patches)
-Status: PARTLY DONE 2026-10-13 (both patches prove on throwaway repos: check-ignore names a rule for test.mp4/webm/mov in both; live vault ignore files untouched. Literal proof grep -c '02 - Atwood' on the root file prints 1 not 0, because line 2 is an existing comment (no rule line mentions it); ticket check is wrong, Colin to confirm the intent is no rule line)
+Status: DONE 2026-10-13 (patches applied on Colin's go: check-ignore names a rule for test.mp4/webm/mov in both vault repos; root .gitignore has no ignore rule line for 02 - Atwood Systems, only the existing comment, SAM's ruling; .bak files moved to ~/.sam/staged/work-area/)
 Colin gate: the vault `.gitignore` changes are applied only on Colin's explicit word, in T33. This ticket writes patch files in `/home/col/.sam/staged/work-area/` and proves them on copies; it never edits a vault file and never commits.
 Spec: must-do #29 (git half), check #20 (git half)
 Depends on: T1
@@ -432,7 +432,7 @@ Do not touch: `sweep.sh`, `brief.sh`, the prompts, the live `extract.py`, today'
 Proof: `MB_EXTRACT=/home/col/.sam/morning-brief/extract.py.next bash ~/.sam/tests/test-morning-extract-backup.sh` passes; with the live file it fails the SKIP case.
 
 ## T28: Sample set and the fixture vault
-Status: PARTLY DONE 2026-10-13 (sample set built in staging /home/col/delivery/ux-audits/work-area-proofs/work-area-samples/ and fixture-vault 469M with big.md 3145763, big.pdf 62920930, long-video.mp4 424463610, hostile html/pdf/svg, outward symlink; NOT copied into the real vault because this run may write only the daily note, so Done-means 7 vault copy and its ls-files check wait for Colin and for T25 being applied)
+Status: DONE 2026-10-13 (8 sample files copied to 02 - Atwood Systems/00_SAM_Control/work-area-samples/ after T25 applied; git ls-files --others in the Atwood repo shows 0 videos; fixture vault unchanged)
 Spec: check #7, #10, #11, #18, #23, #25 (samples)
 Depends on: T22
 Blocked by: Colin applying T25 (the Atwood repo's video ignore rule), for the two video samples only
@@ -511,7 +511,7 @@ Do not touch: anything.
 Proof: `npx tsc --noEmit` exits 0; the build succeeds; `npm test` shows 0 failures (or exactly the Baseline's named failures and no new ones), with more passing tests than the Baseline; the T2 tests pass.
 
 ## T33: GATE: install the staged changes and deploy (Colin's word)
-Status: TODO
+Status: PARTLY DONE 2026-10-13: work area deployed. Merged (a467216 + Merge branch build/work-area), installed with .bak-20261013-workarea and no stale copies: CLAUDE.md, chat-length-guard.sh, sam-backup.sh, sam-raw-media-copy.sh (700), extract.py; their tests pass on the live paths; both vault ignore patches applied; live tree got npm install for the 4 new packages; deploy.sh ran, sam-ui.service active. Live checks: 13 PASS (401 without cookie on file, meta, recent), 19 PASS (1), 20 PASS (check-ignore in both repos, webm filter count 1). NOT RUN: 14 (three refusals and audit lines) and 15 (405s) against the live service, because they need a signed-in session and a guard hook blocked the enrolment script; both pass on the harness (T29). Optional live RSS check not run
 Colin gate: every step here needs Colin's explicit word first: the merge of `build/work-area`, the `sam-ui.service` restart, installing the CLAUDE.md change, the `chat-length-guard.sh` change, the `sam-backup.sh` change and the new copy script, the `extract.py` change, applying the two vault `.gitignore` patches, and any commit in a repo other than SAM_ui. Ask once with the list; do only what he approves.
 Spec: must-do #6, #28, #29, #31 (installed), check #13, #14, #15, #19 (grep), #20 (live)
 Depends on: T32, T23, T24, T25, T26, T27
