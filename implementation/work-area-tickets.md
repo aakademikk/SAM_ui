@@ -48,7 +48,7 @@ Shared definitions (every ticket uses these exactly):
 ---
 
 ## T1: Worktree, its own node_modules, and the baseline
-Status: TODO
+Status: DONE 2026-10-13 (worktree build/work-area at e87b624, own node_modules, Baseline line recorded: tsc 0, build ok, 685 tests 683 pass 0 fail)
 Spec: check #27
 Depends on: none
 Blocked by: none
@@ -62,10 +62,10 @@ Steps:
 5. `git -C /home/col/SAM_ui-work-area status --short` must be clean apart from build output that `.gitignore` covers.
 Do not touch: the live tree's code and `node_modules`, `backup-keys.env`, any other worktree, `sam-ui.service`.
 Proof: `grep -c '^Baseline: ' /home/col/SAM_ui/implementation/work-area-tickets.md` prints 1 (0 before); `git -C /home/col/SAM_ui-work-area rev-parse --abbrev-ref HEAD` prints `build/work-area`; `test -d /home/col/SAM_ui-work-area/node_modules -a ! -L /home/col/SAM_ui-work-area/node_modules && echo own` prints `own`.
-Baseline: (placeholder, T1 replaces this line)
+Baseline: e87b624 tsc exit 0; build ok; npm test 685 tests, 683 pass, 0 fail, 2 skipped (none)
 
 ## T2: Voice and the push body never carry an HTML comment (speech, kept on a rollback)
-Status: TODO
+Status: DONE 2026-10-13 (speechClean + chat tests 19 pass 0 fail, 7 new failed before; tsc 0)
 Spec: must-do #4, #5, check #2
 Depends on: T1
 Blocked by: none
@@ -81,7 +81,7 @@ Do not touch: `MORE_LINE`, `splitMore`'s behaviour, `turnPing.ts`, `MessageBlock
 Proof: `cd /home/col/SAM_ui-work-area && npm run pretest && node scripts/run-tests.cjs .test-build/lib/speechClean.test.js .test-build/types/chat.test.js` shows 0 failures and the new tests among the passes; the new tests, written and run before steps 1 to 3, fail (record that run). `npx tsc --noEmit` exits 0.
 
 ## T3: Marker parsing, hidden from the bubble and the Work view, and card labels
-Status: TODO
+Status: DONE 2026-10-13 (workItems + MessageBlocks tests 13 pass 0 fail; new case failed before; tsc 0)
 Spec: must-do #1, #2, #7, check #1
 Depends on: T2
 Blocked by: none
@@ -95,7 +95,7 @@ Do not touch: `AnswerBlocks`, `WorkBlocks`, the chat page, `chat.ts`.
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/workItems.test.js .test-build/components/chat/MessageBlocks.test.js` shows 0 failures; the new files do not exist before, and the new `MessageBlocks` case fails before step 2. `npx tsc --noEmit` exits 0.
 
 ## T4: Vault path resolver and the refusal audit line
-Status: TODO
+Status: DONE 2026-10-13 (vaultFiles tests 21 pass 0 fail incl. all refusals; foreman added from-relative dotdot fix; tsc 0)
 Spec: must-do #21 (server half), #22, #23, check #14
 Depends on: T3
 Blocked by: none
@@ -110,7 +110,7 @@ Do not touch: `resolveUploadPath`, `logCommand`, `logEnrolment`, `readAuditLog`,
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/vaultFiles.test.js` shows 0 failures and at least 15 passing assertions across the cases; the file does not exist before. `npx tsc --noEmit` exits 0.
 
 ## T5: The file route: session gate, refusals, headers
-Status: TODO
+Status: DONE 2026-10-13 (vaultServe tests 8 pass 0 fail; route GET only, headers and CSP checked; tsc 0)
 Spec: must-do #16 (headers), #17, #21, #23, #24, #26 (headers), #27, check #11, #13, #14, #15
 Depends on: T4
 Blocked by: none
@@ -124,7 +124,7 @@ Do not touch: `next.config.mjs`, `/api/vault/graph`, `guard.ts`, `session.ts`.
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/vaultServe.test.js` shows 0 failures; the file does not exist before. `npx tsc --noEmit` exits 0. Live curl checks for 11, 13, 14, 15 are T29 and T33.
 
 ## T6: Byte ranges for video and PDF
-Status: TODO
+Status: DONE 2026-10-13 (vaultServe tests 12 pass 0 fail incl. 4 range cases that failed before; tsc 0)
 Spec: must-do #25, check #16 (range half)
 Depends on: T5
 Blocked by: none
@@ -138,7 +138,7 @@ Do not touch: the refusal and header logic from T5 beyond adding the range heade
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/vaultServe.test.js` shows 0 failures including the 4 new cases (they fail before). `npx tsc --noEmit` exits 0. The live 300 MB memory check is T31.
 
 ## T7: Service worker never stores work-area responses
-Status: TODO
+Status: DONE 2026-10-13 (swRoutes tests 2 pass 0 fail; tsc 0; build ok, sw.js holds api/vault/file x1)
 Spec: must-do #26, check #17 (code half)
 Depends on: T5
 Blocked by: none
@@ -151,7 +151,7 @@ Do not touch: any other caching rule, push or click handlers in `sw.ts`.
 Proof: the new test passes (0 failures; file absent before); `npx tsc --noEmit` exits 0; after `env NODE_ENV=production npm run build`, `grep -c "api/vault/file" public/sw.js` in the worktree is at least 1. The Cache Storage check in a browser is T30.
 
 ## T8: Meta route: title, kind, size and availability for cards
-Status: TODO
+Status: DONE 2026-10-13 (vaultMeta tests 4 pass 0 fail; meta route session-gated, 20 path cap; tsc 0)
 Spec: must-do #2, #7, #20 (size), #32 (size), check #1 (served half)
 Depends on: T5
 Blocked by: none
@@ -165,7 +165,7 @@ Do not touch: the file route.
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/vaultMeta.test.js` shows 0 failures; file absent before. `npx tsc --noEmit` exits 0.
 
 ## T9: Recent-items record, written at the end of every turn
-Status: TODO
+Status: DONE 2026-10-13 (recent tests 5 pass 0 fail; hook adds exactly two lines for two markers; tsc 0)
 Spec: must-do #30, #9 (data half), check #6 (unit half)
 Depends on: T3, T4
 Blocked by: none
@@ -180,7 +180,7 @@ Do not touch: `turnPing.ts`, the other exit hooks, `JobManager`.
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/workArea/recent.test.js` shows 0 failures; file absent before. `npx tsc --noEmit` exits 0.
 
 ## T10: Recent route with chat labels
-Status: TODO
+Status: DONE 2026-10-13 (recent tests 6 pass 0 fail incl. labelRecent; labelRecent lives in recent.ts as Next rejects extra route exports; tsc 0)
 Spec: must-do #9 (served half)
 Depends on: T9
 Blocked by: none
@@ -193,7 +193,7 @@ Do not touch: `chatStore.ts`.
 Proof: the recent test file shows 0 failures including the new case; `npx tsc --noEmit` exits 0.
 
 ## T11: Markdown renderer with the HTML locked out
-Status: TODO
+Status: DONE 2026-10-13 (MarkdownView tests 4 pass 0 fail; react-markdown 10.1.0 + remark-gfm 4.0.1 in worktree, all present; tsc 0; build ok; onerror check reworded as raw HTML shows as escaped text)
 Spec: must-do #10, #11, #15, #18 (links inside items), check #9
 Depends on: T3
 Blocked by: none
@@ -206,7 +206,7 @@ Do not touch: `AnswerBlocks` (bubbles stay plain text), `WorkBlocks` (T21).
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/work/MarkdownView.test.js` shows 0 failures; file absent before. `npx tsc --noEmit` exits 0; `env NODE_ENV=production npm run build` succeeds; `grep -c '"react-markdown": "10.1.0"' package.json` prints 1.
 
 ## T12: Mermaid diagrams, with a fallback that never breaks the document
-Status: TODO
+Status: IN PROGRESS job_work-area-implement_20261013-001200
 Spec: must-do #12
 Depends on: T11
 Blocked by: none
