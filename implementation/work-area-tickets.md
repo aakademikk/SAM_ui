@@ -165,7 +165,7 @@ Do not touch: the file route.
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/lib/server/vaultMeta.test.js` shows 0 failures; file absent before. `npx tsc --noEmit` exits 0.
 
 ## T9: Recent-items record, written at the end of every turn
-Status: DONE 2026-10-13 (recent tests 5 pass 0 fail; hook adds exactly two lines for two markers; tsc 0)
+Status: DONE 2026-10-13 (recent tests 5 pass 0 fail; hook adds exactly two lines for two markers; hook registered before the usage hook so usageCollect test still passes; tsc 0)
 Spec: must-do #30, #9 (data half), check #6 (unit half)
 Depends on: T3, T4
 Blocked by: none
@@ -206,7 +206,7 @@ Do not touch: `AnswerBlocks` (bubbles stay plain text), `WorkBlocks` (T21).
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/work/MarkdownView.test.js` shows 0 failures; file absent before. `npx tsc --noEmit` exits 0; `env NODE_ENV=production npm run build` succeeds; `grep -c '"react-markdown": "10.1.0"' package.json` prints 1.
 
 ## T12: Mermaid diagrams, with a fallback that never breaks the document
-Status: IN PROGRESS job_work-area-implement_20261013-001200
+Status: DONE 2026-10-13 (mermaid 12.1.0, fallback tests pass, tsc 0, build ok; after T21 wired MarkdownView: 23 chunks hold mermaid, chat page entry chunk 0)
 Spec: must-do #12
 Depends on: T11
 Blocked by: none
@@ -220,7 +220,7 @@ Do not touch: other code blocks' rendering.
 Proof: the new test passes (0 failures; file absent before); `npx tsc --noEmit` exits 0; `env NODE_ENV=production npm run build` succeeds and `grep -l "mermaid" .next/static/chunks/*.js | wc -l` is at least 1 while `grep -c mermaid` on the chat page's own entry chunk (`.next/static/chunks/app/(app)/chat/page-*.js`) is 0 (lazy loaded). Drawing in a browser is T30.
 
 ## T13: Vault links, wikilinks and embeds inside items
-Status: TODO
+Status: DONE 2026-10-13 (wikilinks + MarkdownView tests 10 pass 0 fail; ../x and dot paths plain text; tsc 0; build ok)
 Spec: must-do #13 (paths), #14 (inside markdown), #34, check #25
 Depends on: T11, T8
 Blocked by: none
@@ -235,7 +235,7 @@ Do not touch: the server resolver (T4).
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/work/wikilinks.test.js` shows 0 failures; file absent before. `npx tsc --noEmit` exits 0.
 
 ## T14: Images and videos, standalone and inline
-Status: TODO
+Status: DONE 2026-10-13 (MediaView tests 3 pass 0 fail, 13 across work tests; svg only as img, video no autoplay; tsc 0; build ok)
 Spec: must-do #13 (display), #14
 Depends on: T13
 Blocked by: none
@@ -249,7 +249,7 @@ Do not touch: PDF and HTML rendering.
 Proof: the new test passes (0 failures; file absent before); `npx tsc --noEmit` exits 0. Seeking and sound are checked in the browser (T30) and by Colin (T34).
 
 ## T15: SAM-made HTML pages in a locked-off frame; outside websites as links
-Status: TODO
+Status: DONE 2026-10-13 (HtmlFrame tests 3 pass 0 fail; sandbox exactly allow-scripts, website link http(s) only; tsc 0)
 Spec: must-do #16, #18
 Depends on: T5
 Blocked by: none
@@ -263,7 +263,7 @@ Do not touch: the route's CSP (T5).
 Proof: the new test passes (0 failures; file absent before); `npx tsc --noEmit` exits 0. The hostile-page browser check is T31.
 
 ## T16: PDFs drawn by SAM_ui, page by page
-Status: TODO
+Status: DONE 2026-10-13 (pdfLinks tests 4 pass 0 fail; pdfjs-dist 6.4.299 added, worker bundled by webpack, scripting/XFA off; tsc 0; build ok)
 Spec: must-do #32, check #23 (code half)
 Depends on: T6
 Blocked by: none
@@ -276,7 +276,7 @@ Do not touch: other renderers.
 Proof: `pdfLinks.test` passes (0 failures; file absent before); `npx tsc --noEmit` exits 0; `env NODE_ENV=production npm run build` succeeds. Browser and phone checks are T31 and T34.
 
 ## T17: Item view: loading, timeout, retry, too big, not available
-Status: TODO
+Status: DONE 2026-10-13 (itemState tests 7 pass 0 fail incl. both cap edges and 15000 ms timeout; tsc 0; build ok; ItemView component itself is browser-proved in T30)
 Spec: must-do #7 (panel), #19, #20, #32 (cap)
 Depends on: T12, T14, T15, T16, T8
 Blocked by: none
@@ -290,7 +290,7 @@ Do not touch: the renderers' internals.
 Proof: `npm run pretest && node scripts/run-tests.cjs .test-build/components/work/itemState.test.js` shows 0 failures; file absent before. `npx tsc --noEmit` exits 0.
 
 ## T18: Work panel with two views and the recent list
-Status: TODO
+Status: DONE 2026-10-13 (recentView tests 3 pass 0 fail; tabs aria-selected 44px, Work body unchanged in diff; new props optional; tsc 0; build ok)
 Spec: must-do #8, #9 (display)
 Depends on: T17, T10
 Blocked by: none
@@ -304,7 +304,7 @@ Do not touch: `WorkBlocks` (T21), the chat page (T19).
 Proof: the new test passes (0 failures; file absent before); `npx tsc --noEmit` exits 0; `env NODE_ENV=production npm run build` succeeds.
 
 ## T19: Chat page: item cards, opening items, the recent-list button
-Status: TODO
+Status: DONE 2026-10-13 (tsc 0; npm test 779 tests 777 pass 0 fail 2 skipped vs Baseline 0 fail; build ok; cards, Items button and both panel mounts in diff; browser checks are T30)
 Spec: must-do #2, #3, #7, #8, #9 (reachable without a message)
 Depends on: T18
 Blocked by: none
@@ -318,7 +318,7 @@ Do not touch: the speech calls, `spokenText` use, `AnswerBlocks`, the bubble's p
 Proof: `npx tsc --noEmit` exits 0; `npm test` shows no new failures against the Baseline line; `env NODE_ENV=production npm run build` succeeds. The browser checks are T30.
 
 ## T20: Full screen, with back to return
-Status: TODO
+Status: DONE 2026-10-13 (fullScreen tests 3 pass 0 fail; tsc 0; build ok; foreman fix: close and Escape in full screen return to the normal panel per Must 33; browser check T31)
 Spec: must-do #33
 Depends on: T19
 Blocked by: none
@@ -331,7 +331,7 @@ Do not touch: the chat route and its `?c=` handling.
 Proof: the new test passes (0 failures; file absent before); `npx tsc --noEmit` exits 0. Browser check is T31.
 
 ## T21: The long version in the Work view is formatted
-Status: TODO
+Status: DONE 2026-10-13 (MessageBlocks tests 7 pass 0 fail incl. h2/table/no script; npm test 781 pass 0 fail; tsc 0; build ok; WorkPanel.tsx one-prop pass-through)
 Spec: must-do #35, check #26 (code half)
 Depends on: T12, T13
 Blocked by: none
@@ -344,7 +344,7 @@ Do not touch: `ThinkingCard`, `ToolCard`, `AnswerBlocks`, `splitBlocks`.
 Proof: the `MessageBlocks` test file shows 0 failures including the new case (fails before); `npx tsc --noEmit` exits 0.
 
 ## T22: Card and panel polish at 390 px
-Status: TODO
+Status: DONE 2026-10-13 (grep for text under 12px in src/components/work prints nothing; tsc 0; build ok; npm test 783 tests 781 pass 0 fail)
 Spec: must-do #11, #2
 Depends on: T19, T20, T21
 Blocked by: none
@@ -357,7 +357,7 @@ Do not touch: logic; existing components' text sizes outside the new code.
 Proof: `grep -rnE "text-\[(8|9|10|11)px\]" src/components/work` prints nothing; `npx tsc --noEmit` exits 0; `env NODE_ENV=production npm run build` succeeds. Measured checks are T30.
 
 ## T23: chat-length-guard does not count marker lines (staged)
-Status: TODO
+Status: DONE 2026-10-13 (live hook: new marker case FAILS 14 pass 1 fail; .next: 15 pass 0 fail; diff is one comment line and one regex line; live hook untouched)
 Colin gate: the change to `~/.claude/hooks/chat-length-guard.sh` is applied only on Colin's explicit word, in T33. This ticket writes `chat-length-guard.sh.next` beside it and proves the `.next`; it never edits the live hook.
 Spec: must-do #6, check #4
 Depends on: T1
@@ -372,7 +372,7 @@ Do not touch: the live hook, `~/.claude/settings.json`, the 80-word limit, the `
 Proof: `bash ~/.sam/tests/test-chat-length-guard.sh` (live hook) FAILS the new marker case; `CHAT_LENGTH_HOOK=$HOME/.claude/hooks/chat-length-guard.sh.next bash ~/.sam/tests/test-chat-length-guard.sh` passes every case; `diff ~/.claude/hooks/chat-length-guard.sh ~/.claude/hooks/chat-length-guard.sh.next` shows only the new line and the comment line.
 
 ## T24: The work-area rule in CLAUDE.md (staged)
-Status: TODO
+Status: DONE 2026-10-13 (CLAUDE.md.next has 1 marker line vs 0 live; diff shows added lines only; live CLAUDE.md untouched)
 Colin gate: the change to `/home/col/claude/CLAUDE.md` is applied only on Colin's explicit word, in T33. This ticket writes `/home/col/claude/CLAUDE.md.next` and never edits the live file.
 Spec: must-do #28, check #19 (grep half)
 Depends on: T1
@@ -386,7 +386,7 @@ Do not touch: `/home/col/claude/CLAUDE.md`, any other paragraph.
 Proof: `grep -c "<!-- work:" /home/col/claude/CLAUDE.md.next` is at least 1 and `grep -c "<!-- work:" /home/col/claude/CLAUDE.md` is 0; `diff /home/col/claude/CLAUDE.md /home/col/claude/CLAUDE.md.next` shows only added lines.
 
 ## T25: Videos out of both vault repos (staged as patches)
-Status: TODO
+Status: PARTLY DONE 2026-10-13 (both patches prove on throwaway repos: check-ignore names a rule for test.mp4/webm/mov in both; live vault ignore files untouched. Literal proof grep -c '02 - Atwood' on the root file prints 1 not 0, because line 2 is an existing comment (no rule line mentions it); ticket check is wrong, Colin to confirm the intent is no rule line)
 Colin gate: the vault `.gitignore` changes are applied only on Colin's explicit word, in T33. This ticket writes patch files in `/home/col/.sam/staged/work-area/` and proves them on copies; it never edits a vault file and never commits.
 Spec: must-do #29 (git half), check #20 (git half)
 Depends on: T1
@@ -401,7 +401,7 @@ Do not touch: anything under `/home/col/ai-memory-vault`, either repo's `.git/in
 Proof: in the temp repos, `git check-ignore -v test.mp4 test.webm test.mov` names a rule for all three files in both; `grep -c "02 - Atwood" ` on the patched root copy prints 0; `git -C /home/col/ai-memory-vault status --short -- .gitignore` and `git -C "/home/col/ai-memory-vault/02 - Atwood Systems" status --short -- .gitignore` print nothing (untouched).
 
 ## T26: Nightly backup: webm filter and the Storage copy of vault videos (staged)
-Status: TODO
+Status: DONE 2026-10-13 (copy test PASS on .next, FAILS on live path; sam-backup test PASS on .next, live fails only the new webm case; webm filter count 1; Storage listing hash unchanged; live script untouched)
 Colin gate: the `sam-backup.sh` change and the new copy script are installed only on Colin's explicit word, in T33. This ticket works in `/home/col/bin/sam-backup.sh.next` and a new `/home/col/bin/sam-raw-media-copy.sh.next`; it never edits the live script.
 Spec: must-do #29 (backup half), #31, check #20 (backup half), #22 (test half)
 Depends on: T1
@@ -418,7 +418,7 @@ Do not touch: `/home/col/bin/sam-backup.sh`, `sam-backup.timer`, the Drive remot
 Proof: `RMC_SCRIPT=/home/col/bin/sam-raw-media-copy.sh.next bash ~/.sam/tests/test-raw-media-copy.sh` passes every case and `bash ~/.sam/tests/test-raw-media-copy.sh` fails (no live script); `SB_SCRIPT=/home/col/bin/sam-backup.sh.next bash ~/.sam/tests/test-sam-backup.sh` passes with the new case, and against live it fails only the new case; `grep -c -- '- \*.webm' /home/col/bin/sam-backup.sh.next` prints 1; `ls "/run/media/col/Storage/Vault raw media/"` is unchanged from before the ticket.
 
 ## T27: The morning brief mentions a skipped Storage copy (staged)
-Status: TODO
+Status: DONE 2026-10-13 (extract test PASS on .next, live fails the SKIP case; stale log and .. path cases pass; live extract.py untouched)
 Colin gate: part of the Storage copy change; `extract.py` is installed only on Colin's explicit word, in T33. This ticket writes `/home/col/.sam/morning-brief/extract.py.next` and never edits the live file.
 Spec: must-do #31 (report half), check #22 (brief half)
 Depends on: T26
@@ -432,7 +432,7 @@ Do not touch: `sweep.sh`, `brief.sh`, the prompts, the live `extract.py`, today'
 Proof: `MB_EXTRACT=/home/col/.sam/morning-brief/extract.py.next bash ~/.sam/tests/test-morning-extract-backup.sh` passes; with the live file it fails the SKIP case.
 
 ## T28: Sample set and the fixture vault
-Status: TODO
+Status: PARTLY DONE 2026-10-13 (sample set built in staging /home/col/delivery/ux-audits/work-area-proofs/work-area-samples/ and fixture-vault 469M with big.md 3145763, big.pdf 62920930, long-video.mp4 424463610, hostile html/pdf/svg, outward symlink; NOT copied into the real vault because this run may write only the daily note, so Done-means 7 vault copy and its ls-files check wait for Colin and for T25 being applied)
 Spec: check #7, #10, #11, #18, #23, #25 (samples)
 Depends on: T22
 Blocked by: Colin applying T25 (the Atwood repo's video ignore rule), for the two video samples only
@@ -448,7 +448,7 @@ Do not touch: anything else in the vault; `03 - Personal/`; any `.gitignore`.
 Proof: `ls "/home/col/ai-memory-vault/02 - Atwood Systems/00_SAM_Control/work-area-samples/"` lists the files above; `git -C "/home/col/ai-memory-vault/02 - Atwood Systems" ls-files --others --exclude-standard 00_SAM_Control/work-area-samples | grep -cE '\.(mp4|webm|mov)$'` prints 0; `du -sh /home/col/delivery/ux-audits/work-area-proofs/fixture-vault` shows at least 360M; `stat -c %s` of `big.md` is over 2,097,152 and of `big.pdf` over 52,428,800.
 
 ## T29: Proof rig and the curl checks on the harness
-Status: TODO
+Status: DONE 2026-10-13 (run-proof.sh t29 prints PASS for checks 13, 11, 14, 16, 15 with 401, CSP sandbox, 404 x3 and audit +3, 206 with 1024 bytes, 405 x3; re-run by foreman; no listener left)
 Spec: check #11 (headers), #13, #14 (harness), #15 (harness), #16 (range)
 Depends on: T28
 Blocked by: none
@@ -462,7 +462,7 @@ Do not touch: the live service, the real audit log, port 3000.
 Proof: `bash /home/col/delivery/ux-audits/work-area-proofs/run-proof.sh t29` prints PASS for each of the five checks with the raw status codes; `ss -ltn | grep -cE ':495[01]'` prints 0 afterwards.
 
 ## T30: Browser proofs, part one (views, samples, links, cache, timeouts)
-Status: TODO
+Status: IN PROGRESS job_work-area-implement_20261013-001200
 Spec: check #5, #6 (browser), #7, #12, #17, #18
 Depends on: T29
 Blocked by: none
