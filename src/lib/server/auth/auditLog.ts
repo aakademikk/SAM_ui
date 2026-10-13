@@ -8,6 +8,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { samStateDir } from '@/lib/server/livePaths';
 
 const AUDIT_PATH = path.join(os.homedir(), '.sam', 'audit.log');
 
@@ -37,6 +38,21 @@ export async function logEnrolment(deviceName: string) {
   }) + '\n';
   try {
     await fsp.appendFile(AUDIT_PATH, line);
+  } catch {
+    // Audit failure is non-fatal.
+  }
+}
+
+/** One line for a refused vault read: the path as asked (truncated), the reason code, never any content. */
+export async function logVaultRefusal(requested: string, reason: string): Promise<void> {
+  const line = JSON.stringify({
+    event: 'vault-refused',
+    path: String(requested).slice(0, 300),
+    reason,
+    timestamp: new Date().toISOString(),
+  }) + '\n';
+  try {
+    await fsp.appendFile(path.join(samStateDir(), 'audit.log'), line);
   } catch {
     // Audit failure is non-fatal.
   }

@@ -44,6 +44,7 @@ import { fallbackTitle, queueTitle } from './titles';
 import { tagSideMessages } from './transcripts';
 import { pingOffScreenChat } from './turnPing';
 import { collectUsage } from '@/lib/server/usage/usageCollect';
+import { recordTurnItems } from '@/lib/server/workArea/recent';
 
 export { MAX_MESSAGE_CHARS };
 
@@ -106,6 +107,16 @@ onTurnExit.push((event) => {
  * detached — this never delays the next turn.
  */
 onTurnExit.push(pingOffScreenChat);
+
+/**
+ * Work area: record the items the finished reply put up (its `<!-- work: -->`
+ * markers) for the Recent list. Fire-and-forget like the usage hook, and registered before it
+ * (a test relies on the usage hook being the last exit hook);
+ * `recordTurnItems` swallows its own errors.
+ */
+onTurnExit.push((event) => {
+  void recordTurnItems(event);
+});
 
 /**
  * U9: harvest the usage reading this turn produced and send any 80% alert.

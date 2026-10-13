@@ -198,12 +198,48 @@ export function splitMore(text: string): { short: string; more: string } {
   return { short: text.slice(0, m.index).trim(), more: text.slice(m.index + m[0].length).trim() };
 }
 
+/**
+ * Remove every `<!-- ... -->` span (one line or several, anywhere) except a whole line that is the
+ * `<!-- more -->` split line. An unterminated `<!--` removes everything after it. A comment that sat
+ * alone on its line leaves no blank line behind.
+ */
+export function stripComments(text: string): string {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const open = text.indexOf('<!--', i);
+    if (open < 0) { out += text.slice(i); break; }
+    const close = text.indexOf('-->', open + 4);
+    const end = close < 0 ? text.length : close + 3;
+    const lineStart = text.lastIndexOf('\n', open - 1) + 1;
+    let lineEnd = text.indexOf('\n', end);
+    if (lineEnd < 0) lineEnd = text.length;
+    const before = text.slice(lineStart, open);
+    const after = text.slice(end, lineEnd);
+    const alone = /^[ \t]*$/.test(before) && /^[ \t]*$/.test(after);
+    if (close >= 0 && alone && MORE_LINE.test(text.slice(lineStart, lineEnd))) {
+      out += text.slice(i, end); // the more line stays, so splitMore can still cut at it
+      i = end;
+      continue;
+    }
+    if (alone) {
+      out += text.slice(i, lineStart); // drop the whole line, newline included
+      i = Math.min(lineEnd + 1, text.length);
+    } else {
+      out += text.slice(i, open);
+      i = end;
+    }
+  }
+  return out;
+}
+
 /** Convenience: the spoken text for a completed assistant turn. */
 export function spokenText(message: ChatMessage): string {
   // Every text block, in order, exactly as the chat bubble shows them: a Stop
   // hook can force a continuation, and the follow-up must not replace the answer.
+  // 2026-10-13: every comment (work markers included) is stripped first, so none is spoken or pushed.
   return message.blocks
-    .map((b) => (b.kind === 'text' ? splitMore(b.text).short.trim() : ''))
+    .map((b) => (b.kind === 'text' ? splitMore(stripComments(b.text)).short.trim() : ''))
     .filter(Boolean)
     .join('\n\n');
 }
