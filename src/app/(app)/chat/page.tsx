@@ -28,6 +28,7 @@ import { WorkPanel } from '@/components/chat/WorkPanel';
 import { enterFull, leaveFull, onPop } from '@/components/work/fullScreen';
 import { ItemCards } from '@/components/work/ItemCards';
 import type { ItemMeta } from '@/lib/workItems';
+import { loadCardMeta } from '@/lib/cardMeta';
 import { ChatList } from '@/components/chat/ChatList';
 import { displayTier, tierLocked, type TierDisplayChat, type TierLockChat } from '@/lib/chatTier';
 import { readMessage as readCrossTab } from '@/lib/crossTab';
@@ -1801,24 +1802,12 @@ function ChatPageInner() {
       for (let i = 0; i < paths.length; i += 20) {
         const batch = paths.slice(i, i + 20);
         for (const p of batch) store.set(p, 'pending');
-        const qs = batch.map((p) => `path=${encodeURIComponent(p)}`).join('&');
-        const fail = () => {
-          for (const p of batch) {
-            store.set(p, { path: p, available: false, kind: null, title: null, size: null });
-          }
+        // Timeout and retry live in loadCardMeta: a stalled request once left a
+        // card on its bare file name until a reload (A16, 2026-10-13).
+        void loadCardMeta(batch).then((metas) => {
+          batch.forEach((p, idx) => store.set(p, metas[idx]));
           setMetaVersion((v) => v + 1);
-        };
-        fetch(`/api/vault/meta?${qs}`)
-          .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-          .then((data: { items?: ItemMeta[] }) => {
-            const got = Array.isArray(data.items) ? data.items : [];
-            batch.forEach((p, idx) => {
-              const m = got[idx];
-              store.set(p, m ?? { path: p, available: false, kind: null, title: null, size: null });
-            });
-            setMetaVersion((v) => v + 1);
-          })
-          .catch(fail);
+        });
       }
     }
   }, [messages]);

@@ -527,7 +527,7 @@ Do not touch: anything Colin did not approve.
 Proof: each approved item's test passes against the live path; the five live checks print the expected results; `systemctl --user is-active sam-ui` prints `active`. Unapproved items stay staged and are listed in the Status line.
 
 ## T34: GATE: Colin confirms on his phone
-Status: TODO
+Status: DONE 2026-10-13 10:40 to 10:52, Colin on the A16: 19 PASS (business diagram `02 - Atwood Systems/20_Agents/Generals/Delivery_General/Website_Build_Workflow.md`, personal clip `03 - Personal/calico-kitten-playing.webm`, both ls-confirmed, both open from their cards; first card stuck on its bare file name until a reload: the card meta fetch has no timeout or retry, fix pending); 8 PASS (Work Area Sample.md all elements; sample-clip.mp4 opens paused, plays, seeks, sound toggles); 23 PASS (sample PDF); 24 PASS (full screen and back); 3 PASS (only the short answer spoken all session).
 Colin gate: Colin's own confirmation on his Samsung A16; no command stands in for it.
 Spec: check #3, #8, #19 (phone half), #23 (phone), #24 (phone)
 Depends on: T33
