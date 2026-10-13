@@ -37,3 +37,8 @@ export function quotaRunsPath(): string {
 export function quotaAlertsPath(): string {
   return path.join(samStateDir(), 'quota', 'alerts.json');
 }
+
+/** `~/.sam/work-area/recent.jsonl`, one row per work-area item per finished reply. */
+export function recentItemsPath(): string {
+  return path.join(samStateDir(), 'work-area', 'recent.jsonl');
+}

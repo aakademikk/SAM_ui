@@ -10,7 +10,10 @@ import { test } from 'node:test';
 
 import type { ChatBlock } from '@/types/chat';
 
-import { splitBlocks } from './MessageBlocks.js';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+
+import { AnswerBlocks, WorkBlocks, splitBlocks } from './MessageBlocks.js';
 
 test('splitBlocks: a side block joins the main-thread answer, not the work panel', () => {
   const tool: ChatBlock = { kind: 'tool', id: 't1', name: 'Bash', input: {}, status: 'ok' };
@@ -63,5 +66,37 @@ test('splitBlocks: the long version after a <!-- more --> line goes to View work
 
 test('splitBlocks: a reply with no marker is unchanged', () => {
   const blocks: ChatBlock[] = [{ kind: 'text', text: 'Short and done.' }];
-  assert.deepEqual(splitBlocks(blocks), { answer: blocks, work: [] });
+  assert.deepEqual(splitBlocks(blocks), { answer: blocks, work: [], items: [] });
+});
+
+test('splitBlocks: markers before and after <!-- more --> become items and never reach the answer or the work text', () => {
+  const blocks: ChatBlock[] = [
+    { kind: 'text', text: 'Short answer.\n<!-- work: Projects/Plan.md -->\n<!-- more -->\nLong version.\n<!-- work: https://example.com/x -->' },
+    { kind: 'text', text: '<!-- work: only-a-marker.png -->' },
+  ];
+  const { answer, work, items } = splitBlocks(blocks);
+  assert.deepEqual(items, [
+    { target: 'Projects/Plan.md', isWeb: false },
+    { target: 'https://example.com/x', isWeb: true },
+    { target: 'only-a-marker.png', isWeb: false },
+  ]);
+  assert.equal(answer.length, 1);
+  assert.equal(work.length, 1);
+  for (const b of [...answer, ...work]) {
+    const t = b.kind === 'text' ? b.text : '';
+    assert.equal(t.includes('<!--'), false);
+    assert.equal(t.includes('work:'), false);
+  }
+});
+
+test('WorkBlocks formats the long version (heading, table, no script); AnswerBlocks stays plain text', () => {
+  const text = '## Plan\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n<script>alert(1)</script>';
+  const blocks: ChatBlock[] = [{ kind: 'text', text }];
+  const work = renderToStaticMarkup(createElement(WorkBlocks, { blocks }));
+  assert.ok(/<h[23]/.test(work), work);
+  assert.ok(work.includes('<table'), work);
+  assert.ok(!work.includes('<script'), work);
+  const answer = renderToStaticMarkup(createElement(AnswerBlocks, { blocks }));
+  assert.ok(answer.includes('<p class="text-sm leading-relaxed whitespace-pre-wrap'), answer);
+  assert.ok(!answer.includes('<table') && !answer.includes('<h2'), answer);
 });

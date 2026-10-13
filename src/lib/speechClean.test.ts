@@ -45,3 +45,35 @@ test('dashes become a pause, not a word; hyphenated words stay', () => {
 test('nothing after a <!-- more --> line is read out', () => {
   assert.equal(say('Short answer.\n<!-- more -->\nThe long version.'), 'Short answer.');
 });
+
+// 2026-10-13 (work area): HTML comments, markers included, are never spoken.
+const MARKER = '<!-- work: 02 - Atwood Systems/x/Plan Diagram.md -->';
+function assertClean(spoken: string, keeps: string[]) {
+  for (const bad of ['<!--', 'work', '/', 'Plan Diagram', '.md']) {
+    assert.ok(!spoken.includes(bad), `spoken text holds ${JSON.stringify(bad)}: ${spoken}`);
+  }
+  for (const k of keeps) assert.ok(spoken.includes(k), `spoken text lost ${JSON.stringify(k)}: ${spoken}`);
+}
+
+test('a one-line marker before the more line is not spoken', () => {
+  const s = say(`Here is the plan.\n${MARKER}\nIt is ready.\n<!-- more -->\nLong detail.`);
+  assertClean(s, ['Here is the plan.', 'It is ready.']);
+  assert.ok(!s.includes('Long detail'));
+});
+
+test('a several-line comment is not spoken', () => {
+  const s = say('First sentence.\n<!--\nwork: 02 - Atwood Systems/x/Plan Diagram.md\nmore notes\n-->\nSecond sentence.');
+  assertClean(s, ['First sentence.', 'Second sentence.']);
+  assert.ok(!s.includes('notes'));
+});
+
+test('a marker after the more line is not spoken', () => {
+  const s = say(`Short answer.\n<!-- more -->\nLong version.\n${MARKER}`);
+  assertClean(s, ['Short answer.']);
+});
+
+test('an unterminated comment removes everything after it', () => {
+  const s = say('Real sentence.\n<!-- work: 02 - Atwood Systems/x/Plan Diagram.md\nStill hidden.');
+  assertClean(s, ['Real sentence.']);
+  assert.ok(!s.includes('hidden'));
+});

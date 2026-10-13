@@ -13,6 +13,7 @@ import { defaultCache } from '@serwist/next/worker';
 import type { PrecacheEntry, SerwistGlobalConfig } from 'serwist';
 import { Serwist, NetworkFirst, NetworkOnly, ExpirationPlugin } from 'serwist';
 import { buildNotification } from '@/lib/swPush';
+import { isWorkAreaPath } from '@/lib/swWorkArea';
 import { handleClick, type ClickEvent } from '@/lib/swAnswer';
 
 declare global {
@@ -29,6 +30,11 @@ const serwist = new Serwist({
   clientsClaim: true,
   navigationPreload: true,
   runtimeCaching: [
+    // 2026-10-13: work-area files, meta and recent list never enter Cache Storage.
+    {
+      matcher: ({ url }) => isWorkAreaPath(url.pathname),
+      handler: new NetworkOnly(),
+    },
     // API and job data — network first, never serve stale.
     // A cached agent status is worse than showing nothing.
     {

@@ -19,12 +19,15 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Gem, Lock, Square, Wrench, Paperclip, Menu, X as XIcon, ArrowRightLeft } from 'lucide-react';
+import { Send, Cpu, Volume2, VolumeX, Zap, Sparkles, Gem, Lock, Square, Wrench, Paperclip, Menu, X as XIcon, ArrowRightLeft, FolderOpen } from 'lucide-react';
 
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { HandsFreeMic } from '@/components/voice/HandsFreeMic';
 import { splitBlocks, AnswerBlocks } from '@/components/chat/MessageBlocks';
 import { WorkPanel } from '@/components/chat/WorkPanel';
+import { enterFull, leaveFull, onPop } from '@/components/work/fullScreen';
+import { ItemCards } from '@/components/work/ItemCards';
+import type { ItemMeta } from '@/lib/workItems';
 import { ChatList } from '@/components/chat/ChatList';
 import { displayTier, tierLocked, type TierDisplayChat, type TierLockChat } from '@/lib/chatTier';
 import { readMessage as readCrossTab } from '@/lib/crossTab';
@@ -360,6 +363,14 @@ function ChatPageInner() {
       whether the panel is open. The main thread renders answers only. */
   const [workOpen, setWorkOpen] = useState(false);
   const [workMessageId, setWorkMessageId] = useState<string | null>(null);
+  /** Which panel view shows, and the item open in the Items view. */
+  const [workView, setWorkView] = useState<'work' | 'items'>('work');
+  const [openItem, setOpenItem] = useState<{ path: string; from?: string } | null>(null);
+  const [workFull, setWorkFull] = useState(false);
+  /** Item meta, fetched once per path per page load. 'pending' while in flight;
+      a failed fetch is stored as unavailable so it is never re-requested. */
+  const metaCacheRef = useRef<Map<string, ItemMeta | 'pending'>>(new Map());
+  const [, setMetaVersion] = useState(0);
 
   const speechRef = useRef<SpeechHandle | null>(null);
   /** How many speech handles are currently audible — see reportSpeech(). */
@@ -1750,8 +1761,67 @@ function ChatPageInner() {
     workDismissedRef.current = false;
     autoOpenedRef.current = false;
     setWorkMessageId(id);
+    setWorkView('work');
     setWorkOpen(true);
   };
+
+  const openItemFrom = (msgId: string, path: string) => {
+    workDismissedRef.current = false;
+    autoOpenedRef.current = false;
+    setWorkMessageId(msgId);
+    setWorkView('items');
+    setOpenItem({ path });
+    setWorkOpen(true);
+  };
+
+  /** The header "Items" button: Items view, no item, no message. */
+  const openItemsList = () => {
+    workDismissedRef.current = false;
+    autoOpenedRef.current = false;
+    setWorkMessageId(null);
+    setWorkView('items');
+    setOpenItem(null);
+    setWorkOpen(true);
+  };
+
+  const metaFor = (path: string): ItemMeta | null => {
+    const v = metaCacheRef.current.get(path);
+    return v && v !== 'pending' ? v : null;
+  };
+
+  /* Fetch meta for each finished reply's file markers: one request per
+     message, only for paths not already stored or in flight. */
+  useEffect(() => {
+    const store = metaCacheRef.current;
+    for (const msg of messages) {
+      if (msg.role !== 'assistant' || !msg.done) continue;
+      const paths = Array.from(
+        new Set(splitBlocks(msg.blocks).items.filter((m) => !m.isWeb).map((m) => m.target)),
+      ).filter((p) => !store.has(p));
+      for (let i = 0; i < paths.length; i += 20) {
+        const batch = paths.slice(i, i + 20);
+        for (const p of batch) store.set(p, 'pending');
+        const qs = batch.map((p) => `path=${encodeURIComponent(p)}`).join('&');
+        const fail = () => {
+          for (const p of batch) {
+            store.set(p, { path: p, available: false, kind: null, title: null, size: null });
+          }
+          setMetaVersion((v) => v + 1);
+        };
+        fetch(`/api/vault/meta?${qs}`)
+          .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+          .then((data: { items?: ItemMeta[] }) => {
+            const got = Array.isArray(data.items) ? data.items : [];
+            batch.forEach((p, idx) => {
+              const m = got[idx];
+              store.set(p, m ?? { path: p, available: false, kind: null, title: null, size: null });
+            });
+            setMetaVersion((v) => v + 1);
+          })
+          .catch(fail);
+      }
+    }
+  }, [messages]);
 
   const closeWork = () => {
     workDismissedRef.current = true;
@@ -1759,15 +1829,49 @@ function ChatPageInner() {
     setWorkOpen(false);
   };
 
+  /* Full screen: one history entry while on, so back leaves full screen and
+     never the chat. The listener only clears the flag; it never navigates. */
+  const toggleWorkFull = () => {
+    if (workFull) {
+      leaveFull(window.history);
+      setWorkFull(false);
+    } else {
+      enterFull(window.history);
+      setWorkFull(true);
+    }
+  };
+
+  useEffect(() => {
+    if (!workFull) return;
+    const onPopState = (e: PopStateEvent) => {
+      if (!onPop(e.state)) setWorkFull(false);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [workFull]);
+
+  /* Closing the panel (X, Escape, backdrop, new chat) or losing the open item
+     leaves full screen first, popping our history entry. */
+  useEffect(() => {
+    if (workFull && (!workOpen || workView !== 'items' || !openItem)) {
+      leaveFull(window.history);
+      setWorkFull(false);
+    }
+  }, [workFull, workOpen, workView, openItem]);
+
   /* Escape closes the panel — keyboard users shouldn't need the X. */
   useEffect(() => {
     if (!workOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeWork();
+      if (e.key !== 'Escape') return;
+      // Full screen: Escape returns to the normal panel first.
+      if (workFull) toggleWorkFull();
+      else closeWork();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [workOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workOpen, workFull]);
 
   /* The panel always shows one message's work — defaulting to the running
      turn — and derives its blocks from that message each render, so a live
@@ -1929,6 +2033,16 @@ function ChatPageInner() {
           </button>
         )}
 
+        <button
+          type="button"
+          onClick={openItemsList}
+          className="flex min-h-[44px] items-center gap-1 text-[12px] text-dim-300 hover:text-dim-100 transition-colors px-1.5 rounded shrink-0"
+          title="Items SAM has shown"
+        >
+          <FolderOpen size={14} />
+          Items
+        </button>
+
         {handoffWaitingFor === currentId && (
           <span className="text-[12px] text-dim-400 italic">Writing handoff memo…</span>
         )}
@@ -2050,7 +2164,7 @@ function ChatPageInner() {
         )}
 
         {messages.map((msg) => {
-          const { answer, work } = splitBlocks(msg.blocks);
+          const { answer, work, items } = splitBlocks(msg.blocks);
           const showWork = msg.role === 'assistant' && work.length > 0;
           const selected = workOpen && workMessageId === msg.id;
           return (
@@ -2079,6 +2193,14 @@ function ChatPageInner() {
                   View work
                   <span className="text-dim-500">· {work.length}</span>
                 </button>
+              )}
+
+              {msg.role === 'assistant' && items.length > 0 && (
+                <ItemCards
+                  items={items}
+                  metaFor={metaFor}
+                  onOpen={(path) => openItemFrom(msg.id, path)}
+                />
               )}
 
               {msg.role === 'assistant' && msg.done && (
@@ -2342,7 +2464,7 @@ function ChatPageInner() {
 
       {/* Work panel — desktop: in-flow side panel. The main thread stays
           answers-only; everything SAM did to get there lives here. */}
-      {workOpen && workMessage && !isNarrow && (
+      {workOpen && (workMessage || workView === 'items') && !isNarrow && !workFull && (
         <aside className="hidden md:flex w-[320px] lg:w-[380px] shrink-0 border-l border-void-700 h-full">
           <WorkPanel
             title={panelTitle}
@@ -2353,14 +2475,47 @@ function ChatPageInner() {
             blocks={workBlocks}
             onClose={closeWork}
             onStop={stop}
+            view={workView}
+            onViewChange={setWorkView}
+            openItem={openItem}
+            onOpenItem={(path, from) => setOpenItem({ path, from })}
+            hasWork={!!workMessage}
+            fullScreen={false}
+            onToggleFull={toggleWorkFull}
           />
         </aside>
       )}
 
+      {/* Work panel — full screen: portaled to <body> above the tab bar
+          (root z-50) and the sheet (z-100). */}
+      {workOpen && workFull && (workMessage || workView === 'items') &&
+        createPortal(
+          <div className="fixed inset-0 z-[110] bg-void-900">
+            <WorkPanel
+              title={panelTitle}
+              running={panelRunning}
+              phaseLabel={statusLabel}
+              statusSeconds={statusSeconds}
+              stuck={stuck}
+              blocks={workBlocks}
+              onClose={toggleWorkFull} /* spec 33: close returns to the normal panel */
+              onStop={stop}
+              view={workView}
+              onViewChange={setWorkView}
+              openItem={openItem}
+              onOpenItem={(path, from) => setOpenItem({ path, from })}
+              hasWork={!!workMessage}
+              fullScreen
+              onToggleFull={toggleWorkFull}
+            />
+          </div>,
+          document.body,
+        )}
+
       {/* Work panel — mobile: bottom sheet. Portaled to <body> so it escapes
           main's z-10 stacking context — inside main it could never rise above
           the tab bar (root z-50), which is what clipped the old drawer. */}
-      {workOpen && workMessage && isNarrow &&
+      {workOpen && (workMessage || workView === 'items') && isNarrow && !workFull &&
         createPortal(
           <div className="fixed inset-0 z-[100]">
             <div
@@ -2378,6 +2533,13 @@ function ChatPageInner() {
                 blocks={workBlocks}
                 onClose={closeWork}
                 onStop={stop}
+                view={workView}
+                onViewChange={setWorkView}
+                openItem={openItem}
+                onOpenItem={(path, from) => setOpenItem({ path, from })}
+                hasWork={!!workMessage}
+                fullScreen={false}
+                onToggleFull={toggleWorkFull}
               />
             </div>
           </div>,

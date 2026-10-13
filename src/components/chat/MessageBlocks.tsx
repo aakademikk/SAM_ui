@@ -15,6 +15,8 @@ import {
   Wrench, ChevronRight, Check, X, Loader2, Brain,
 } from 'lucide-react';
 
+import { MarkdownView } from '@/components/work/MarkdownView';
+import { parseMarkers, type WorkMarker } from '@/lib/workItems';
 import { splitMore, type ChatBlock, type ToolStatus } from '@/types/chat';
 
 /* ========================================================================== */
@@ -260,16 +262,22 @@ export function MessageBlocks({ blocks }: { blocks: ChatBlock[] }) {
  * outcomes, not process. Text after a `<!-- more -->` line is the long version and
  * goes to the work panel (2026-10-12).
  */
-export function splitBlocks(blocks: ChatBlock[]): { answer: ChatBlock[]; work: ChatBlock[] } {
+export function splitBlocks(blocks: ChatBlock[]): { answer: ChatBlock[]; work: ChatBlock[]; items: WorkMarker[] } {
   const answer: ChatBlock[] = [];
   const work: ChatBlock[] = [];
+  const items: WorkMarker[] = [];
   blocks.forEach((b) => {
     if (b.kind === 'error') {
       answer.push(b);
     } else if (b.kind === 'text') {
-      const { short, more } = splitMore(b.text);
+      // Marker lines (`<!-- work: ... -->`) are shown nowhere; they become items for the chat page,
+      // in reply order (those before the more line first, as written).
+      const parsed = parseMarkers(b.text);
+      items.push(...parsed.markers);
+      const { short, more } = splitMore(parsed.text);
       if (!more) {
-        answer.push(b);
+        if (!parsed.markers.length) answer.push(b);
+        else if (parsed.text.trim()) answer.push({ kind: 'text', text: parsed.text.trim() });
       } else {
         if (short) answer.push({ kind: 'text', text: short });
         work.push({ kind: 'text', text: more }); // the long version, behind "View work"
@@ -280,7 +288,7 @@ export function splitBlocks(blocks: ChatBlock[]): { answer: ChatBlock[]; work: C
       work.push(b); // thinking, tool
     }
   });
-  return { answer, work };
+  return { answer, work, items };
 }
 
 /** The final-answer renderer for the main chat thread. */
@@ -325,7 +333,7 @@ export function AnswerBlocks({ blocks }: { blocks: ChatBlock[] }) {
 
 /** The process renderer for the work panel — thinking, tool calls, and the
     mid-turn commentary the model types out between them. */
-export function WorkBlocks({ blocks }: { blocks: ChatBlock[] }) {
+export function WorkBlocks({ blocks, onOpenItem }: { blocks: ChatBlock[]; onOpenItem?: (path: string) => void }) {
   return (
     <div className="space-y-2">
       {blocks.map((block, i) => {
@@ -335,11 +343,8 @@ export function WorkBlocks({ blocks }: { blocks: ChatBlock[] }) {
           case 'tool':
             return <ToolCard key={block.id || i} block={block} />;
           case 'text':
-            return (
-              <p key={i} className="text-sm leading-relaxed whitespace-pre-wrap text-dim-300">
-                {block.text}
-              </p>
-            );
+            // The long version: formatted, with MarkdownView's protections. No item path, so links resolve from the vault root.
+            return <MarkdownView key={i} source={block.text} onOpenItem={onOpenItem} />;
           default:
             return null;
         }

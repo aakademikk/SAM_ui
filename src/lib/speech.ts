@@ -12,7 +12,7 @@
  * that a `stop()` would waste.
  */
 
-import { splitMore } from '@/types/chat';
+import { splitMore, stripComments } from '@/types/chat';
 
 const MAX_CHUNK_CHARS = 220;
 /** Below this, a trailing fragment is merged backwards rather than spoken alone. */
@@ -149,7 +149,8 @@ export const clearSpeechError = () => {
  * Dashes become a comma pause; hyphens inside words stay.
  */
 export function splitForSpeech(text: string): string[] {
-  const cleaned = splitMore(text).short
+  // 2026-10-13: strip every HTML comment (work markers included) before the more split.
+  const cleaned = splitMore(stripComments(text)).short
     .replace(/```[\s\S]*?```/g, ' code block. ')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
