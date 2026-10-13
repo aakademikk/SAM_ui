@@ -462,7 +462,7 @@ Do not touch: the live service, the real audit log, port 3000.
 Proof: `bash /home/col/delivery/ux-audits/work-area-proofs/run-proof.sh t29` prints PASS for each of the five checks with the raw status codes; `ss -ltn | grep -cE ':495[01]'` prints 0 afterwards.
 
 ## T30: Browser proofs, part one (views, samples, links, cache, timeouts)
-Status: IN PROGRESS job_work-area-implement_20261013-001200
+Status: DONE 2026-10-13 (run-proof.sh t30 re-run by foreman prints PASS for checks 5, 6, 7, 12, 17, 18 at 390x844 and 1440x900; screenshots in results/; no listener left)
 Spec: check #5, #6 (browser), #7, #12, #17, #18
 Depends on: T29
 Blocked by: none
@@ -479,7 +479,7 @@ Do not touch: the live service.
 Proof: `bash run-proof.sh t30` prints PASS for checks 5, 6, 7, 12, 17 and 18 with screenshots saved in `results/`; stop.sh run; no listener left.
 
 ## T31: Browser proofs, part two (hostile content, PDF, full screen, Work view, memory)
-Status: TODO
+Status: DONE 2026-10-13 (run-proof.sh t31 re-run by foreman prints PASS for checks 10, 11, 16, 23, 24, 26; RSS rise 34.8 MB under 50 MB, series in results/t31-16-rss.txt; one real bug fixed in PdfView.tsx, last page counter; no listener left)
 Spec: check #10, #11 (panel half), #16 (memory), #23 (browser), #24, #26
 Depends on: T30
 Blocked by: none
@@ -496,7 +496,7 @@ Do not touch: the live service.
 Proof: `bash run-proof.sh t31` prints PASS for 10, 11, 16, 23, 24 and 26 with the RSS series saved; stop.sh run; no listener left.
 
 ## T32: Whole-build gate
-Status: TODO
+Status: DONE 2026-10-13 (tsc 0; build ok; npm test 783 tests 781 pass 0 fail 2 skipped vs Baseline 685/683/0/2; T2 tests 19 pass 0 fail; lint 0 errors; all present; added react-markdown 10.1.0, remark-gfm 4.0.1, mermaid 12.1.0, pdfjs-dist 6.4.299)
 Spec: check #27, #2 (re-run), #26 (Done-means 2 still passes)
 Depends on: T31
 Blocked by: none
