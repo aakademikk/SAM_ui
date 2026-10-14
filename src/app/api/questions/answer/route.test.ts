@@ -11,9 +11,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { before, test } from 'node:test';
+import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
 import { tempDir } from '@/lib/server/testing/tempDir';
 
 const CLOSER = '/home/col/.sam/closer';
+const SKIP = boxOnlySkip('the live closer modules', [CLOSER]);
 
 const tmp = tempDir('answer-route-');
 const home = path.join(tmp, 'home');
@@ -65,6 +67,7 @@ function writeJob(root: string, name: string) {
 }
 
 before(async () => {
+  if (SKIP) return;
   fs.mkdirSync(home, { recursive: true });
   process.env.HOME = home;
   process.env.SAM_JOB_STORE = store;
@@ -137,14 +140,14 @@ function post(body: unknown, opts: { cookie?: string; site?: string; via?: strin
 const sessionOnly = () => sessionCookie;
 const withStepUp = () => `${sessionCookie}; ${stepUpCookie}`;
 
-test('no cookie gives 401 and nothing is touched', async () => {
+test('no cookie gives 401 and nothing is touched', { skip: SKIP }, async () => {
   const before = fs.readFileSync(closerFile('job_one'));
   const res = await route.POST(post({ jobId: 'job_one', questionId: ORDINARY, answer: 'a' }));
   assert.equal(res.status, 401);
   assert.deepEqual(fs.readFileSync(closerFile('job_one')), before);
 });
 
-test('a cross-site request is refused with 403 even with a session', async () => {
+test('a cross-site request is refused with 403 even with a session', { skip: SKIP }, async () => {
   const before = fs.readFileSync(closerFile('job_one'));
   const res = await route.POST(
     post({ jobId: 'job_one', questionId: ORDINARY, answer: 'a' }, { cookie: withStepUp(), site: 'cross-site' }),
@@ -153,7 +156,7 @@ test('a cross-site request is refused with 403 even with a session', async () =>
   assert.deepEqual(fs.readFileSync(closerFile('job_one')), before);
 });
 
-test('bad jobId, job outside the store, unknown questionId and answer c change nothing', async () => {
+test('bad jobId, job outside the store, unknown questionId and answer c change nothing', { skip: SKIP }, async () => {
   const before = fs.readFileSync(closerFile('job_one'));
   const outsideBefore = fs.readFileSync(path.join(outside, 'job_out', 'closer.json'));
   const cases: [Record<string, unknown>, number][] = [
@@ -174,7 +177,7 @@ test('bad jobId, job outside the store, unknown questionId and answer c change n
   assert.deepEqual(fs.readFileSync(path.join(outside, 'job_out', 'closer.json')), outsideBefore);
 });
 
-test('a gated question without step-up gives 401 stepUpRequired and is unchanged', async () => {
+test('a gated question without step-up gives 401 stepUpRequired and is unchanged', { skip: SKIP }, async () => {
   const before = fs.readFileSync(closerFile('job_two'));
   const res = await route.POST(post({ jobId: 'job_two', questionId: GATED, answer: 'a' }, { cookie: sessionOnly() }));
   assert.equal(res.status, 401);
@@ -183,7 +186,7 @@ test('a gated question without step-up gives 401 stepUpRequired and is unchanged
   assert.deepEqual(fs.readFileSync(closerFile('job_two')), before);
 });
 
-test('a gated question with step-up gives 200 with exactly the four keys', async () => {
+test('a gated question with step-up gives 200 with exactly the four keys', { skip: SKIP }, async () => {
   const res = await route.POST(post({ jobId: 'job_two', questionId: GATED, answer: 'a' }, { cookie: withStepUp() }));
   assert.equal(res.status, 200);
   const body = (await res.json()) as { data: Record<string, unknown> };
@@ -195,7 +198,7 @@ test('a gated question with step-up gives 200 with exactly the four keys', async
   assert.equal(rec.questions.find((q) => q.id === GATED)?.answeredVia, 'tab');
 });
 
-test('an ordinary question with a session only gives 200; a second answer is changed:false', async () => {
+test('an ordinary question with a session only gives 200; a second answer is changed:false', { skip: SKIP }, async () => {
   const first = await route.POST(post({ jobId: 'job_three', questionId: ORDINARY, answer: 'b' }, { cookie: sessionOnly() }));
   assert.equal(first.status, 200);
   const one = (await first.json()) as { data: { state: string; changed: boolean } };
@@ -209,7 +212,7 @@ test('an ordinary question with a session only gives 200; a second answer is cha
   assert.equal(two.data.state, 'declined');
 });
 
-test('the x-answer-via push header is recorded, and a choice2 answer names its label', async () => {
+test('the x-answer-via push header is recorded, and a choice2 answer names its label', { skip: SKIP }, async () => {
   const res = await route.POST(
     post({ jobId: 'job_four', questionId: CHOICE, answer: 'b' }, { cookie: sessionOnly(), via: 'push' }),
   );
@@ -220,7 +223,7 @@ test('the x-answer-via push header is recorded, and a choice2 answer names its l
   assert.equal(rec.questions.find((q) => q.id === CHOICE)?.answeredVia, 'push');
 });
 
-test('a three-choice question: c records the third choice by name, once', async () => {
+test('a three-choice question: c records the third choice by name, once', { skip: SKIP }, async () => {
   const res = await route.POST(post({ jobId: 'job_one', questionId: THREE, answer: 'c' }, { cookie: sessionOnly() }));
   assert.equal(res.status, 200);
   const body = (await res.json()) as { data: { state: string; result: string; changed: boolean } };
@@ -233,7 +236,7 @@ test('a three-choice question: c records the third choice by name, once', async 
   assert.equal(two.data.result, 'Chose c) accept sfx-onset');
 });
 
-test('a letter past the last choice is refused with 400 and nothing changes', async () => {
+test('a letter past the last choice is refused with 400 and nothing changes', { skip: SKIP }, async () => {
   const before = fs.readFileSync(closerFile('job_two'));
   const cases: [string, string][] = [[THREE, 'd'], [THREE, 'f'], [CHOICE, 'c'], [ORDINARY, 'c'], [THREE, 'g']];
   for (const [questionId, answer] of cases) {

@@ -17,7 +17,7 @@
 # honestly. The build gate stays where it can actually be proved — ./deploy.sh
 # on the box, which now also checks /api/health's rolled-up status.
 #
-# Same reason, 31 tests (32 skips counting one live opt-in): the
+# Same reason, 50 tests (51 skips counting one live opt-in): the
 # push/notification tests spawn the REAL scripts out of /home/col/.local/bin and /home/col/.sam (`sam-push`, `sam-dispatch`,
 # `sam-job`, `run.sh`), or drive `systemd-run --user`. On a hosted runner
 # those paths do not exist, so the test gets `status: null` instead of the
@@ -27,7 +27,7 @@
 # They now report `skipped` with their reason
 # (src/lib/server/testing/boxOnly.ts), and the box gate is ./deploy.sh, which
 # runs the full suite before it builds. The last step here fails if MORE than
-# those 32 ever skip, so a portable test cannot be silenced to dodge a
+# those 51 ever skip, so a portable test cannot be silenced to dodge a
 # failure.
 
 name: CI
@@ -87,24 +87,31 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # The voice recogniser test decodes a WAV with ffmpeg (no model needed),
+      # so it can run here honestly once ffmpeg is installed (2026-10-14).
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
       - name: Test
         run: |
           set -o pipefail
           npm test 2>&1 | tee "$RUNNER_TEMP/test-output.txt"
 
-      # Exactly 32 tests report skipped here: 31 box-only plus one live opt-in
-      # (SAM_LIVE_SIDE_MESSAGE). More than 32 means a test that CAN run on a
+      # Exactly 51 tests report skipped here: 50 box-only plus one live opt-in
+      # (SAM_LIVE_SIDE_MESSAGE). More than 51 means a test that CAN run on a
       # runner has been switched off, which is the failure mode this whole
-      # arrangement exists to prevent. Raised from 10 on 2026-10-05: box-only
-      # tests had grown to 31 without this limit following, so CI was red on
-      # every push. A new box-only test must bump this number in the same commit.
+      # arrangement exists to prevent. Raised from 32 on 2026-10-14: box-only
+      # tests had grown to 41 without this limit following (every skip reason
+      # checked, all box-only), plus the 9 closer answer-route tests, which read
+      # the live ~/.sam/closer modules. A new box-only test must bump this
+      # number in the same commit.
       - name: Box-only skips have not grown
         run: |
           skipped=$(grep -oE '^# skipped [0-9]+' "$RUNNER_TEMP/test-output.txt" | awk '{print $3}')
           skipped=${skipped:-0}
-          echo "skipped: ${skipped} (32 expected on a hosted runner: 31 box-only, 1 live opt-in)"
-          if [ "$skipped" -gt 32 ]; then
-            echo "!! more than the 32 known skips: a portable test has been silenced" >&2
+          echo "skipped: ${skipped} (51 expected on a hosted runner: 50 box-only, 1 live opt-in)"
+          if [ "$skipped" -gt 51 ]; then
+            echo "!! more than the 51 known skips: a portable test has been silenced" >&2
             exit 1
           fi
 
