@@ -21,6 +21,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 
+import { intentClass, matchOsIntent } from './osIntents';
 import { tryOsIntent } from './osIntentRunner';
 
 /* ------------------------------------------------------------------ harness */
@@ -33,6 +34,7 @@ interface BridgeCall {
 let calls: BridgeCall[] = [];
 let contacts: { name: string; number: string }[] = [];
 let emailReplies: Record<string, unknown>[] = [];
+let screeningOn = true;
 
 /**
  * Ops that leave the device. `call` and `sms` reach a third party; `dial` only
@@ -66,6 +68,10 @@ function stubFetch() {
         break;
       case 'contacts':
         data = { contacts };
+        break;
+      case 'screening':
+        screeningOn = Boolean(args.enabled);
+        data = { enabled: screeningOn, ok: true };
         break;
       case 'sms':
         data = { sent: true, parts: 1 };
@@ -276,5 +282,53 @@ describe('one pending slot', () => {
     // The yes now applies to the call, not the abandoned text.
     await tryOsIntent('yes');
     assert.deepEqual(outbound().map((c) => c.op), ['call'], 'the abandoned SMS must not fire');
+  });
+});
+
+describe('call screening on/off', () => {
+  const ON = ['screening on', 'turn screening on', 'call screening on', 'Hey Sam, screening on.'];
+  const OFF = ['screening off', 'turn screening off', 'call screening off', 'turn off screening'];
+
+  it('matches the on and off phrases', () => {
+    for (const phrase of ON) assert.deepEqual(matchOsIntent(phrase), { kind: 'screening', on: true }, phrase);
+    for (const phrase of OFF) assert.deepEqual(matchOsIntent(phrase), { kind: 'screening', on: false }, phrase);
+  });
+
+  it('is a phone intent', () => {
+    assert.equal(intentClass({ kind: 'screening', on: false }), 'phone');
+  });
+
+  it('does not match unrelated phrases', () => {
+    for (const phrase of [
+      'screen time',
+      'call it a day',
+      'screenshot',
+      'share my screen',
+      'lock the screen',
+      'turn the screen off',
+      'screening results for the nurse',
+    ]) {
+      const intent = matchOsIntent(phrase);
+      assert.notEqual(intent?.kind, 'screening', phrase);
+    }
+  });
+
+  it('sends the enabled flag over the bridge and says so', async () => {
+    const res = await tryOsIntent('screening off');
+    assert.equal(res.reply, 'Screening is off.');
+    assert.deepEqual(calls.filter((c) => c.op === 'screening').map((c) => c.args), [{ enabled: false }]);
+
+    const back = await tryOsIntent('screening on');
+    assert.equal(back.reply, 'Screening is on.');
+    assert.equal(screeningOn, true);
+  });
+
+  it('does not claim a change when the phone cannot be reached', async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => new Response('{}', { status: 503 })) as typeof fetch;
+    const res = await tryOsIntent('screening off');
+    globalThis.fetch = real;
+    assert.equal(res.handled, true);
+    assert.doesNotMatch(res.reply!, /Screening is (on|off)/);
   });
 });

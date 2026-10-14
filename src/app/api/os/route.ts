@@ -40,6 +40,8 @@ const OPS: Record<string, ['GET' | 'POST', string]> = {
   call: ['POST', '/os/call'],
   sms: ['POST', '/os/sms'],
   torch: ['POST', '/os/torch'],
+  screening: ['POST', '/os/screening'],
+  screeningState: ['GET', '/os/screening'],
   notify: ['POST', '/os/notify'],
   wake: ['POST', '/os/wake'],
 };

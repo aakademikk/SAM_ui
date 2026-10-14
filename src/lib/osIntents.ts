@@ -17,6 +17,7 @@ export type OsIntent =
   | { kind: 'sms'; who: string; message: string }
   | { kind: 'email'; who: string; subject: string; body: string }
   | { kind: 'torch'; on: boolean }
+  | { kind: 'screening'; on: boolean }
   | { kind: 'volume'; level: number }
   | { kind: 'media'; action: 'play-pause' | 'next' | 'previous' | 'stop' }
   | { kind: 'lock' }
@@ -48,6 +49,7 @@ export function intentClass(intent: OsIntent): IntentClass {
     case 'sms':
     case 'call':
     case 'torch':
+    case 'screening':
       return 'phone';
     // Only the desktop has a session to lock, a sink to set, or a player.
     case 'volume':
@@ -148,10 +150,18 @@ export function matchOsIntent(input: string): OsIntent | null {
   if (!text) return null;
   const lower = text.toLowerCase();
 
+  /* ---- Call screening ---------------------------------------------------- */
+  // The noun "screening" is required, so "screen time", "screenshot" and
+  // "turn the screen off" never reach here.
+  let m =
+    lower.match(/^(?:turn\s+)?(?:call\s+)?screening\s+(on|off)$/) ??
+    lower.match(/^turn\s+(on|off)\s+(?:call\s+)?screening$/);
+  if (m) return { kind: 'screening', on: m[1] === 'on' };
+
   /* ---- Torch ----------------------------------------------------------- */
   // Both orders: "torch on" and "turn on the torch".
   const torchWord = '(?:torch|flashlight|flash light)';
-  let m =
+  m =
     lower.match(new RegExp(`^(?:turn\\s+)?(?:the\\s+)?${torchWord}\\s+(on|off)$`)) ??
     lower.match(new RegExp(`^turn\\s+(on|off)\\s+(?:the\\s+)?${torchWord}$`));
   if (m) return { kind: 'torch', on: m[1] === 'on' };

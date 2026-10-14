@@ -55,7 +55,7 @@ export function configureOsBridge(_port?: number | null) {
  * the phone, or "open calculator" at the desk would open it on the phone
  * instead of the PC.
  */
-function isPhone(): boolean {
+export function isPhone(): boolean {
   if (typeof navigator === 'undefined') return false;
   return /android|iphone|ipad|ipod/i.test(navigator.userAgent);
 }
@@ -150,6 +150,21 @@ export async function sendSms(number: string, body: string): Promise<boolean> {
 export async function setTorch(on: boolean): Promise<boolean> {
   const res = await call<{ ok: boolean }>('torch', { on });
   return Boolean(res?.ok);
+}
+
+/**
+ * Call-screening flag on the phone. null means the phone could not be reached:
+ * callers must show that as offline, never as on or off.
+ */
+export async function getScreening(): Promise<boolean | null> {
+  const res = await call<{ enabled?: boolean }>('screeningState');
+  return typeof res?.enabled === 'boolean' ? res.enabled : null;
+}
+
+/** @returns the state the phone reports after the change, or null if unreachable. */
+export async function setScreening(on: boolean): Promise<boolean | null> {
+  const res = await call<{ enabled?: boolean }>('screening', { enabled: on });
+  return typeof res?.enabled === 'boolean' ? res.enabled : null;
 }
 
 export async function notify(title: string, body: string, whenMs = 0): Promise<boolean> {

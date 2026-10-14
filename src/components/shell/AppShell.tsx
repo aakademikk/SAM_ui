@@ -16,6 +16,7 @@ import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
 import { InstallButton } from './InstallButton';
 import { PushNotifications } from './PushNotifications';
+import { ScreeningToggle } from './ScreeningToggle';
 import { BootSequence } from './BootSequence';
 import { SignedOutOverlay } from './SignedOutOverlay';
 import { PreferencesApplier } from './PreferencesApplier';
@@ -89,6 +90,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Push enable banner — appears only until notifications are allowed */}
         <PushNotifications />
+
+        {/* Call-screening switch — phone only */}
+        <ScreeningToggle />
 
         {children}
       </main>

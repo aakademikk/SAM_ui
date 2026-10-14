@@ -21,6 +21,7 @@ import {
   openApp,
   osBridgeAvailable,
   sendSms,
+  setScreening,
   setTorch,
 } from './osBridge';
 import { confirmsBeforeActing, intentClass, matchOsIntent, type OsIntent } from './osIntents';
@@ -368,6 +369,13 @@ async function run(intent: OsIntent): Promise<OsIntentResult> {
       return ok
         ? { handled: true, reply: `Torch ${intent.on ? 'on' : 'off'}.` }
         : { handled: true, reply: `Couldn't reach the torch.` };
+    }
+
+    case 'screening': {
+      const state = await setScreening(intent.on);
+      return state === null
+        ? { handled: true, reply: `Couldn't reach the phone, so screening is unchanged.` }
+        : { handled: true, reply: `Screening is ${state ? 'on' : 'off'}.` };
     }
 
     case 'timer': {
