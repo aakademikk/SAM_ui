@@ -122,8 +122,19 @@ npm run build
 echo "==> restart sam-ui.service"
 systemctl --user restart sam-ui
 
+# App pages must go out no-store, or an installed PWA restores a stale build
+# from its HTTP cache (2026-10-14). Runs on the live server, after health.
+page_cache_gate() {
+  echo "==> page-cache check"
+  if ! node scripts/check-page-cache.cjs "http://127.0.0.1:${PORT}"; then
+    echo "!! page-cache check failed: the new build is live but pages are cacheable" >&2
+    exit 1
+  fi
+}
+
 echo "==> wait for health on :${PORT}"
 if wait_healthy; then
+  page_cache_gate
   echo "==> done — sam-ui serving the new build"
   exit 0
 fi
@@ -134,6 +145,7 @@ if [ "${1:-}" = "--force" ]; then
   fuser -k "${PORT}/tcp" 2>/dev/null || true
   sleep 3
   if wait_healthy; then
+    page_cache_gate
     echo "==> recovered — sam-ui serving the new build"
     exit 0
   fi

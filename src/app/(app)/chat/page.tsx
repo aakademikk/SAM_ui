@@ -296,6 +296,12 @@ function ChatPageInner() {
   }
   const [input, setInput] = useState('');
   const [running, setRunning] = useState(false);
+  // BuildWatch never reloads mid-reply: it reads this flag (src/lib/buildCheck.ts).
+  useEffect(() => {
+    if (running) document.documentElement.dataset.samBusy = '1';
+    else delete document.documentElement.dataset.samBusy;
+    return () => { delete document.documentElement.dataset.samBusy; };
+  }, [running]);
 
   // Staged uploads. The bytes are already on the server by the time a file
   // appears here — uploading on pick rather than on send means a rejected type
