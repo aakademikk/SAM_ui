@@ -323,6 +323,33 @@ describe('call screening on/off', () => {
     assert.equal(screeningOn, true);
   });
 
+  describe('screening-changed event', () => {
+    const g = globalThis as unknown as { window?: EventTarget };
+    let fired = 0;
+    beforeEach(() => {
+      fired = 0;
+      g.window = new EventTarget();
+      g.window.addEventListener('sam:screening-changed', () => {
+        fired += 1;
+      });
+    });
+
+    it('fires once after a successful change', async () => {
+      await tryOsIntent('screening off');
+      delete g.window;
+      assert.equal(fired, 1);
+    });
+
+    it('does not fire when the phone cannot be reached', async () => {
+      const real = globalThis.fetch;
+      globalThis.fetch = (async () => new Response('{}', { status: 503 })) as typeof fetch;
+      await tryOsIntent('screening off');
+      globalThis.fetch = real;
+      delete g.window;
+      assert.equal(fired, 0);
+    });
+  });
+
   it('does not claim a change when the phone cannot be reached', async () => {
     const real = globalThis.fetch;
     globalThis.fetch = (async () => new Response('{}', { status: 503 })) as typeof fetch;

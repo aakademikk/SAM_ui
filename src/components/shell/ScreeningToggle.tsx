@@ -9,9 +9,10 @@
 
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { PhoneIncoming } from 'lucide-react';
 import { getScreening, isPhone, setScreening } from '@/lib/osBridge';
+import { subscribeScreeningChanged } from '@/lib/screeningEvents';
 
 type State = 'loading' | 'on' | 'off' | 'offline';
 
@@ -34,6 +35,23 @@ export function ScreeningToggle() {
     setPhone(true);
     void refresh();
   }, [refresh]);
+
+  // A voice or text command changed the flag: ask the phone again.
+  useEffect(() => subscribeScreeningChanged(() => void refresh()), [refresh]);
+
+  // Publish the bar's height so the chat's fixed-height root can leave room for
+  // it; otherwise page + bar is taller than the screen and the page scrolls the
+  // bar away.
+  const barRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = barRef.current;
+    if (!phone || !el) return;
+    const root = document.documentElement;
+    root.style.setProperty('--sam-screening-h', `${el.offsetHeight}px`);
+    return () => {
+      root.style.removeProperty('--sam-screening-h');
+    };
+  }, [phone, state]);
 
   const flip = async () => {
     if (busy || state === 'loading') return;
@@ -58,7 +76,9 @@ export function ScreeningToggle() {
     state === 'loading' ? 'Checking…' : state === 'offline' ? 'Phone offline' : state === 'on' ? 'On' : 'Off';
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 mx-3 mt-3 rounded-lg border border-accent/30 bg-accent/10">
+    // Sticky as well, so it stays on screen if anything does scroll the page.
+    <div ref={barRef} className="sticky top-0 z-30 px-3 pt-3">
+    <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-accent/30 bg-void-900 backdrop-blur-md">
       <PhoneIncoming size={14} className="text-accent" />
       <p className="text-xs text-dim-100 flex-1">Call screening: {label}</p>
       <button
@@ -69,6 +89,7 @@ export function ScreeningToggle() {
       >
         {state === 'offline' ? 'Retry' : state === 'on' ? 'Turn off' : 'Turn on'}
       </button>
+    </div>
     </div>
   );
 }

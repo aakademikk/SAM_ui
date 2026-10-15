@@ -432,7 +432,7 @@ body:has(.fleet-dashboard)::before {
    bottom padding so the page never scrolls on its own. Desktop is a straight
    100dvh. */
 .sam-chat-root {
-  height: calc(100dvh - 3.5rem - env(safe-area-inset-bottom, 0px));
+  height: calc(100dvh - 3.5rem - env(safe-area-inset-bottom, 0px) - var(--sam-screening-h, 0px));
 }
 @media (min-width: 768px) {
   .sam-chat-root {
