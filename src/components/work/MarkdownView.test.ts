@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MarkdownView } from './MarkdownView.js';
+import { MarkdownView, codeText } from './MarkdownView.js';
 
 function render(source: string): string {
   return renderToStaticMarkup(createElement(MarkdownView, { source }));
@@ -67,4 +67,54 @@ test('mermaid blocks render a scrolling diagram container, with no pre nested in
   const out = render('```mermaid\ngraph TD; A-->B\n```');
   assert.ok(out.includes('overflow-x-auto'));
   assert.ok(!out.includes('<pre'));
+});
+
+/** Walk a React element tree for the first element whose type is ReactMarkdown (the one with a `components` prop). */
+function findComponentsProp(node: unknown): Record<string, unknown> | undefined {
+  if (!node || typeof node !== 'object') return undefined;
+  const el = node as { props?: { components?: Record<string, unknown>; children?: unknown } };
+  if (el.props?.components) return el.props.components;
+  const kids = el.props?.children;
+  for (const k of Array.isArray(kids) ? kids : [kids]) {
+    const found = findComponentsProp(k);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+test('refresh cause: the renderer map keeps its identity across re-renders, so the DOM is not remounted', () => {
+  // react-markdown treats each entry of `components` as a component type. A map rebuilt on
+  // every MarkdownView render gives React new types, so the whole subtree remounts each time
+  // the chat page re-renders (twice a second while running, every 5 s from the chat poll),
+  // dropping code-block scroll position, selection and copy focus.
+  const a = findComponentsProp((MarkdownView as unknown as (p: { source: string }) => unknown)({ source: '```\nx\n```' }));
+  const b = findComponentsProp((MarkdownView as unknown as (p: { source: string }) => unknown)({ source: '```\nx\n```' }));
+  assert.ok(a && b);
+  for (const key of Object.keys(a)) assert.equal(a[key], b[key], `components.${key} changes identity between renders`);
+});
+
+test('code blocks wrap instead of scrolling sideways and carry a copy button', () => {
+  const out = render('```js\nconst veryLongLine = 1; // ' + 'x'.repeat(200) + '\n```');
+  const pre = /<pre[^>]*class="([^"]*)"/.exec(out);
+  assert.ok(pre, out);
+  assert.ok(pre[1].includes('whitespace-pre-wrap'), pre[1]);
+  assert.ok(/break-(words|all)|\[overflow-wrap:anywhere\]/.test(pre[1]), pre[1]);
+  assert.ok(!pre[1].includes('overflow-x-auto'), pre[1]);
+  assert.ok(/<button[^>]*aria-label="Copy code"/.test(out), out);
+  assert.ok(out.includes('Copy</'), out);
+});
+
+test('codeText gives the raw code exactly, without the fence newline', () => {
+  const node = {
+    type: 'element',
+    tagName: 'pre',
+    children: [
+      {
+        type: 'element',
+        tagName: 'code',
+        children: [{ type: 'text', value: 'a  <b>\n\tc && d\n' }],
+      },
+    ],
+  };
+  assert.equal(codeText(node), 'a  <b>\n\tc && d');
 });
