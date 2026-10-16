@@ -25,6 +25,8 @@ import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { HandsFreeMic } from '@/components/voice/HandsFreeMic';
 import { splitBlocks, AnswerBlocks } from '@/components/chat/MessageBlocks';
 import { WorkPanel } from '@/components/chat/WorkPanel';
+import { WorkDivider } from '@/components/chat/WorkDivider';
+import { WORK_WIDTH_KEY, clampWorkWidth, readStoredWidth } from '@/components/chat/workWidth';
 import { enterFull, leaveFull, onPop } from '@/components/work/fullScreen';
 import { ItemCards } from '@/components/work/ItemCards';
 import type { ItemMeta } from '@/lib/workItems';
@@ -366,6 +368,19 @@ function ChatPageInner() {
   const [audioBlocked, setAudioBlocked] = useState(false);
   /** Mobile layout — drives which work-panel mount renders. */
   const [isNarrow, setIsNarrow] = useState(false);
+  // Desktop work panel width in px; null until dragged or restored, which keeps the CSS default.
+  const [workWidth, setWorkWidth] = useState<number | null>(null);
+  useEffect(() => {
+    setWorkWidth(readStoredWidth(window.localStorage, window.innerWidth));
+    const onResize = () => setWorkWidth((w) => (w === null ? w : clampWorkWidth(w, window.innerWidth)));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const resizeWork = useCallback((w: number) => {
+    const next = clampWorkWidth(w, window.innerWidth);
+    setWorkWidth(next);
+    try { window.localStorage.setItem(WORK_WIDTH_KEY, String(next)); } catch { /* private mode: not persisted */ }
+  }, []);
   /** Work panel — which assistant message's thinking/tool calls are shown, and
       whether the panel is open. The main thread renders answers only. */
   const [workOpen, setWorkOpen] = useState(false);
@@ -2460,7 +2475,11 @@ function ChatPageInner() {
       {/* Work panel — desktop: in-flow side panel. The main thread stays
           answers-only; everything SAM did to get there lives here. */}
       {workOpen && (workMessage || workView === 'items') && !isNarrow && !workFull && (
-        <aside className="hidden md:flex w-[320px] lg:w-[380px] shrink-0 border-l border-void-700 h-full">
+        <aside
+          className={`relative hidden md:flex shrink-0 border-l border-void-700 h-full ${workWidth === null ? 'w-[320px] lg:w-[380px]' : ''}`}
+          style={workWidth === null ? undefined : { width: workWidth }}
+        >
+          <WorkDivider width={workWidth ?? (typeof window !== 'undefined' && window.innerWidth >= 1024 ? 380 : 320)} onResize={resizeWork} />
           <WorkPanel
             title={panelTitle}
             running={panelRunning}
