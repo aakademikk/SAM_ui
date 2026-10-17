@@ -541,7 +541,7 @@ Do not touch: anything.
 Proof: Colin's explicit confirmation of 3, 8, 19, 23 and 24, recorded with the time; the two `ls` results for 19.
 
 ## T35: GATE: next-day backup checks
-Status: TODO
+Status: IN PROGRESS 2026-10-17 9:06 PM: (21) PASS: Drive work-area-samples lists Sample Note.md, Work Area Sample.md, diagram-ok.png, standalone.png, sample-page.html, sample-multipage.pdf; no .mp4 or .webm. (22) sizes match: sample-clip.mp4 154785 in vault and on Storage. (22) drive-absent dry run: `RMC_DEST=/tmp/no-such-mount/x` printed `SKIP raw-media-copy: Storage drive not mounted`, rc 0. Left, on Colin's word: move-aside run, full backup with the override.
 Colin gate: runs only after T33 installed the backup changes on Colin's word; the "drive absent" run uses the test seam, never by unmounting Colin's Storage drive unless he says so.
 Spec: check #21, #22 (live)
 Depends on: T33
