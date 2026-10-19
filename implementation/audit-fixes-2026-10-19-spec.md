@@ -206,7 +206,7 @@ frameloop when hidden, the floor tests).
     410k starts a handoff (memo turn) instead of a normal turn, records the carried message, and the
     child chat's first prompt contains that message. A chat at 390k runs a normal turn. A running
     turn is never interrupted (the check is only at turn start). Before: a normal turn runs.
-    One week after deploy: `tmp-B/turns.py` over seven days shows no chat above 450k at turn start.
+    One week after deploy: `python3 ~/.sam/work/samui-audit-2026-10-19/tmp-B/turns.py` over seven days shows no chat above 450k at turn start.
 12. (Must 11) `src/lib/server/vaultWrite.test.ts`: on a temp copy of Active Priorities, a test hook
     appends a line between the read and the write. Before: the appended line is gone. After: both
     the toggle and the appended line are present and a warning is logged on the retry. The same for
