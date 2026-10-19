@@ -28,7 +28,7 @@ Read before any ticket:
 - Must not break (audit protect rows): A-20, B-19, B-20, C-17, D-20 (see the spec's constraints).
 
 ## T1: Review the two staged closer fixes, install only if clean
-Status: TODO
+Status: BLOCKED 2026-10-20: stage review found 1 issue (staged _block_at accepts 'BLOCKED: none' with no unblock text, and detect() runs it before the exit check, so a PASS job ending 'BLOCKED: none' becomes UNKNOWN: blocked and asks Colin; reproduced). Nothing installed; note in audit-fixes-2026-10-19-stage-review.md. unblock: Colin decides. Note: T2/T3 now edit the live files, so the .stage copies need re-cutting before any later install.
 Model: Sonnet (a read and compare job; the install is a scripted copy with its own tests).
 Spec: must-do 5, check 6
 Depends on: none
@@ -60,7 +60,7 @@ a verdict line. On a clean verdict: `bash ~/.sam/tests/test-closer-t28-honest.sh
 and `bash ~/.sam/tests/test-closer-message.sh | tail -1` and `bash ~/.sam/tests/test-closer-blocked.sh | tail -1` report 0 failed.
 
 ## T2: Carry why, escalatedFrom and the folder override into every relaunch
-Status: TODO
+Status: DONE 2026-10-20 (test-closer-relaunch-why.sh 4 passed/17 failed on originals, 21 passed/0 failed live; relaunch 77, blocked 120, dispatch 30, folder-guard 9, relaunch-cancel 9, plan-ceiling 9 all 0 failed; .bak-20261019-audit copies made)
 Model: Sonnet (small, well-located change; the fail-first test pins it).
 Spec: must-do 1, check 1
 Depends on: T1
@@ -94,7 +94,7 @@ Proof: `bash ~/.sam/tests/test-closer-relaunch-why.sh` FAILS before the edit and
 the six tests in step 5 report 0 failed.
 
 ## T3: One short message when a job dies on the seat limit
-Status: TODO
+Status: DONE 2026-10-20 (test-closer-limit-death-message.sh 5 passed/8 failed on originals, 13 passed/0 failed live; quiet-pass PASS, message 32/0, relaunch 77/0, blocked 120/0; t28-honest 13 passed/26 failed before and after, unchanged: it needs T1's blocked stage install. Outside Files: test-closer-quiet-pass.sh overlay now skips a .next older than its live module, else it tested the old code)
 Model: Sonnet (one predicate and one body line).
 Spec: must-do 2, check 2
 Depends on: T1 (same file), T2
@@ -119,7 +119,7 @@ Proof: `bash ~/.sam/tests/test-closer-limit-death-message.sh` FAILS before and r
 the four other tests in step 5 report 0 failed.
 
 ## T4: Per-seat lock, running-job cap on main and a launch stagger in sam-dispatch
-Status: TODO
+Status: IN PROGRESS job_samui-audit-fixes-build_20261019-230349
 Model: Opus (locked decision: A-03 is Opus; concurrency in bash with a lock held across a launch).
 Spec: must-do 3, check 3
 Depends on: T2
