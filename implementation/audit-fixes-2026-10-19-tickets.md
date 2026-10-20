@@ -361,7 +361,7 @@ Proof: `npm test -- .test-build/src/components/shell/ambientGate.test.js` FAILS 
 deploy exits 0; the browser check shows no canvas under the fleet view.
 
 ## T13: Throttle the floor canvas when nothing moves
-Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
+Status: DONE 2026-10-20 (floorPacing.test.js fails before (TS2307 no module; idle-poll case 60/s with the window on every poll), 9 pass/0 fail after; full npm test 849 pass/0 fail; tsc, eslint clean; commits bf82f45 + 6c07896 (retry: polls open the full-rate window only on changed data, else two 3 s pollers kept it busy; foreman fixed .js imports webpack could not resolve), deployed 6c07896, rc 0, health 6c07896. Running workers count as busy (their flow pulses animate))
 Model: Sonnet (a pure pacing rule plus one call in the loop).
 Spec: must-do 13 (frame rate), check 14, check 18
 Depends on: T12
@@ -381,7 +381,7 @@ Do not touch: `buildScene`, `paint`, the ring code (T14), the overlay diffing.
 Proof: `npm test -- .test-build/src/components/floor/floorPacing.test.js` FAILS before and passes after; full `npm test` passes; deploy exits 0.
 
 ## T14: Compute the clock ring's outer marks once per change
-Status: TODO
+Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
 Model: Sonnet (memoising one pure function).
 Spec: must-do 13 (ring), check 14, check 18
 Depends on: T13
