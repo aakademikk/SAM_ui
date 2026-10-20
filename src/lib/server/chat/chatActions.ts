@@ -73,8 +73,10 @@ function toSummary(chat: ChatRecord): ChatSummary {
     handoffError: chat.handoffError,
     running: isSessionLocked(chat.id),
     // One existsSync (two at most) per chat; no directory scans. A chat with
-    // no finished turn has no transcript yet and is not expired.
-    historyExpired: chat.turns > 0 && transcriptPath(chat.id) === null,
+    // no finished turn has no transcript yet and is not expired. An imported
+    // chat came from an existing CLI session (the store never counted its
+    // turns, so turns is 0), so it has had history too.
+    historyExpired: (chat.turns > 0 || chat.imported) && transcriptPath(chat.id) === null,
   };
 }
 

@@ -40,3 +40,33 @@ test('historyExpired: true only for a chat with turns and no transcript on eithe
   assert.equal(byId.get('no-file')?.historyExpired, true);
   assert.equal(byId.get('brand-new')?.historyExpired, false);
 });
+
+test('historyExpired: an imported chat with turns 0 and no transcript is expired', async () => {
+  const home = tempDir('expired-history-imported-');
+  process.env.HOME = home;
+  delete process.env.SAM_AGENT_CWD;
+  delete process.env.CLAUDE_CONFIG_DIR;
+  process.env.SAM_MAX2_CONFIG_DIR = path.join(home, '.claude-max2');
+
+  const store = await import('./chatStore.js');
+  const actions = await import('./chatActions.js');
+  store.__resetChatStoreForTests();
+  store.setImportedAt(new Date().toISOString());
+
+  store.createChat({
+    id: 'imported-gone',
+    tier: 'max',
+    account: 'main',
+    firstMessage: 'hi',
+    title: 'imported-gone',
+    imported: true,
+  });
+  store.createChat({ id: 'fresh', tier: 'max', account: 'main', firstMessage: 'hi', title: 'fresh' });
+
+  const all = new Map(
+    [...actions.listChatSummaries(), ...actions.listChatSummaries({ archived: true })].map((c) => [c.id, c]),
+  );
+  assert.equal(all.get('imported-gone')?.turns, 0);
+  assert.equal(all.get('imported-gone')?.historyExpired, true);
+  assert.equal(all.get('fresh')?.historyExpired, false);
+});
