@@ -246,7 +246,7 @@ Proof: `npm test -- .test-build/src/lib/server/chat/expiredHistory.test.js` FAIL
 deploy exits 0; Colin confirms the label on his phone.
 
 ## T9: Store each chat's context size and show a banner at 200k
-Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
+Status: DONE 2026-10-20 (contextCeiling.test.js fails before (26 TS errors, no module/fields), 9 pass/0 fail after; full npm test 822 pass/0 fail; tsc clean; commit dd80db6 deployed, rc 0, health dd80db6. Uses the last assistant event's usage, not the result total (4.1M vs 385k measured). Pending: live 390 px banner check, possible once a Max chat over 200k has a turn after deploy. Outside Files: chatActions.ts toSummary passes contextTokens to the list poll)
 Model: Opus (locked decision: B-01/B-03 is Opus).
 Spec: must-do 9, check 10, check 18
 Depends on: T8
@@ -278,7 +278,7 @@ Proof: `npm test -- .test-build/src/lib/server/chat/contextCeiling.test.js` FAIL
 deploy exits 0; the banner shows on a chat over 200k at 390 px and the button opens the picker.
 
 ## T10: Hand off by itself at 400k, at the start of the next turn
-Status: TODO
+Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
 Model: Opus (locked decision: B-01/B-03 is Opus; it changes the turn flow).
 Spec: must-do 10, check 11, check 18
 Depends on: T9
