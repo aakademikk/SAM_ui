@@ -6,8 +6,8 @@
  * Pure; no DOM.
  */
 
-import { FLARE_WINDOW_MS } from './busts.js';
-import { FX, GENERALS, type FloorFx } from './floorRender.js';
+import { FLARE_WINDOW_MS } from './busts';
+import { FX, GENERALS, type FloorFx } from './floorRender';
 import type { FloorState } from '@/types/floor';
 
 /** The longest gap between draws on an idle floor (about 10 fps). */
