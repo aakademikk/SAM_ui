@@ -42,10 +42,12 @@ const noTmp = () =>
  * readFileSync/writeFileSync code and the new helper.
  */
 function appendAfterFirstRead(target: string, line: string): () => void {
-  const orig = fs.readFileSync;
+  type ReadFileSync = (p: unknown, ...rest: unknown[]) => unknown;
+  const mutable = fs as unknown as { readFileSync: ReadFileSync };
+  const orig = mutable.readFileSync;
   let done = false;
-  (fs as any).readFileSync = function (p: any, ...rest: any[]) {
-    const out = (orig as any).call(fs, p, ...rest);
+  mutable.readFileSync = function (p: unknown, ...rest: unknown[]) {
+    const out = orig.call(fs, p, ...rest);
     if (!done && p === target) {
       done = true;
       fs.appendFileSync(target, line);
@@ -53,7 +55,7 @@ function appendAfterFirstRead(target: string, line: string): () => void {
     return out;
   };
   return () => {
-    (fs as any).readFileSync = orig;
+    mutable.readFileSync = orig;
   };
 }
 
