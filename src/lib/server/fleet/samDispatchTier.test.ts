@@ -49,11 +49,12 @@ import { test } from 'node:test';
 import { tempDir } from '@/lib/server/testing/tempDir';
 
 import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
+import { stagedOrLive } from '@/lib/server/testing/stagedOrLive';
 
 function resolveBinary(underTestEnv: string, staged: string, live: string): string {
   const override = process.env[underTestEnv];
   if (override) return override;
-  return fs.existsSync(staged) ? staged : live;
+  return stagedOrLive(staged, live);
 }
 
 const JOB_BIN = resolveBinary(

@@ -15,16 +15,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
+import { stagedOrLive } from '@/lib/server/testing/stagedOrLive';
 import { tempDir } from '@/lib/server/testing/tempDir';
 
 // House rule: HOME is set before the module under test is imported.
 const HOME = tempDir('usage-collect-');
 const BIN_DIR = tempDir('usage-collect-bin-');
 process.env.HOME = HOME;
-
-function stagedOrLive(staged: string, live: string): string {
-  return fs.existsSync(staged) ? staged : live;
-}
 
 const STAGED = '/home/col/bin/sam-quota-log.next.py';
 const LIVE = '/home/col/bin/sam-quota-log.py';

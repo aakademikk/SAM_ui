@@ -39,10 +39,7 @@ import { test } from 'node:test';
 import { tempDir } from '@/lib/server/testing/tempDir';
 
 import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
-
-function stagedOrLive(staged: string, live: string): string {
-  return fs.existsSync(staged) ? staged : live;
-}
+import { stagedOrLive } from '@/lib/server/testing/stagedOrLive';
 
 const DISPATCH_BIN = stagedOrLive(
   '/home/col/.local/bin/sam-dispatch.next',

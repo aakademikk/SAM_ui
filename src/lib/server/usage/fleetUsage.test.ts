@@ -17,11 +17,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
+import { stagedOrLive } from '@/lib/server/testing/stagedOrLive';
 import { tempDir } from '@/lib/server/testing/tempDir';
-
-function stagedOrLive(staged: string, live: string): string {
-  return fs.existsSync(staged) ? staged : live;
-}
 
 const DISPATCH_BIN =
   process.env.SAM_DISPATCH_BIN ||

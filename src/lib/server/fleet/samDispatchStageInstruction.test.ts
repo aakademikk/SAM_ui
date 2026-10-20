@@ -50,10 +50,7 @@ import { test } from 'node:test';
 import { tempDir } from '@/lib/server/testing/tempDir';
 
 import { boxOnlySkip } from '@/lib/server/testing/boxOnly';
-
-function stagedOrLive(staged: string, live: string): string {
-  return fs.existsSync(staged) ? staged : live;
-}
+import { stagedOrLive } from '@/lib/server/testing/stagedOrLive';
 
 const DISPATCH_BIN =
   process.env.SAM_DISPATCH_BIN_UNDER_TEST ||
@@ -110,6 +107,8 @@ function runDispatch(
         // The seat guard must not read the box's real quota file (2026-10-08: max2 at 101% failed a deploy).
         SAM_QUOTA_RUNS: path.join(os.tmpdir(), 'no-quota.jsonl'),
         SAM_JOB_BIN: ctx.jobBin,
+        // An empty temp store: the running-job cap must not count the real fleet's jobs.
+        SAM_JOB_STORE: path.join(ctx.tmp, 'jobs'),
         SAM_DISPATCH_LOG: ctx.dispatchLog,
         CMD_FILE: ctx.cmdFile,
       },
@@ -177,6 +176,8 @@ test(
           // The seat guard must not read the box's real quota file (2026-10-08: max2 at 101% failed a deploy).
           SAM_QUOTA_RUNS: path.join(os.tmpdir(), 'no-quota.jsonl'),
           SAM_JOB_BIN: ctx.jobBin,
+          // An empty temp store: the running-job cap must not count the real fleet's jobs.
+          SAM_JOB_STORE: path.join(ctx.tmp, 'jobs'),
           SAM_DISPATCH_LOG: ctx.dispatchLog,
           CMD_FILE: ctx.cmdFile,
         },
