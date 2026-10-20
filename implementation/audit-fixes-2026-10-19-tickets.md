@@ -336,7 +336,7 @@ Do not touch: closer_vault.py, the vault real-path gate (C-17), the parsing of e
 Proof: `npm test -- .test-build/src/lib/server/vaultWrite.test.js` FAILS before and passes after; full `npm test` passes; deploy exits 0.
 
 ## T12: Unmount the background animation under a fleet view
-Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
+Status: DONE 2026-10-20 (ambientGate.test.js fails before (TS2307 no module), 3 pass/0 fail after; full npm test 840 pass/0 fail; tsc, eslint clean; commit 6284b0a deployed, rc 0, health 6284b0a. Gate is an AmbientBackgroundGate wrapper in AppShell (same effect as the ticket's inline condition). Pending: live browser check (no canvas under the fleet view at desktop and 390 px, canvas back on /chat); needs a signed-in browser)
 Model: Sonnet (a mount gate; no rendering logic changes).
 Spec: must-do 12, check 13, check 18
 Depends on: T11
@@ -361,7 +361,7 @@ Proof: `npm test -- .test-build/src/components/shell/ambientGate.test.js` FAILS 
 deploy exits 0; the browser check shows no canvas under the fleet view.
 
 ## T13: Throttle the floor canvas when nothing moves
-Status: TODO
+Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
 Model: Sonnet (a pure pacing rule plus one call in the loop).
 Spec: must-do 13 (frame rate), check 14, check 18
 Depends on: T12
