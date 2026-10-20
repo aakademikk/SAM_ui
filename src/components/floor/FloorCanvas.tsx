@@ -55,6 +55,7 @@ import { BUST_PATHS } from '@/lib/busts';
 import type { FloorState, GeneralId, ScheduledJob } from '@/types/floor';
 import { bustLevel, cardBustAlpha, currentFlare, recordFlares, workingK } from './busts';
 import type { FlareLog } from './busts';
+import { frameDue, isBusy, pollWindowUntil, stateHasLive } from './floorPacing';
 import { FIGURE_HIT_PX, hitFigure, pickAt } from './figureHit';
 import {
   ACC, BAD, CORE, DESKTOP_OPTIONS, EDGE, FONT, GEO, KEY_ITEMS, LAPTOP_OPTIONS, LAPTOP_QUERY, MIST, PHONE_FONT, PHONE_OPTIONS,
@@ -848,6 +849,12 @@ export default function FloorCanvas({
     /** The last drawn scene's figures (T13: the click and hover hit test) and the overlay's rounded key. */
     figures: [] as Figure[],
     figKey: '',
+    /** T13 pacing: when the loop last drew, and the time until which it draws every frame (poll, resize). */
+    lastDraw: 0,
+    busyUntil: 0,
+    /** The JSON of the last floor and schedule polls: only a poll that differs opens the full-rate window. */
+    floorKey: null as string | null,
+    schedKey: null as string | null,
   });
   const props = useRef({ onSelectGeneral, onSelectJob, onState, onDrawLayer, showCards, showSamLabel, showKey, variant, showRing, onSchedule, onRing });
   props.current = { onSelectGeneral, onSelectJob, onState, onDrawLayer, showCards, showSamLabel, showKey, variant, showRing, onSchedule, onRing };
@@ -918,7 +925,18 @@ export default function FloorCanvas({
   const startLoop = useCallback(() => {
     const s = st.current;
     if (s.raf || s.reduced) return;
-    const tick = (t: number) => { s.raf = requestAnimationFrame(tick); draw(t); };
+    // T13: keep requesting frames, but draw only when due (every frame while busy, else about 10 a second)
+    const tick = (t: number) => {
+      s.raf = requestAnimationFrame(tick);
+      const now = performance.now();
+      const busy = isBusy({
+        wall: Date.now(), perf: now, fx: s.fx, flares: s.flares, viewT0: s.view.t0, hover: s.hover != null,
+        live: stateHasLive(s.state), ringFires: s.ringFx.fires, busyUntil: s.busyUntil,
+      });
+      if (!frameDue(now, s.lastDraw, busy)) return;
+      s.lastDraw = now;
+      draw(t);
+    };
     s.raf = requestAnimationFrame(tick);
   }, [draw]);
   const stopLoop = useCallback(() => {
@@ -939,6 +957,7 @@ export default function FloorCanvas({
     cv.width = Math.max(1, Math.round(r.width * s.dpr));
     cv.height = Math.max(1, Math.round(r.height * s.dpr));
     s.cacheKey.v = '';
+    s.busyUntil = performance.now() + 250; // the resize cleared the canvas: redraw at once, and every frame for a moment
     s.layout = computeLayout(r.width, r.height, phone ? PHONE_OPTIONS : s.laptop ? LAPTOP_OPTIONS : DESKTOP_OPTIONS);
     if (s.reduced) drawOnce();
   }, [drawOnce]);
@@ -993,6 +1012,9 @@ export default function FloorCanvas({
             s.flares = recordFlares(s.flares, next.dispatchFlares, wall, s.state === null);
             s.fx = diffFloor(s.state, next, wall, s.fx);
             s.state = next;
+            const key = JSON.stringify(next);
+            s.busyUntil = pollWindowUntil(s.floorKey, key, performance.now(), s.busyUntil); // changed state only
+            s.floorKey = key;
             props.current.onState?.(next);
             if (s.reduced) drawOnce();
           }
@@ -1004,6 +1026,7 @@ export default function FloorCanvas({
     };
     st.current.fx = emptyFx();
     st.current.state = null;
+    st.current.floorKey = null;
     st.current.flares = {};
     void poll();
     return () => { stopped = true; if (timer) clearTimeout(timer); ctl?.abort(); };
@@ -1023,6 +1046,9 @@ export default function FloorCanvas({
             const s = st.current, next = json.data as ScheduledJob[];
             s.ringFx = diffSchedule(s.jobs, next, Date.now(), s.ringFx);
             s.jobs = next;
+            const key = JSON.stringify(next);
+            s.busyUntil = pollWindowUntil(s.schedKey, key, performance.now(), s.busyUntil); // the ring's ticks glide to new angles
+            s.schedKey = key;
             props.current.onSchedule?.(next);
             if (s.reduced) drawOnce();
           }
@@ -1033,6 +1059,7 @@ export default function FloorCanvas({
       if (!stopped) timer = setTimeout(poll, pollMs);
     };
     st.current.jobs = null;
+    st.current.schedKey = null;
     st.current.ringFx = emptyRingFx();
     st.current.ringAngles = {};
     if (showRing) void poll();
