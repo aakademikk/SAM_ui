@@ -311,7 +311,7 @@ Proof: `npm test -- .test-build/src/lib/server/chat/autoHandoff.test.js` FAILS b
 deploy exits 0.
 
 ## T11: Atomic, mtime-checked writes to Active Priorities and Named Operations
-Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
+Status: DONE 2026-10-20 (vaultWrite.test.js 2 pass/3 fail on today's code (appended line lost in all three), 5 pass/0 fail after; full npm test 837 pass/0 fail; tsc, eslint clean; commits 53c7f4c + 8f78e08 (first deploy stopped at the phone-fit lint gate on 'any' in the test; foreman typed the seam), deployed 8f78e08, rc 0, health 8f78e08)
 Model: Sonnet (a small helper and three call sites; the test pins the race).
 Spec: must-do 11, check 12, check 18
 Depends on: T10
@@ -336,7 +336,7 @@ Do not touch: closer_vault.py, the vault real-path gate (C-17), the parsing of e
 Proof: `npm test -- .test-build/src/lib/server/vaultWrite.test.js` FAILS before and passes after; full `npm test` passes; deploy exits 0.
 
 ## T12: Unmount the background animation under a fleet view
-Status: TODO
+Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
 Model: Sonnet (a mount gate; no rendering logic changes).
 Spec: must-do 12, check 13, check 18
 Depends on: T11
