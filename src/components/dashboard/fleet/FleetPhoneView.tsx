@@ -40,6 +40,7 @@ import type { ReactNode } from 'react';
 import { TopBar } from '@/components/dashboard/TopBar';
 import FloorCanvas from '@/components/floor/FloorCanvas';
 import type { Box } from '@/components/floor/ringRender';
+import { registerFleetView } from '@/components/shell/ambientGate';
 import { useDashboardStore } from '@/store/dashboardStore';
 import type { FloorState, FloorWorker, GeneralId, ScheduledJob } from '@/types/floor';
 
@@ -184,6 +185,9 @@ export default function FleetPhoneView({ demo: demoProp = false, chatSlot, chatW
     startPolling();
     return () => stopPolling();
   }, [bootstrap, startPolling, stopPolling]);
+
+  /* the shell unmounts the ambient background while this view is up (audit D-01) */
+  useEffect(() => registerFleetView(), []);
 
   /* a "Hey Sam" brings the chat on screen: the widget mounts in the sheet and picks up the wake */
   useEffect(() => {

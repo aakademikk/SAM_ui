@@ -20,6 +20,7 @@ import { ScreeningToggle } from './ScreeningToggle';
 import { BootSequence } from './BootSequence';
 import { SignedOutOverlay } from './SignedOutOverlay';
 import { PreferencesApplier } from './PreferencesApplier';
+import { AmbientBackgroundGate } from './ambientGate';
 import { useDevDuplicateCheck } from './useDevDuplicateCheck';
 import { SamBackground } from '@/components/visualiser/SamBackground';
 import { readSidebarCollapsed, writeSidebarCollapsed } from '@/lib/sidebarCollapse';
@@ -58,7 +59,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <BootSequence once visualiser="vault" onDone={() => setBooting(false)} />
 
       {/* Ambient visualiser — behind every tab */}
-      {!booting && <SamBackground />}
+      <AmbientBackgroundGate booting={booting}>
+        <SamBackground />
+      </AmbientBackgroundGate>
 
       {/* Global auth gate — renders null unless this device's session has
           been revoked (ux-fixes-spec.md §6, open question 1). Mounted once
