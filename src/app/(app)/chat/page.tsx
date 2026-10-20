@@ -40,10 +40,10 @@ import { closeKind, cutOffNotice, type CloseStatus } from '@/lib/chatClose';
 import { enterSends, isTouchKeyboard } from '@/lib/composerEnter';
 import { ApiError } from '@/lib/dashboardService';
 import { authService } from '@/lib/authService';
-import { startAgentTurn, StepUpRequiredError } from '@/lib/chatAgentService';
+import { isAutoHandoffStart, startAgentTurn, StepUpRequiredError } from '@/lib/chatAgentService';
 import { AgentStreamParser, type AgentPhase } from '@/lib/agentStream';
 import { computeCost, formatCost, formatTokens } from '@/lib/costing';
-import { formatContextK, showContextBanner } from '@/lib/contextCeiling';
+import { CONTEXT_HANDOFF_TOKENS, formatContextK, showContextBanner } from '@/lib/contextCeiling';
 import {
   spokenText,
   type ChatAccount,
@@ -355,6 +355,26 @@ function ChatPageInner() {
       error) — distinct from chatInfo.handoffError, which the server sets on
       the chat record when the memo turn ran but produced no file. */
   const [handoffCallError, setHandoffCallError] = useState<string | null>(null);
+  /** T10 (audit B-01/B-03): the chat whose handoff started by itself because
+      its context passed 400k, set alongside `handoffWaitingFor` (the same
+      waiting state the picker's handoff uses). Only changes the wording
+      shown while it runs. */
+  const [autoHandoffFor, setAutoHandoffFor] = useState<string | null>(null);
+  /** The message that automatic handoff is carrying. The server holds the
+      real copy for the new chat; this one goes back in the composer if the
+      handoff fails, so nothing Colin typed is lost. */
+  const autoHandoffDraftRef = useRef<{ chatId: string; message: string; files: StagedFile[] } | null>(null);
+  /** The one way a handoff starts being followed, from the picker or by
+      itself at 400k (T10): close the picker, drop this tab's copy of the
+      PREVIOUS attempt's handoff fields (review finding 6; the server clears
+      its copy the same way), and wait on `id`. The waiting effect below then
+      opens `handedOffTo` once it lands, or stops on `handoffError`. */
+  const beginHandoffWait = useCallback((id: string) => {
+    setHandoffPickerOpen(false);
+    setChatInfo((prev) => (prev ? clearedHandoffFields(prev) : prev));
+    if (chatInfoRef.current) chatInfoRef.current = clearedHandoffFields(chatInfoRef.current);
+    setHandoffWaitingFor(id);
+  }, []);
   /** Opened by the Android wake word rather than by tapping the icon. */
   const [wokenByVoice, setWokenByVoice] = useState(false);
   /**
@@ -1033,6 +1053,8 @@ function ChatPageInner() {
     chatInfoRef.current = null;
     setHandoffPickerOpen(false);
     setHandoffWaitingFor(null);
+    setAutoHandoffFor(null);
+    autoHandoffDraftRef.current = null;
     setHandoffBusy(false);
     setHandoffCallError(null);
 
@@ -1116,9 +1138,31 @@ function ChatPageInner() {
     if (chatInfo?.handedOffTo) {
       const target = chatInfo.handedOffTo;
       setHandoffWaitingFor(null);
+      // T10: an automatic handoff's message is in the new chat's first turn.
+      setAutoHandoffFor(null);
+      autoHandoffDraftRef.current = null;
       void openChatById(target);
     } else if (chatInfo?.handoffError) {
       setHandoffWaitingFor(null);
+      // T10: an automatic handoff that failed never sent Colin's message
+      // anywhere, so it goes back in the composer (ahead of anything typed
+      // since), with its files re-staged.
+      const draft = autoHandoffDraftRef.current;
+      if (draft && draft.chatId === handoffWaitingFor) {
+        if (draft.message) {
+          setInput((prev) => (prev.trim() ? `${draft.message}\n\n${prev}` : draft.message));
+        }
+        if (draft.files.length > 0) {
+          const next = [...draft.files, ...stagedRef.current.filter((f) => !draft.files.some((d) => d.path === f.path))];
+          stagedRef.current = next;
+          setStaged(next);
+        }
+        setError(
+          `The automatic handoff failed, so your message was not sent. It is back in the box. (${chatInfo.handoffError})`,
+        );
+      }
+      setAutoHandoffFor(null);
+      autoHandoffDraftRef.current = null;
     }
   }, [handoffWaitingFor, currentId, chatInfo, openChatById]);
 
@@ -1318,6 +1362,15 @@ function ChatPageInner() {
     const files = stagedRef.current;
     if (!message && files.length === 0) return;
 
+    // A chat whose handoff is in progress (from the picker, or by itself at
+    // 400k, T10) takes no new turn: it would hit the memo turn's lock, or,
+    // in the gap before the new chat opens, run on the old chat. Refused here
+    // with the text left in the composer; the running case is handled below.
+    if (!running && handoffWaitingFor !== null && handoffWaitingFor === currentIdRef.current) {
+      setError(blockedSendError({ handoffWaiting: true }));
+      return;
+    }
+
     if (running) {
       // The same tier source the send box and hands-free use (sideRouteTier),
       // read from the refs, not a render-time closure — this callback can be
@@ -1402,6 +1455,7 @@ function ChatPageInner() {
     try {
       const stamp = Date.now();
       const assistantId = `a_${stamp}`;
+      const userId = `u_${stamp}`;
 
       // The transcript has to read sensibly for a files-only turn, so the
       // bubble falls back to naming what was sent.
@@ -1427,7 +1481,7 @@ function ChatPageInner() {
 
       setMessages((prev) => [
         ...prev,
-        { id: `u_${stamp}`, role: 'user', blocks: [{ kind: 'text', text: shown }], done: true },
+        { id: userId, role: 'user', blocks: [{ kind: 'text', text: shown }], done: true },
         { id: assistantId, role: 'assistant', blocks: [], done: false, tier: sendTier },
       ]);
       // The files are already on disk, so clearing the composer now costs a
@@ -1453,6 +1507,8 @@ function ChatPageInner() {
           tier: sendTier,
           chatId,
           attachments: files.map((f) => ({ path: f.path, name: f.name })),
+          // T10: this page follows a handoff the server starts by itself.
+          autoHandoff: true,
         });
 
         // Colin may have switched away from the chat/draft this send began
@@ -1461,6 +1517,26 @@ function ChatPageInner() {
         // it, speak over whatever is now on screen, or steal its running
         // state (T17).
         const stillOnThisChat = currentIdRef.current === startedFrom;
+
+        if (isAutoHandoffStart(started)) {
+          // T10 (audit B-01/B-03): the chat's context had passed 400k, so
+          // nothing ran here. The server started the handoff and holds this
+          // message (and its files) for the new chat's first turn. The memo
+          // job is SAM writing the memo, not the reply: it is never saved as
+          // this chat's active run, attached or streamed. The bubble pair is
+          // taken back off (the message belongs to the new chat now), and
+          // the chat is followed exactly like a handoff from the picker.
+          if (stillOnThisChat) {
+            setMessages((prev) => prev.filter((m) => m.id !== userId && m.id !== assistantId));
+            setRunning(false);
+            setPhase('done');
+            autoHandoffDraftRef.current = { chatId: startedFrom, message, files };
+            setAutoHandoffFor(startedFrom);
+            beginHandoffWait(startedFrom);
+          }
+          refreshChats();
+          return;
+        }
 
         if (stillOnThisChat) {
           // A draft's first send only now learns its id — switch the screen
@@ -1529,7 +1605,7 @@ function ChatPageInner() {
     } finally {
       sendLockRef.current = false;
     }
-  }, [running, tier, handoffWaitingFor, attachToRun, muted, speak, speakAck, setStagedBoth, refreshChats]);
+  }, [running, tier, handoffWaitingFor, attachToRun, muted, speak, speakAck, setStagedBoth, refreshChats, beginHandoffWait]);
 
   /* ── Hands-free loop wiring ──────────────────────────────────────────── */
 
@@ -1739,6 +1815,8 @@ function ChatPageInner() {
     chatInfoRef.current = null;
     setHandoffPickerOpen(false);
     setHandoffWaitingFor(null);
+    setAutoHandoffFor(null);
+    autoHandoffDraftRef.current = null;
     setHandoffBusy(false);
     setHandoffCallError(null);
 
@@ -1761,15 +1839,11 @@ function ChatPageInner() {
       await handoffChat(id, pickedTier);
       // The memo turn is now running in the old chat; the effect above
       // follows it via the next chatInfo refresh (openChatById's own poll,
-      // or the 5s list poll) and opens handedOffTo once it lands. Clear this
-      // tab's own copy of the PREVIOUS attempt's handoff fields the moment
-      // that effect starts watching — otherwise it reads the old
-      // handoffError/handedOffTo and acts on them as this attempt's result
-      // (review finding 6; the server clears its copy the same way).
-      setHandoffPickerOpen(false);
-      setChatInfo((prev) => (prev ? clearedHandoffFields(prev) : prev));
-      if (chatInfoRef.current) chatInfoRef.current = clearedHandoffFields(chatInfoRef.current);
-      setHandoffWaitingFor(id);
+      // or the 5s list poll) and opens handedOffTo once it lands.
+      // beginHandoffWait also clears this tab's copy of the PREVIOUS
+      // attempt's handoff fields (review finding 6). The automatic handoff
+      // at 400k (T10) goes through the same call.
+      beginHandoffWait(id);
     } catch (err) {
       setHandoffCallError(
         err instanceof StepUpRequiredError
@@ -2060,7 +2134,11 @@ function ChatPageInner() {
         </button>
 
         {handoffWaitingFor === currentId && (
-          <span className="text-[12px] text-dim-400 italic">Writing handoff memo…</span>
+          <span className="text-[12px] text-dim-400 italic">
+            {autoHandoffFor === currentId
+              ? `Context passed ${formatContextK(CONTEXT_HANDOFF_TOKENS)}, handing off…`
+              : 'Writing handoff memo…'}
+          </span>
         )}
 
         {chatInfo?.handoffError && handoffWaitingFor === null && (
@@ -2332,10 +2410,22 @@ function ChatPageInner() {
         className="chat-composer shrink-0 border-t border-void-700 bg-void-900/80 backdrop-blur-md
                    px-3 py-2.5 md:px-6 md:py-3 space-y-2"
       >
+        {/* T10: the handoff that started by itself at 400k, while it runs.
+            Replaces the 200k banner below (its button is disabled meanwhile). */}
+        {currentId !== 'draft' && autoHandoffFor === currentId && handoffWaitingFor === currentId && (
+          <div
+            role="status"
+            className="max-w-3xl mx-auto px-3 py-1.5 rounded-lg border border-amber-700/40 bg-amber-900/20"
+          >
+            <p className="text-[12px] leading-snug text-amber-300 break-words">
+              Context passed {formatContextK(CONTEXT_HANDOFF_TOKENS)}, handing off. Your message goes to the new chat.
+            </p>
+          </div>
+        )}
         {/* T9 (audit B-01/B-03): the chat's context passed 200k. One row that
             wraps rather than scrolls: the text takes the free width (min-w-0)
             and the button never shrinks, so it fits a 390 px screen. */}
-        {currentId !== 'draft' && chatInfo && showContextBanner(chatInfo) && (
+        {currentId !== 'draft' && chatInfo && showContextBanner(chatInfo) && autoHandoffFor !== currentId && (
           <div
             role="status"
             className="max-w-3xl mx-auto flex items-center gap-2 px-3 py-1.5 rounded-lg

@@ -14,8 +14,18 @@
  * The route is auth, then parse, then `startTurn` (src/lib/server/chat/
  * startTurn.ts, which holds every turn rule: chats, tiers, locks, spawn), then
  * the audit line and the envelope.
+ *
+ * T10 (audit B-01/B-03): a body with `autoHandoff: true` (the chat page's
+ * own sends) lets `startTurn` hand a Max or Max 2 chat at 400k context off
+ * instead of running the message. The envelope then carries
+ * `{ autoHandoff: true, memoJobId, chatId, tier }` and no `jobId`, so it can
+ * never be streamed as if it were the reply. The step-up check above covers
+ * this path too: it runs before anything else.
  */
 
+// Loaded for its side effect too: handoff.ts registers the auto-handoff
+// hooks startTurn's turn-start check calls (see `setAutoHandoff`).
+import '@/lib/server/chat/handoff';
 import { startTurn } from '@/lib/server/chat/startTurn';
 import { envelope, failure, readJson } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
@@ -59,19 +69,31 @@ export async function POST(request: Request) {
     tier,
     chatId: rawChatId,
     device: stepUp.device,
+    // Only a client that can follow a handoff asks for one (the dashboard
+    // widget does not; spec Won't do).
+    autoHandoff: body.autoHandoff === true,
   });
   if (!result.ok) return failure(result.error, result.status);
 
   const fileCount = `${result.attachmentCount} file${result.attachmentCount === 1 ? '' : 's'}`;
   await logCommand({
     jobId: result.jobId,
-    command: `[chat:${result.tier}] ${message.slice(0, 200)}${
+    command: `[chat:${result.tier}${result.autoHandoff ? ' auto-handoff' : ''}] ${message.slice(0, 200)}${
       result.attachmentCount ? ` (+${fileCount})` : ''
     }`,
     device: stepUp.device,
     credentialId: stepUp.sub.slice(0, 12),
     timestamp: new Date().toISOString(),
   });
+
+  if (result.autoHandoff) {
+    return envelope(
+      { autoHandoff: true, memoJobId: result.memoJobId, chatId: result.chatId, tier: result.tierInfo },
+      'sam.chat.agent',
+      startedAt,
+      estate.tick,
+    );
+  }
 
   return envelope(
     { jobId: result.jobId, chatId: result.chatId, tier: result.tierInfo },

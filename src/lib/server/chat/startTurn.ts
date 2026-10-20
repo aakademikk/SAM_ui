@@ -27,7 +27,7 @@ import { randomUUID } from 'node:crypto';
 
 import { claudeBin } from '@/lib/server/claudeBin';
 import { getJobManager, readFrames } from '@/lib/server/jobs/manager';
-import { contextOf, lastCallUsage } from '@/lib/contextCeiling';
+import { CONTEXT_HANDOFF_TOKENS, contextOf, lastCallUsage } from '@/lib/contextCeiling';
 import { reportChatRun } from '@/lib/server/fleet/costLedger';
 import { MAX_ATTACHMENTS, attachmentBlock, resolveAttachment } from '@/lib/server/uploads';
 import type { ChatRecord, TierId, TierInfo } from '@/types/chat';
@@ -230,6 +230,23 @@ export interface StartTurnInput {
   /** A server-started turn (T18's handoff memo), passed to exit hooks. */
   internal?: boolean;
   /**
+   * T10 (audit B-01/B-03): the caller can follow an automatic handoff, so an
+   * existing Max or Max 2 chat whose stored context has reached
+   * `CONTEXT_HANDOFF_TOKENS` hands off instead of running this message (see
+   * `autoHandoffWanted`). Only the chat page sets it (through the agent
+   * route); every other caller (the dashboard widget, handoff.ts's own
+   * turns) leaves it off and always gets a normal turn (spec Won't do).
+   */
+  autoHandoff?: boolean;
+  /**
+   * Server-written text put in front of `message` in the prompt, AFTER the
+   * length check, the same way the attachment block goes after it. T10's
+   * handoff child uses it for the memo pointer, so a carried message that was
+   * already at the cap in the old chat still fits in the new one. Never
+   * client-supplied (the route does not pass it).
+   */
+  preamble?: string;
+  /**
    * The name a NEW chat is created with. Absent → the first message, cut
    * short. Ignored for a resume, which keeps the name it already has. T18's
    * handoff passes the parent's name plus " (handoff)", so the child is
@@ -242,6 +259,8 @@ export interface StartTurnInput {
 export type StartTurnResult =
   | {
       ok: true;
+      /** Absent on a normal turn; see the variant below. */
+      autoHandoff?: undefined;
       jobId: string;
       chatId: string;
       /** The tier the turn runs on. */
@@ -252,10 +271,92 @@ export type StartTurnResult =
       /** True when this turn created the chat. */
       created: boolean;
     }
+  | {
+      /**
+       * T10: the message did NOT run. The chat's context had reached
+       * `CONTEXT_HANDOFF_TOKENS`, so a handoff started instead: `memoJobId`
+       * is its memo turn in this chat, and the message (with its
+       * attachments) waits in the pending handoff for the new chat's first
+       * turn. Only returned to a caller that passed `autoHandoff: true`.
+       */
+      ok: true;
+      autoHandoff: true;
+      memoJobId: string;
+      /** The memo job again, so code that only logs a job id still has one.
+       *  Never stream it as the reply: it is SAM writing the memo. */
+      jobId: string;
+      chatId: string;
+      tier: TierId;
+      tierInfo: TierInfo;
+      attachmentCount: number;
+      created: false;
+    }
   | { ok: false; status: number; error: string };
 
 function fail(status: number, error: string): StartTurnResult {
   return { ok: false, status, error };
+}
+
+/* ========================================================================== */
+/* Automatic handoff at 400k (T10, audit B-01/B-03)                           */
+/* ========================================================================== */
+
+/** What a carried message looks like by the time it reaches the handoff:
+ *  Colin's trimmed text and his attachments, already validated. */
+export interface CarriedMessage {
+  message: string;
+  attachments: { path: string; name: string }[];
+}
+
+/**
+ * The two pieces of handoff.ts the turn-start check needs. Registered by
+ * handoff.ts when it loads (`setAutoHandoff`) rather than imported here:
+ * handoff.ts imports this module and pushes its exit hook at load time, so a
+ * static import back would be a cycle in which that push hits a half-loaded
+ * module (the same trap sideMessage.ts documents). Whatever can start a turn
+ * that opts in (the agent route) imports handoff.ts, so this is in place
+ * before such a turn arrives.
+ */
+export interface AutoHandoffHooks {
+  isPending(chatId: string): boolean;
+  start(
+    chatId: string,
+    tier: TierId,
+    device: string,
+    carried: CarriedMessage,
+  ): Promise<{ ok: true; memoJobId: string } | { ok: false; status: number; error: string }>;
+}
+
+let autoHandoffHooks: AutoHandoffHooks | null = null;
+
+/** Sets the hooks and returns the previous ones (a test swaps in a failing
+ *  starter and puts the real one back). */
+export function setAutoHandoff(hooks: AutoHandoffHooks | null): AutoHandoffHooks | null {
+  const previous = autoHandoffHooks;
+  autoHandoffHooks = hooks;
+  return previous;
+}
+
+/**
+ * Whether this turn should become a handoff instead (spec must-do 10): the
+ * caller opted in, it is not a server-started turn, it resumes an existing
+ * chat running on a Max seat (an `unknown` chat counts as the seat it runs
+ * on, as T9's hook does), that chat's stored context is at or past 400k, and
+ * it has not already been handed off and has no handoff in progress. Whether
+ * a turn is running is left to `startHandoff`, which refuses a locked chat.
+ */
+function autoHandoffWanted(input: StartTurnInput, existing: ChatRecord, tier: TierId): boolean {
+  if (input.autoHandoff !== true || input.internal === true) return false;
+  if (tier !== 'max' && tier !== 'max2') return false;
+  if (typeof existing.contextTokens !== 'number' || existing.contextTokens < CONTEXT_HANDOFF_TOKENS) {
+    return false;
+  }
+  if (existing.handedOffTo) return false;
+  if (!autoHandoffHooks) {
+    console.error('[chat] auto handoff wanted but handoff.ts is not loaded; running a normal turn.');
+    return false;
+  }
+  return !autoHandoffHooks.isPending(existing.id);
 }
 
 export async function startTurn(input: StartTurnInput): Promise<StartTurnResult> {
@@ -290,7 +391,7 @@ export async function startTurn(input: StartTurnInput): Promise<StartTurnResult>
   // The paths ride with the message because that is the one channel the CLI
   // already understands. Appended after the length check, so a long attachment
   // list can never push Colin's own text over the cap.
-  const prompt = message + attachmentBlock(attachments);
+  const prompt = (input.preamble ?? '') + message + attachmentBlock(attachments);
 
   // The job label is display-only, so it names the files rather than carrying
   // their paths — and an attachment-only turn still gets a label instead of a
@@ -353,6 +454,46 @@ export async function startTurn(input: StartTurnInput): Promise<StartTurnResult>
     }
   }
 
+  /* ---- Automatic handoff at 400k (T10) ----------------------------------- */
+
+  // At the START of the turn, before the lock: a running turn is never
+  // touched (startHandoff refuses a locked chat), and this message never runs
+  // on the old chat. It rides in the pending handoff into the new chat's
+  // first turn instead (spec derived decisions).
+  //
+  // If the handoff cannot start, the message falls through to the normal
+  // turn below rather than being dropped: in practice the only refusals are
+  // a turn already running or a spawn failure, where the normal path gives
+  // today's own answer (409 naming the device, or the spawn error), and in
+  // any other case Colin's message is at least answered on the old chat.
+  // The next send tries the handoff again, since the size is still stored.
+  if (existing && autoHandoffWanted(input, existing, tier) && autoHandoffHooks) {
+    try {
+      const handoff = await autoHandoffHooks.start(existing.id, tier, input.device, {
+        message,
+        attachments,
+      });
+      if (handoff.ok) {
+        return {
+          ok: true,
+          autoHandoff: true,
+          memoJobId: handoff.memoJobId,
+          jobId: handoff.memoJobId,
+          chatId: existing.id,
+          tier,
+          tierInfo: tierInfo(tier),
+          attachmentCount: attachments.length,
+          created: false,
+        };
+      }
+      console.warn(
+        `[chat] auto handoff for ${existing.id} refused (${handoff.status} ${handoff.error}); running a normal turn.`,
+      );
+    } catch (err) {
+      console.error(`[chat] auto handoff for ${existing.id} failed; running a normal turn:`, err);
+    }
+  }
+
   // Max/Max2 streams the prompt in on stdin instead of argv (spec must-do 9:
   // measured faster to first text than today's argv + closed-stdin path, see
   // the spec's constraints). Every other tier keeps today's args and stdio
@@ -397,7 +538,7 @@ export async function startTurn(input: StartTurnInput): Promise<StartTurnResult>
       id: chatId,
       tier,
       account: tier === 'max2' ? 'max2' : 'main',
-      firstMessage: message,
+      firstMessage: (input.preamble ?? '') + message,
       title: input.title ?? fallbackTitle(message),
       titleSource: 'fallback',
     });

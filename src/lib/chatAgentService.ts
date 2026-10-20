@@ -15,14 +15,29 @@ export interface StartTurnResult {
   tier: TierInfo;
 }
 
-export class StepUpRequiredError extends Error {
-  constructor() {
-    super('Biometric unlock required.');
-    this.name = 'StepUpRequiredError';
-  }
+/**
+ * T10 (audit B-01/B-03): the chat's context had reached 400k, so the server
+ * started a handoff instead of running the message. There is deliberately no
+ * `jobId`: `memoJobId` is SAM writing the handoff memo, not the reply, and
+ * must not be streamed into the chat as one. The message waits on the server
+ * for the new chat's first turn; follow the chat's `handedOffTo` exactly as
+ * after a manual handoff.
+ */
+export interface AutoHandoffStart {
+  autoHandoff: true;
+  memoJobId: string;
+  /** The OLD chat, the one being handed off. */
+  chatId: string;
+  tier: TierInfo;
 }
 
-export async function startAgentTurn(params: {
+export function isAutoHandoffStart(
+  started: StartTurnResult | AutoHandoffStart,
+): started is AutoHandoffStart {
+  return (started as AutoHandoffStart).autoHandoff === true;
+}
+
+interface StartAgentTurnParams {
   message: string;
   tier: TierId;
   /** The chat to continue; omit to start a new chat. */
@@ -34,7 +49,29 @@ export async function startAgentTurn(params: {
    */
   attachments?: { path: string; name: string }[];
   signal?: AbortSignal;
-}): Promise<StartTurnResult> {
+  /**
+   * T10: set only by a caller that follows an automatic handoff (the chat
+   * page). Without it a turn always runs normally, whatever the context size.
+   */
+  autoHandoff?: boolean;
+}
+
+export class StepUpRequiredError extends Error {
+  constructor() {
+    super('Biometric unlock required.');
+    this.name = 'StepUpRequiredError';
+  }
+}
+
+export async function startAgentTurn(
+  params: StartAgentTurnParams & { autoHandoff: true },
+): Promise<StartTurnResult | AutoHandoffStart>;
+export async function startAgentTurn(
+  params: StartAgentTurnParams & { autoHandoff?: false },
+): Promise<StartTurnResult>;
+export async function startAgentTurn(
+  params: StartAgentTurnParams,
+): Promise<StartTurnResult | AutoHandoffStart> {
   const response = await fetch('/api/chat/agent', {
     method: 'POST',
     credentials: 'include',
@@ -46,6 +83,7 @@ export async function startAgentTurn(params: {
       tier: params.tier,
       chatId: params.chatId,
       attachments: params.attachments,
+      ...(params.autoHandoff ? { autoHandoff: true } : {}),
     }),
   });
 
@@ -58,6 +96,6 @@ export async function startAgentTurn(params: {
     throw new Error(body.error ?? `Request failed (${response.status})`);
   }
 
-  const json = (await response.json()) as { data: StartTurnResult };
+  const json = (await response.json()) as { data: StartTurnResult | AutoHandoffStart };
   return json.data;
 }

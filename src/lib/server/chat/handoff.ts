@@ -24,6 +24,15 @@
  * for the same reason the chat store's cache does: every route handler must
  * see one copy.
  *
+ * T10 (audit B-01/B-03): `startTurn` also starts a handoff by itself, at the
+ * start of a turn on a Max or Max 2 chat whose stored context has reached
+ * 400k (`setAutoHandoff` below hands it `startHandoff`). That message never
+ * runs on the old chat: it is carried in the pending handoff (`carried`) and
+ * appended to the new chat's first prompt, attachments passed through. Like
+ * the rest of the pending state it lives in memory only, so a server restart
+ * while the memo turn runs loses it, exactly as it loses a manual handoff's
+ * second half (the memo turn's exit hook never fires in the new process).
+ *
  * Nothing here writes to the vault itself — the memo is SAM's to write — and
  * nothing goes near `02 - Atwood Systems/` or the folder's index note.
  */
@@ -36,7 +45,13 @@ import type { TierId } from '@/types/chat';
 
 import { clearHandoffState, getChat, markHandedOff, setHandoffError } from './chatStore';
 import { isSessionLocked } from './sessionLock';
-import { onTurnExit, startTurn, type TurnExitEvent } from './startTurn';
+import {
+  onTurnExit,
+  setAutoHandoff,
+  startTurn,
+  type CarriedMessage,
+  type TurnExitEvent,
+} from './startTurn';
 
 interface PendingHandoff {
   /** The tier the new chat starts on. */
@@ -45,6 +60,9 @@ interface PendingHandoff {
   memoPath: string;
   /** The device that pressed Handoff; the new chat's turn runs as it. */
   device: string;
+  /** T10: the message (and its validated attachments) Colin sent when the
+   *  handoff started by itself at 400k. Absent for a manual handoff. */
+  carried?: CarriedMessage;
 }
 
 const globalForSam = globalThis as unknown as {
@@ -60,6 +78,13 @@ function pendingHandoffs(): Map<string, PendingHandoff> {
  *  (or the handoff has failed). */
 export function isHandoffPending(chatId: string): boolean {
   return pendingHandoffs().has(chatId);
+}
+
+/** T10: the message an automatic handoff is carrying into the new chat, or
+ *  undefined (no handoff pending, or a manual one). */
+export function pendingCarried(chatId: string): CarriedMessage | undefined {
+  const carried = pendingHandoffs().get(chatId)?.carried;
+  return carried ? { message: carried.message, attachments: [...carried.attachments] } : undefined;
 }
 
 /* ========================================================================== */
@@ -142,12 +167,14 @@ export type StartHandoffResult =
 /**
  * Starts a handoff from `chatId` to a new chat on `tier`. Returns as soon as
  * the memo turn is running; the client follows that turn (`memoJobId`), then
- * opens the old chat's `handedOffTo` once it is set.
+ * opens the old chat's `handedOffTo` once it is set. `carried` is T10's: the
+ * message that triggered an automatic handoff, for the new chat's first turn.
  */
 export async function startHandoff(
   chatId: string,
   tier: TierId,
   device: string,
+  carried?: CarriedMessage,
 ): Promise<StartHandoffResult> {
   const chat = getChat(chatId);
   if (!chat) return { ok: false, status: 404, error: 'Chat not found.' };
@@ -171,7 +198,7 @@ export async function startHandoff(
   // second press is refused even before the lock is taken.
   const memoPath = memoPathFor(chat.title);
   const pending = pendingHandoffs();
-  pending.set(chatId, { tier, memoPath, device });
+  pending.set(chatId, { tier, memoPath, device, ...(carried ? { carried } : {}) });
 
   let result: Awaited<ReturnType<typeof startTurn>>;
   try {
@@ -214,8 +241,24 @@ async function continueHandoff(event: TurnExitEvent): Promise<void> {
       return;
     }
 
+    const pointer = `Continue from the handoff memo at ${handoff.memoPath}. Read it first.`;
+    const carried = handoff.carried;
     const next = await startTurn({
-      message: `Continue from the handoff memo at ${handoff.memoPath}. Read it first.`,
+      // T10: an automatic handoff's message goes after the pointer, with its
+      // attachments passed through (startTurn re-validates them). The pointer
+      // rides as the preamble, which is added after the length check, so a
+      // message that fitted the old chat fits here too.
+      ...(carried
+        ? {
+            preamble: `${pointer}\n\n${
+              carried.message
+                ? "Colin's message, sent just before the handoff: "
+                : 'Colin sent these files just before the handoff, with no message.'
+            }`,
+            message: carried.message,
+            attachments: carried.attachments,
+          }
+        : { message: pointer }),
       tier: handoff.tier,
       device: handoff.device,
       // Named after the chat it came from: `event.chat` is the parent's
@@ -239,3 +282,10 @@ async function continueHandoff(event: TurnExitEvent): Promise<void> {
 // starts — loads this module, so the hook is always in place before a memo
 // turn can exit.
 onTurnExit.push(continueHandoff);
+
+// T10: the turn-start check in startTurn.ts reaches the handoff through
+// these, registered here for the same load-order reason as the hook above.
+setAutoHandoff({
+  isPending: isHandoffPending,
+  start: (chatId, tier, device, carried) => startHandoff(chatId, tier, device, carried),
+});
