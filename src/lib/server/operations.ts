@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { atwoodDir } from '@/lib/server/livePaths';
+import { editVaultFile } from '@/lib/server/vaultWrite';
 import type {
   Operation,
   OperationRun,
@@ -261,8 +262,7 @@ export function setOperationVariables(
   opId: string,
   variables: OperationVariable[],
 ): boolean {
-  try {
-    const text = fs.readFileSync(operationsPath(), 'utf-8');
+  const wrote = editVaultFile(operationsPath(), (text) => {
     const lines = text.split('\n');
 
     const runLogStart = lines.findIndex((l) => /^##\s+Run log\s*$/i.test(l));
@@ -278,7 +278,7 @@ export function setOperationVariables(
         break;
       }
     }
-    if (headingAt === -1) return false;
+    if (headingAt === -1) return null;
 
     const block = ['**Variables:**', ...variables.map((v) => `- ${v.key} = ${v.value}`)];
 
@@ -306,12 +306,10 @@ export function setOperationVariables(
       lines.splice(varsStart, varsEnd - varsStart, ...block);
     }
 
-    fs.writeFileSync(operationsPath(), lines.join('\n'), 'utf-8');
-    invalidateOperationsCache();
-    return true;
-  } catch {
-    return false;
-  }
+    return lines.join('\n');
+  });
+  if (wrote) invalidateOperationsCache();
+  return wrote;
 }
 
 /**
@@ -320,12 +318,11 @@ export function setOperationVariables(
  * guessed at — the dispatch itself already succeeded by this point.
  */
 export function recordRun(op: Operation, entry: string): void {
-  try {
-    const text = fs.readFileSync(operationsPath(), 'utf-8');
+  const wrote = editVaultFile(operationsPath(), (text) => {
     const lines = text.split('\n');
 
     const runLogStart = lines.findIndex((l) => /^##\s+Run log\s*$/i.test(l));
-    if (runLogStart === -1) return;
+    if (runLogStart === -1) return null;
 
     // Find this operation's heading inside the run log.
     let headingAt = -1;
@@ -337,16 +334,15 @@ export function recordRun(op: Operation, entry: string): void {
         break;
       }
     }
-    if (headingAt === -1) return;
+    if (headingAt === -1) return null;
 
     // Insert after the heading's existing bullets, so runs read oldest-first.
     let insertAt = headingAt + 1;
     while (insertAt < lines.length && lines[insertAt].startsWith('- ')) insertAt++;
 
     lines.splice(insertAt, 0, `- ${entry}`);
-    fs.writeFileSync(operationsPath(), lines.join('\n'), 'utf-8');
-    invalidateOperationsCache();
-  } catch {
-    // Run-log write failures never fail the dispatch.
-  }
+    return lines.join('\n');
+  });
+  // Run-log write failures are logged by editVaultFile and never fail the dispatch.
+  if (wrote) invalidateOperationsCache();
 }

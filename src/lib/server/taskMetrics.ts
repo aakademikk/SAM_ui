@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 
 import { activePrioritiesPath } from '@/lib/server/livePaths';
+import { editVaultFile } from '@/lib/server/vaultWrite';
 import type { DailyTask, TaskPriority } from '@/types/dashboard';
 
 const CACHE_MS = 8_000;
@@ -100,8 +101,8 @@ export function invalidateTasksCache() {
  * flips for the response, and the next file read settles it.
  */
 export function setTaskDone(task: DailyTask, done: boolean): void {
-  try {
-    const text = fs.readFileSync(activePrioritiesPath(), 'utf-8');
+  // Failures are logged by editVaultFile; the API response still reflects the toggle.
+  editVaultFile(activePrioritiesPath(), (text) => {
     const lines = text.split('\n');
     let section: string | null = null;
 
@@ -118,10 +119,8 @@ export function setTaskDone(task: DailyTask, done: boolean): void {
       if (cleanTitle(match[4]) !== task.title) continue;
 
       lines[i] = `${match[1]}${done ? 'x' : ' '}${match[3]}${match[4]}`;
-      fs.writeFileSync(activePrioritiesPath(), lines.join('\n'), 'utf-8');
-      return;
+      return lines.join('\n');
     }
-  } catch {
-    // Vault write failures are swallowed — the API response still reflects the toggle.
-  }
+    return null;
+  });
 }
