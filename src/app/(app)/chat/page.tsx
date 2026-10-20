@@ -43,6 +43,7 @@ import { authService } from '@/lib/authService';
 import { startAgentTurn, StepUpRequiredError } from '@/lib/chatAgentService';
 import { AgentStreamParser, type AgentPhase } from '@/lib/agentStream';
 import { computeCost, formatCost, formatTokens } from '@/lib/costing';
+import { formatContextK, showContextBanner } from '@/lib/contextCeiling';
 import {
   spokenText,
   type ChatAccount,
@@ -194,6 +195,9 @@ interface ChatInfo {
   handedOffTo?: string;
   handedOffFrom?: string;
   handoffError?: string;
+  /** The context size of the chat's last Max/Max 2 turn (T9): drives the
+   *  "Hand off now" banner above the composer. */
+  contextTokens?: number;
 }
 
 /** The on-screen chat's own history, or [] for a draft or before the current
@@ -581,6 +585,7 @@ function ChatPageInner() {
           handedOffTo: match.handedOffTo,
           handedOffFrom: match.handedOffFrom,
           handoffError: match.handoffError,
+          contextTokens: match.contextTokens,
         };
         setChatInfo(info);
         chatInfoRef.current = info;
@@ -1051,6 +1056,7 @@ function ChatPageInner() {
         handedOffTo: result.chat.handedOffTo,
         handedOffFrom: result.chat.handedOffFrom,
         handoffError: result.chat.handoffError,
+        contextTokens: result.chat.contextTokens,
       };
       setChatInfo(info);
       chatInfoRef.current = info;
@@ -2326,6 +2332,34 @@ function ChatPageInner() {
         className="chat-composer shrink-0 border-t border-void-700 bg-void-900/80 backdrop-blur-md
                    px-3 py-2.5 md:px-6 md:py-3 space-y-2"
       >
+        {/* T9 (audit B-01/B-03): the chat's context passed 200k. One row that
+            wraps rather than scrolls: the text takes the free width (min-w-0)
+            and the button never shrinks, so it fits a 390 px screen. */}
+        {currentId !== 'draft' && chatInfo && showContextBanner(chatInfo) && (
+          <div
+            role="status"
+            className="max-w-3xl mx-auto flex items-center gap-2 px-3 py-1.5 rounded-lg
+                       border border-amber-700/40 bg-amber-900/20"
+          >
+            <p className="min-w-0 flex-1 text-[12px] leading-snug text-amber-300 break-words">
+              Context is {formatContextK(chatInfo.contextTokens ?? 0)} tokens.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setHandoffCallError(null);
+                setHandoffPickerOpen(true);
+              }}
+              disabled={running || handoffBusy || handoffWaitingFor !== null}
+              className="flex min-h-[36px] items-center gap-1 shrink-0 whitespace-nowrap px-2.5 rounded-md
+                         text-[12px] font-medium text-amber-200 bg-amber-700/30 border border-amber-700/50
+                         hover:bg-amber-700/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <ArrowRightLeft size={12} />
+              Hand off now
+            </button>
+          </div>
+        )}
         {handsFree && !handsFreeFailed && (
           <p className="text-center text-[12px] tracking-wide text-accent">
             Hands-free — speak, or tap to stop.

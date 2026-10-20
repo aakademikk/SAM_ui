@@ -162,6 +162,12 @@ export interface ChatRecord {
   handedOffFrom?: string;
   /** Set when a handoff's memo turn ran but produced no memo file. */
   handoffError?: string;
+  /** Context size of the chat's last Max or Max 2 turn: input + cache read +
+   *  cache creation tokens of that turn's last model call (audit B-01/B-03,
+   *  T9; see `src/lib/contextCeiling.ts`). Absent until such a turn ends. */
+  contextTokens?: number;
+  /** ISO-8601. When `contextTokens` was stored. */
+  contextAt?: string;
 }
 
 /**
@@ -182,6 +188,9 @@ export interface ChatSummary {
   handedOffTo?: string;
   handedOffFrom?: string;
   handoffError?: string;
+  /** `ChatRecord.contextTokens`, so the chat page's poll keeps the context
+   *  banner current (T9). */
+  contextTokens?: number;
   running: boolean;
   /** True when the chat has had history (a turn, or it was imported from the
    *  CLI registry, whose turns are never counted) but its transcript is on

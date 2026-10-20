@@ -332,6 +332,16 @@ export function setHandoffError(id: string, error: string): ChatRecord | null {
   });
 }
 
+/** Stores the context size of the chat's latest Max or Max 2 turn (T9):
+ *  input + cache tokens of that turn's last model call. Written atomically
+ *  through `update`, like every other setter. */
+export function setContextTokens(id: string, tokens: number, at: string = new Date().toISOString()): ChatRecord | null {
+  return update(id, (record) => {
+    record.contextTokens = tokens;
+    record.contextAt = at;
+  });
+}
+
 /** Clears both handoff fields. Called the moment a new handoff is accepted
  *  (review finding 6) — without this, a retry after a failed attempt, or a
  *  second handoff on a chat already handed off once, finds the PREVIOUS

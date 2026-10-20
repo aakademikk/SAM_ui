@@ -26,7 +26,8 @@
 import { randomUUID } from 'node:crypto';
 
 import { claudeBin } from '@/lib/server/claudeBin';
-import { getJobManager } from '@/lib/server/jobs/manager';
+import { getJobManager, readFrames } from '@/lib/server/jobs/manager';
+import { contextOf, lastCallUsage } from '@/lib/contextCeiling';
 import { reportChatRun } from '@/lib/server/fleet/costLedger';
 import { MAX_ATTACHMENTS, attachmentBlock, resolveAttachment } from '@/lib/server/uploads';
 import type { ChatRecord, TierId, TierInfo } from '@/types/chat';
@@ -34,7 +35,14 @@ import type { JobRecord } from '@/types/jobs';
 
 import { adopt } from './chatActions';
 import { agentCwd } from './agentCwd';
-import { createChat, deleteChat, getChat, setRunningJob, touchChat } from './chatStore';
+import {
+  createChat,
+  deleteChat,
+  getChat,
+  setContextTokens,
+  setRunningJob,
+  touchChat,
+} from './chatStore';
 import { registerSamuiSession } from './samuiSessions';
 import { acquireSessionLock, holdSessionLock, releaseSessionLock } from './sessionLock';
 import { forgetJob, markInternalJob, onResultSeen } from './sideMessage';
@@ -117,6 +125,37 @@ onTurnExit.push(pingOffScreenChat);
 onTurnExit.push((event) => {
   void recordTurnItems(event);
 });
+
+/**
+ * T9 (audit B-01/B-03): store how full this chat's context is, so the chat
+ * page can show its banner at 200k and T10 can hand off at 400k. Max and
+ * Max 2 only (the tier the turn actually ran on, so an `unknown` chat counts
+ * as the seat it ran under); never an internal turn (a handoff memo).
+ *
+ * Reads the finished turn's output the way the manager stores it
+ * (`readFrames`) and takes the last model call's usage (see
+ * `lastCallUsage`), not the `result` event's whole-turn total. A turn with no
+ * usable call leaves the previous size in place. Awaited, so the size is on
+ * the record before later hooks (and T10's next-turn check) read it, but it
+ * never throws: any read or parse error is logged and swallowed here, on top
+ * of `runExitHooks`'s own per-hook try/catch.
+ */
+export async function recordTurnContext(event: TurnExitEvent): Promise<void> {
+  try {
+    if (event.internal) return;
+    if (event.tier !== 'max' && event.tier !== 'max2') return;
+    const frames = await readFrames(event.jobId);
+    if (frames.length === 0) return;
+    const text = Buffer.concat(frames.map((f) => f.data)).toString('utf8');
+    const usage = lastCallUsage(text);
+    if (!usage) return;
+    setContextTokens(event.chatId, contextOf(usage));
+  } catch (err) {
+    console.error('[chat] context size hook failed:', err);
+  }
+}
+
+onTurnExit.push(recordTurnContext);
 
 /**
  * U9: harvest the usage reading this turn produced and send any 80% alert.
