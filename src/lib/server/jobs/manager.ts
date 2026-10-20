@@ -27,7 +27,9 @@ const MAX_OUTPUT_BYTES = 1_048_576; // 1 MB per job
  * very next chunk; dropping to 75% makes that happen once per ~250 KB instead.
  */
 const TRIM_TO_FRACTION = 0.75;
+/** Count cap: applies to chat-turn dirs ONLY (sam-job dirs are exempt, they live by age). */
 const MAX_JOBS = 128;
+/** Age cutoff: applies to every job dir, chat turn and sam-job alike. */
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 /** Ids whose timestamp segment decodes earlier than this are not ours to date. */
 const MIN_PLAUSIBLE_TS = Date.UTC(2024, 0, 1);
@@ -1351,7 +1353,7 @@ class JobManager {
     }
 
     const cutoff = Date.now() - RETENTION_MS;
-    const candidates: { id: string; ts: number }[] = [];
+    const candidates: { id: string; ts: number; samJob: boolean }[] = [];
 
     for (const entry of entries) {
       if (!entry.isDirectory() || !entry.name.startsWith('job_')) continue;
@@ -1380,15 +1382,39 @@ class JobManager {
         }
       }
 
-      candidates.push({ id, ts });
+      // A sam-job dir has a non-empty `unit` in meta.json, or a cmd.sh. Chat
+      // turns have neither. Only chat turns count against MAX_JOBS: ~100 of
+      // them a day would otherwise push dispatched jobs out in under a day.
+      let samJob = false;
+      try {
+        const meta = JSON.parse(await fsp.readFile(metaPath(id), 'utf-8')) as {
+          unit?: unknown;
+        };
+        samJob = typeof meta.unit === 'string' && meta.unit.length > 0;
+      } catch {
+        // unreadable meta: fall through to the cmd.sh check
+      }
+      if (!samJob) {
+        samJob = await fsp.access(path.join(jobDir(id), 'cmd.sh')).then(
+          () => true,
+          () => false,
+        );
+      }
+
+      candidates.push({ id, ts, samJob });
     }
 
-    // Newest first, so the count-based cut keeps the most recent MAX_JOBS.
+    // Newest first, so the count-based cut keeps the most recent MAX_JOBS
+    // chat turns.
     candidates.sort((a, b) => b.ts - a.ts);
 
-    const doomed = candidates.filter(
-      ({ ts }, index) => ts < cutoff || index >= MAX_JOBS,
-    );
+    // Age cutoff for everything; count cap over the chat-turn list only.
+    let chatIndex = 0;
+    const doomed = candidates.filter(({ ts, samJob }) => {
+      if (ts < cutoff) return true;
+      if (samJob) return false;
+      return chatIndex++ >= MAX_JOBS;
+    });
 
     let removed = 0;
     for (const { id } of doomed) {
