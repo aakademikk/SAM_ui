@@ -318,6 +318,9 @@ function outerCentre(g: RingGeo, shape: RingShape, a: number): Pt {
   return shape === 'diamond' ? along(p0, n, g.len * 0.4 + diamondSize(g)) : along(p0, n, g.len / 2);
 }
 
+/** Counting seam: how many times `spreadOuter` really ran (the cache test reads it). */
+export const ringStats = { spreadCalls: 0 };
+
 /**
  * Eases outer ticks apart until every two neighbours are at least `gap` px
  * apart (centre to centre). Ticks that crowd form a group that is spread
@@ -327,6 +330,7 @@ function outerCentre(g: RingGeo, shape: RingShape, a: number): Pt {
  * spaced evenly all the way round (the best there is).
  */
 export function spreadOuter(g: RingGeo, items: { shape: RingShape; a: number }[], gap: number): number[] {
+  ringStats.spreadCalls++;
   const n = items.length, idx = items.map((_, i) => i).sort((i, j) => items[i].a - items[j].a || i - j);
   const target = idx.map((i) => items[i].a), shapes = idx.map((i) => items[i].shape);
   const centreAt = (s: number, a: number) => outerCentre(g, shapes[s], a);
@@ -418,6 +422,20 @@ export function triggerCurve(g: RingGeo, from: Pt): [Pt, Pt, Pt, Pt] {
   return [from, [g.cx + (from[0] - g.cx) * 0.5, from[1] - 40 * k], [core[0], core[1] + 40 * k], core];
 }
 
+let spreadCache: { key: string; out: number[] } | null = null;
+/**
+ * `spreadOuter` memoised (one entry). The key is exactly what it consumes: the
+ * geometry numbers `outerCentre` reads, the gap, and each item's shape and
+ * angle (unrounded, so a hit returns the identical result). Per-frame easing
+ * (`smooth`) and the hand are applied after it, so they are not in the key.
+ * Returns a fresh copy; the cached array is never handed out.
+ */
+function spreadOuterCached(g: RingGeo, items: { shape: RingShape; a: number }[], gap: number): number[] {
+  const key = [g.cx, g.cy, g.rx, g.ry, g.k, g.len, g.lenLit, g.px, gap, ...items.map((it) => `${it.shape}:${it.a}`)].join('|');
+  if (!spreadCache || spreadCache.key !== key) spreadCache = { key, out: spreadOuter(g, items, gap) };
+  return spreadCache.out.slice();
+}
+
 /**
  * The whole ring for one frame: every mark's place, shape, state and dim
  * flag, the hand, the travelling lights and the extent. Pure: the same jobs,
@@ -444,7 +462,7 @@ export function buildRing(jobs: ScheduledJob[], geo: RingGeo, input: RingInput):
 
   /* the outer dial: lines and diamonds, eased apart where they crowd */
   const outer = placed.filter((p) => p.cls !== 'frequent');
-  const angles = spreadOuter(geo, outer.map((p) => ({ shape: shapeOf(p.cls), a: dayAngle(clock(p.when!)) })), gap);
+  const angles = spreadOuterCached(geo, outer.map((p) => ({ shape: shapeOf(p.cls), a: dayAngle(clock(p.when!)) })), gap);
   const smooth = input.smooth ?? ((_id: string, t: number) => t);
   outer.forEach((p, i) => {
     const shape = shapeOf(p.cls), a = smooth(p.job.id, angles[i]), n = outward(geo, a), p0 = onRing(geo, a, 1), lw = tickWidth(geo);

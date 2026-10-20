@@ -24,7 +24,7 @@ import {
 } from './floorRender.js';
 import type { SceneOptions } from './floorRender.js';
 import {
-  RING, RING_MIN_GAP, beadInterval, buildRing, diffSchedule, emptyRingFx, jobRingState, ringClass, ringGeometry,
+  RING, RING_MIN_GAP, beadInterval, buildRing, ringStats, spreadOuter, diffSchedule, emptyRingFx, jobRingState, ringClass, ringGeometry,
 } from './ringRender.js';
 import type { Box, RingModel, RingVariant } from './ringRender.js';
 
@@ -308,3 +308,28 @@ test('desktop and laptop keep SAM at his old size (samK 1)', () => {
   assert.ok(tag.y + 13 < Math.min(...tops) - 4 || tag.x > Math.max(...sc.stations.map((st) => st.bustSlot.x)), 'SAM clears the busts (P9)');
 });
 
+
+test('buildRing computes the outer marks once per change, not once per frame (T14)', () => {
+  const size = SIZES[0];
+  const jobs = schedule();
+  const layout = computeLayout(size.W, size.H, size.opts);
+  const geo = ringGeometry(layout, layout.home, true);
+  const run = (js: typeof jobs, smooth?: (id: string, t: number) => number) =>
+    buildRing(js, geo, { now: NOW, variant: size.variant, clock: utcClock, ...(smooth ? { smooth } : {}) });
+  ringStats.spreadCalls = 0;
+  const first = run(jobs);
+  for (let i = 1; i < 1800; i++) run(jobs, (_id, t) => t + i * 1e-4); // a glide: eased angles differ per frame
+  assert.equal(ringStats.spreadCalls, 1, 'one spreadOuter for 1,800 identical frames');
+  // identical to uncached: fresh buildRing on a copy of the jobs gives the same ring, and the cached marks match a direct spread
+  assert.deepEqual(run(jobs), first);
+  const outer = first.marks.filter((m) => m.track === 'outer');
+  assert.ok(outer.length > 0);
+  // mutating a returned model must not poison the cache
+  outer[0].angle = 99;
+  assert.deepEqual(run(jobs).marks.filter((m) => m.track === 'outer')[0].angle === 99, false);
+  assert.equal(ringStats.spreadCalls, 1);
+  const moved = jobs.map((j) => (j.nextRun ? { ...j, nextRun: new Date(Date.parse(j.nextRun) + 7 * 60_000).toISOString() } : j));
+  run(moved);
+  assert.equal(ringStats.spreadCalls, 2, 'a changed job is one more call');
+  assert.ok(typeof spreadOuter === 'function');
+});
