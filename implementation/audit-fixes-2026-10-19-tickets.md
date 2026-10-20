@@ -278,7 +278,7 @@ Proof: `npm test -- .test-build/src/lib/server/chat/contextCeiling.test.js` FAIL
 deploy exits 0; the banner shows on a chat over 200k at 390 px and the button opens the picker.
 
 ## T10: Hand off by itself at 400k, at the start of the next turn
-Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
+Status: DONE 2026-10-20 (autoHandoff.test.js fails before (TS2339/2353, no autoHandoff/pendingCarried), 10 pass/0 fail after; full npm test 832 pass/0 fail; tsc, eslint clean; commit b58ac80 deployed, rc 0, health b58ac80. Opt-in from the chat page only; a refused handoff runs the message as a normal turn. Outside Files: chatAgentService.ts (client types). Booked: on or after 2026-10-27 run python3 ~/.sam/work/samui-audit-2026-10-19/tmp-B/turns.py, expect no chat above 450k at turn start)
 Model: Opus (locked decision: B-01/B-03 is Opus; it changes the turn flow).
 Spec: must-do 10, check 11, check 18
 Depends on: T9
@@ -311,7 +311,7 @@ Proof: `npm test -- .test-build/src/lib/server/chat/autoHandoff.test.js` FAILS b
 deploy exits 0.
 
 ## T11: Atomic, mtime-checked writes to Active Priorities and Named Operations
-Status: TODO
+Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
 Model: Sonnet (a small helper and three call sites; the test pins the race).
 Spec: must-do 11, check 12, check 18
 Depends on: T10
