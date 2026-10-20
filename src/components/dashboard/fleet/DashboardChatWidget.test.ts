@@ -37,6 +37,7 @@ function chat(id: string, title: string, lastActiveAt: string, extra: Partial<Ch
     archived: false,
     imported: false,
     running: false,
+    historyExpired: false,
     ...extra,
   };
 }

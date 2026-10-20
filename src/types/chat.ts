@@ -183,6 +183,9 @@ export interface ChatSummary {
   handedOffFrom?: string;
   handoffError?: string;
   running: boolean;
+  /** True when the chat has had a turn but its transcript is on neither seat
+   *  any more (the CLI deleted it). Computed at read time, never stored. */
+  historyExpired: boolean;
 }
 
 /**

@@ -2163,7 +2163,13 @@ function ChatPageInner() {
         onScroll={(e) => { pinnedRef.current = isNearBottom(e.currentTarget); }}
         className="chat-messages flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-4"
       >
-        {messages.length === 0 && (
+        {messages.length === 0 && currentId !== 'draft' && chats.some((c) => c.id === currentId && c.historyExpired) && (
+          <p className="py-10 text-center text-sm text-dim-500">
+            This chat&apos;s history has expired and can no longer be shown.
+          </p>
+        )}
+
+        {messages.length === 0 && !(currentId !== 'draft' && chats.some((c) => c.id === currentId && c.historyExpired)) && (
           <div className="flex flex-col items-center justify-center h-full text-center py-20">
             <div className="glass-strong flex flex-col items-center gap-3 rounded-2xl px-10 py-8">
               <Cpu size={32} className="text-accent/40" />

@@ -72,6 +72,9 @@ function toSummary(chat: ChatRecord): ChatSummary {
     handedOffFrom: chat.handedOffFrom,
     handoffError: chat.handoffError,
     running: isSessionLocked(chat.id),
+    // One existsSync (two at most) per chat; no directory scans. A chat with
+    // no finished turn has no transcript yet and is not expired.
+    historyExpired: chat.turns > 0 && transcriptPath(chat.id) === null,
   };
 }
 

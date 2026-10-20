@@ -124,6 +124,7 @@ function ChatRow({
               {TIER_LABEL[chat.tier]}
             </span>
             <span>{formatRelative(chat.lastActiveAt, Date.now())}</span>
+            {chat.historyExpired && <span className="text-[11px] text-dim-600 shrink-0">history expired</span>}
           </div>
         </button>
 
