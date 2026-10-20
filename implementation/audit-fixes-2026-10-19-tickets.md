@@ -400,7 +400,7 @@ Do not touch: the ring's look, `smooth` easing in FloorCanvas, the ring golden t
 Proof: `npm test -- .test-build/src/components/floor/ringRender.test.js` FAILS on the new case before and passes after; full `npm test` passes; deploy exits 0.
 
 ## T15: Bound the nightly vault graph build
-Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
+Status: DONE 2026-10-20 (vaultGraphBuild.test.js fails before (unrecognized --stats, 0 pass/1 fail), 1 pass/0 fail after; full npm test 851 pass/0 fail; live build 12.5 s (was ~659 s), force_nodes=400 total=2957, 2957 nodes = 2957 notes, same JSON keys; gzip: Next compresses server-wide (static chunk Content-Encoding gzip, Vary Accept-Encoding; the route itself needs a session, not curled), route unchanged; commit b02d6dc deployed, rc 0, health b02d6dc)
 Model: Sonnet (a contained Python change with a size test).
 Spec: must-do 14, check 15, check 18
 Depends on: T14
@@ -426,7 +426,7 @@ Proof: `npm test -- .test-build/src/lib/server/vaultGraphBuild.test.js` FAILS be
 with all notes present; the curl shows gzip; deploy exits 0.
 
 ## T16: Tests use the live helper scripts unless SAM_TEST_STAGED=1
-Status: TODO
+Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
 Model: Sonnet (the same helper in six test files).
 Spec: must-do 6 (tests), check 7
 Depends on: T15
