@@ -177,7 +177,7 @@ Do not touch: the ended/busy wait, the fingerprint check, the never-a-seat-overr
 Proof: `bash ~/.sam/tests/test-closer-relaunch-cap-retry.sh` FAILS before and reports 0 failed after; the two other tests report 0 failed.
 
 ## T6: Job history lasts 7 days: count cap for chat turns only
-Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
+Status: DONE 2026-10-20 (sweepRetention.test.js not ok before, 1 pass/0 fail after; full npm test 811 pass/0 fail; commit 04dd3ad, deployed 440566f, deploy rc 0, /api/health gitSHA 440566f)
 Model: Sonnet (one filter in one function, guarded by an existing protect rule and a new test).
 Spec: must-do 7, check 8, check 18
 Depends on: none (kept after T5 by Colin's order)
@@ -203,7 +203,7 @@ Proof: `npm test -- .test-build/src/lib/server/jobs/sweepRetention.test.js` FAIL
 passes; deploy exits 0 and `/api/health` shows the new SHA.
 
 ## T7: Keep chat transcripts: cleanupPeriodDays on both seats
-Status: TODO
+Status: DONE 2026-10-20 (test-seat-transcript-retention.sh 0 passed/2 failed before, 2 passed/0 failed after; test-seat-permission-mode.sh passes; both seats only gain cleanupPeriodDays 3650 vs .bak-20261019-audit; 2-day check: SAM re-runs find ~/.claude/projects/-home-col-claude -name '*.jsonl' -mtime +31 | wc -l on or after 2026-10-21, expects above 0)
 Model: Sonnet (one key in two JSON files).
 Spec: must-do 4, check 5
 Depends on: none (kept after T6 by Colin's order)
@@ -223,7 +223,7 @@ Do not touch: any other settings key, hooks, permissions, model settings.
 Proof: `bash ~/.sam/tests/test-seat-transcript-retention.sh` FAILS before and passes after; `test-seat-permission-mode.sh` passes.
 
 ## T8: Mark chats whose history has expired
-Status: TODO
+Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
 Model: Sonnet (a computed flag and one label).
 Spec: must-do 8, check 9, check 18
 Depends on: T7
