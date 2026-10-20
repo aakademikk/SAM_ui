@@ -426,7 +426,7 @@ Proof: `npm test -- .test-build/src/lib/server/vaultGraphBuild.test.js` FAILS be
 with all notes present; the curl shows gzip; deploy exits 0.
 
 ## T16: Tests use the live helper scripts unless SAM_TEST_STAGED=1
-Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
+Status: DONE 2026-10-20 (stagedOrLive.test.js fails before (TS2307 no module), 4 pass/0 fail after; full npm test 855 pass/0 fail with the .next files present; tsc, eslint clean; nine tests switched (the listed ones plus dispatchPing, usageCollect); temp SAM_JOB_STORE added to samDispatchBrief/StageInstruction so T4's cap never counts real jobs; commit 1d0dc3c deployed, rc 0, health 1d0dc3c)
 Model: Sonnet (the same helper in six test files).
 Spec: must-do 6 (tests), check 7
 Depends on: T15
@@ -450,7 +450,7 @@ Do not touch: what the six tests assert, the live scripts, any `.next` file (T17
 Proof: `npm test -- .test-build/src/lib/server/testing/stagedOrLive.test.js` FAILS before and passes after; full `npm test` passes; deploy exits 0.
 
 ## T17: Delete the stale staged copies of sam-dispatch, sam-job and run.sh
-Status: TODO
+Status: BLOCKED 2026-10-20: live reader ~/.sam/tests/test-closer-all.sh (exports SAM_DISPATCH_BIN=sam-dispatch.next, RUNSH=run.sh.next, SAM_JOB_UNDER_TEST=sam-job.next and runs every closer test on them) plus test-closer-next.sh, test-closer-hygiene.sh, test-closer-extract.sh (DISP defaults to sam-dispatch.next). Nothing moved, MANIFEST untouched. New test-no-stale-staged.sh is in place and fails (8 failures) as the fail-first check. unblock: SAM repoints those four closer tests to the live sam-dispatch, sam-job and run.sh (outside this ticket's Files), then rerun T17. Plan kept: move the 3 .next files, sam-dispatch.next.bak-20261006-review, sam-job.next.stale-20261007 and the older .bak copies; keep this build's .bak-20261019-audit*/.bak-20261020-* rollback copies
 Model: Sonnet (a search, then deletes, with a recorded list).
 Spec: must-do 6 (delete), check 7
 Depends on: T16
@@ -478,7 +478,7 @@ Proof: `bash ~/.sam/tests/test-no-stale-staged.sh` FAILS before and passes after
 `npm test` in SAM_ui passes.
 
 ## T18: Bring main up to date with the dashboard branch and push
-Status: TODO
+Status: BLOCKED 2026-10-20: ticket rule 'any BLOCKED ticket: stop and ask Colin before pushing'; T1 and T17 are BLOCKED. Nothing pushed. Preconditions checked: main 7922771 = origin/main, main is an ancestor of claude/sam-core-dashboard-sf3639 (167 commits ahead), tree clean, npm test 855 pass/0 fail on the branch. unblock: Colin says push; then git checkout main && git merge --ff-only claude/sam-core-dashboard-sf3639 && git push origin main && git checkout claude/sam-core-dashboard-sf3639
 Model: Sonnet (a fast-forward and a push; Colin approved the push on 2026-10-19).
 Spec: must-do 16, check 17, check 16
 Depends on: T1 to T17 all DONE (any BLOCKED ticket: stop and ask Colin before pushing)
