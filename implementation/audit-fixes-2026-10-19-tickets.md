@@ -119,7 +119,7 @@ Proof: `bash ~/.sam/tests/test-closer-limit-death-message.sh` FAILS before and r
 the four other tests in step 5 report 0 failed.
 
 ## T4: Per-seat lock, running-job cap on main and a launch stagger in sam-dispatch
-Status: IN PROGRESS job_samui-audit-fixes-build_20261019-230349
+Status: DONE 2026-10-20 (test-dispatch-seat-lock.sh 1 passed/14 failed on pre-edit copy, 15 passed/0 failed live; seat-guard 9, seat-default 10, folder-guard 9, routing 23, relaunch-cancel 9, sigpipe 2, relaunch-why 21, plan-ceiling 9 all 0 failed; built main-only. Outside Files: test-dispatch-relaunch-cancel.sh --seat max2 -> main (max2 retired, it refused exit 1); test-closer-dispatch.sh still 11/19 on --seat max2 before and after, not touched)
 Model: Opus (locked decision: A-03 is Opus; concurrency in bash with a lock held across a launch).
 Spec: must-do 3, check 3
 Depends on: T2
@@ -156,7 +156,7 @@ tickets and zero-count guards, the exit codes other than 4.
 Proof: `bash ~/.sam/tests/test-dispatch-seat-lock.sh` FAILS before and reports 0 failed after; the six tests in step 7 report 0 failed.
 
 ## T5: A seat-limit relaunch refused by the running cap waits and retries
-Status: TODO
+Status: DONE 2026-10-20 (test-closer-relaunch-cap-retry.sh 19 passed/16 failed on pre-edit copy, 35 passed/0 failed live; relaunch 77, relaunch-why 21, blocked 120, relaunch-cancel 9 all 0 failed; retries only exit 4 naming the cap or seat lock, inside the existing wait; a max2-recorded job relaunches --seat main. Outside Files: test-closer-relaunch.sh line 169 expects --seat main (max2 retired))
 Model: Opus (part of A-03, locked as Opus).
 Spec: must-do 3 (last point), check 4
 Depends on: T4
@@ -177,7 +177,7 @@ Do not touch: the ended/busy wait, the fingerprint check, the never-a-seat-overr
 Proof: `bash ~/.sam/tests/test-closer-relaunch-cap-retry.sh` FAILS before and reports 0 failed after; the two other tests report 0 failed.
 
 ## T6: Job history lasts 7 days: count cap for chat turns only
-Status: TODO
+Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
 Model: Sonnet (one filter in one function, guarded by an existing protect rule and a new test).
 Spec: must-do 7, check 8, check 18
 Depends on: none (kept after T5 by Colin's order)
