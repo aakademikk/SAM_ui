@@ -381,7 +381,7 @@ Do not touch: `buildScene`, `paint`, the ring code (T14), the overlay diffing.
 Proof: `npm test -- .test-build/src/components/floor/floorPacing.test.js` FAILS before and passes after; full `npm test` passes; deploy exits 0.
 
 ## T14: Compute the clock ring's outer marks once per change
-Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
+Status: DONE 2026-10-20 (ringRender.test.js new case 1800 !== 1 with the cache defeated, 20 pass/0 fail after; full npm test 850 pass/0 fail; tsc, eslint clean; ring goldens unchanged; commit 8033dd7 deployed, rc 0, health 8033dd7)
 Model: Sonnet (memoising one pure function).
 Spec: must-do 13 (ring), check 14, check 18
 Depends on: T13
@@ -400,7 +400,7 @@ Do not touch: the ring's look, `smooth` easing in FloorCanvas, the ring golden t
 Proof: `npm test -- .test-build/src/components/floor/ringRender.test.js` FAILS on the new case before and passes after; full `npm test` passes; deploy exits 0.
 
 ## T15: Bound the nightly vault graph build
-Status: TODO
+Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
 Model: Sonnet (a contained Python change with a size test).
 Spec: must-do 14, check 15, check 18
 Depends on: T14
