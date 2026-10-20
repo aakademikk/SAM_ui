@@ -223,7 +223,7 @@ Do not touch: any other settings key, hooks, permissions, model settings.
 Proof: `bash ~/.sam/tests/test-seat-transcript-retention.sh` FAILS before and passes after; `test-seat-permission-mode.sh` passes.
 
 ## T8: Mark chats whose history has expired
-Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
+Status: DONE 2026-10-20 (expiredHistory.test.js fails before (TS2339, then imported case false!==true), 2 pass/0 fail after; full npm test 813 pass/0 fail; commits 8d6cf47 + cce2210 (retry: imported chats with turns 0 count as having history; first cut flagged 0 live chats), deployed cce2210, rc 0, health cce2210; live store: 90 chats flagged, all September, all archived. Pending: Colin's phone check, in the chat list's Archived view. Outside Files: ChatList.tsx holds the row; DashboardChatWidget.test.ts fixture gains historyExpired)
 Model: Sonnet (a computed flag and one label).
 Spec: must-do 8, check 9, check 18
 Depends on: T7
@@ -246,7 +246,7 @@ Proof: `npm test -- .test-build/src/lib/server/chat/expiredHistory.test.js` FAIL
 deploy exits 0; Colin confirms the label on his phone.
 
 ## T9: Store each chat's context size and show a banner at 200k
-Status: TODO
+Status: IN PROGRESS job_samui-audit-fixes-build_20261020-191109
 Model: Opus (locked decision: B-01/B-03 is Opus).
 Spec: must-do 9, check 10, check 18
 Depends on: T8
