@@ -55,6 +55,11 @@ CORE_MIN = 0.075
 # Angle solver. Radius is fixed, so these only ever move a note around its own
 # track; tuned by eye on this vault (~72 notes, ~280 edges).
 SOLVE_STEPS = 220
+# Only the FORCE_TOP best-connected notes take part in the pair-force pass. The
+# pass is O(n^2) per step, so at 2,930 notes it cost 10+ CPU minutes a night
+# (audit C-01). Everything below the cut keeps its golden-angle start on its own
+# ring with no pair forces; the hub area, where the layout reads, is still solved.
+FORCE_TOP = 400
 REPULSION = 0.0016
 REPULSION_CAP = 0.9      # stops two coincident notes flinging each other away
 ATTRACTION = 0.030
@@ -152,7 +157,7 @@ def layout(
     nodes: list[str],
     adj: dict[str, set[str]],
     edge_list: list[tuple[str, str]],
-) -> tuple[dict[str, tuple[float, float]], dict[str, int], int]:
+) -> tuple[dict[str, tuple[float, float]], dict[str, int], int, int]:
     """Place notes by how connected they are: hubs in the core, motes at the rim.
 
     An earlier version ranked radius by BFS hop-distance from the hub. That
@@ -167,7 +172,7 @@ def layout(
     """
     rng = random.Random(SEED)
     if not nodes:
-        return {}, {}, 0
+        return {}, {}, 0, 0
 
     order = sorted(nodes, key=lambda n: (-len(adj[n]), n))
     hub_idx = nodes.index(order[0])
@@ -203,16 +208,23 @@ def layout(
         r = target[n]
         return (r * math.cos(theta[n]), r * math.sin(theta[n]))
 
+    # Force pass runs on the top FORCE_TOP by degree (order is degree-sorted);
+    # the rest stay put. Edges to a pinned note are dropped from the pass.
+    active = order[:FORCE_TOP]
+    active_set = set(active)
+    active_edges = [(a, b) for a, b in edge_list if a in active_set and b in active_set]
+    active_count = len(active)
+
     for step in range(SOLVE_STEPS):
         # Cool down so early passes untangle broadly and later ones settle.
         cool = 1.0 - 0.7 * (step / SOLVE_STEPS)
-        force = {n: [0.0, 0.0] for n in order}
+        force = {n: [0.0, 0.0] for n in active}
 
-        for i in range(count):
-            a = order[i]
+        for i in range(active_count):
+            a = active[i]
             ax, ay = xy(a)
-            for j in range(i + 1, count):
-                b = order[j]
+            for j in range(i + 1, active_count):
+                b = active[j]
                 bx, by = xy(b)
                 dx, dy = ax - bx, ay - by
                 d2 = dx * dx + dy * dy
@@ -226,7 +238,7 @@ def layout(
                 force[b][0] -= dx / d * f
                 force[b][1] -= dy / d * f
 
-        for a, b in edge_list:
+        for a, b in active_edges:
             ax, ay = xy(a)
             bx, by = xy(b)
             dx, dy = bx - ax, by - ay
@@ -242,7 +254,7 @@ def layout(
             force[b][0] -= dx / d * fb
             force[b][1] -= dy / d * fb
 
-        for n in order:
+        for n in active:
             r = target[n]
             if r < 1e-4:
                 continue  # the hub sits at dead centre; it has no angle to move
@@ -265,7 +277,7 @@ def layout(
         r = math.hypot(*pos[n])
         ring[n] = 0 if r < 0.22 else 1 if r < 0.5 else 2 if r < 0.8 else 3
 
-    return pos, ring, hub_idx
+    return pos, ring, hub_idx, active_count
 
 
 # ------------------------------------------------------------------- main
@@ -274,6 +286,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default=os.path.expanduser("~/.sam/vault-graph.json"))
     ap.add_argument("--vault", default=VAULT)
+    ap.add_argument("--stats", action="store_true", help="print force_nodes=<n> total=<n> to stderr")
     ap.add_argument("--pretty", action="store_true", help="indent the JSON (for the committed snapshot)")
     args = ap.parse_args()
 
@@ -294,7 +307,7 @@ def main() -> int:
         adj[a].add(b)
         adj[b].add(a)
 
-    pos, ring, hub_idx = layout(node_ids, adj, sorted(edges))
+    pos, ring, hub_idx, force_nodes = layout(node_ids, adj, sorted(edges))
     index_of = {n: i for i, n in enumerate(node_ids)}
 
     folders: dict[str, int] = defaultdict(int)
@@ -344,6 +357,8 @@ def main() -> int:
         f"hub={node_ids[hub_idx]!r} rings={dict(sorted(ring_hist.items()))} "
         f"{size_kb:.1f}kB -> {out}"
     )
+    if args.stats:
+        print(f"force_nodes={force_nodes} total={len(node_ids)}", file=sys.stderr)
     return 0
 
 
