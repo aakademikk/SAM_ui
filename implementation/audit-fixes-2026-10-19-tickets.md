@@ -28,7 +28,7 @@ Read before any ticket:
 - Must not break (audit protect rows): A-20, B-19, B-20, C-17, D-20 (see the spec's constraints).
 
 ## T1: Review the two staged closer fixes, install only if clean
-Status: BLOCKED 2026-10-20: stage review found 1 issue (staged _block_at accepts 'BLOCKED: none' with no unblock text, and detect() runs it before the exit check, so a PASS job ending 'BLOCKED: none' becomes UNKNOWN: blocked and asks Colin; reproduced). Nothing installed; note in audit-fixes-2026-10-19-stage-review.md. unblock: Colin decides. Note: T2/T3 now edit the live files, so the .stage copies need re-cutting before any later install.
+Status: STAGED, waiting at GATE 2026-10-22 (Colin "Yes" 2026-10-22; job closer-t1-relaunch-merge): both stage files re-cut on today's live files as *.stage-20261022 (T2, T3 and main-only kept), and _block_at no longer reads 'BLOCKED: none' or a BLOCKED line with no unblock text as a block. Tests: test-closer-blocked-none.sh 4 passed/14 failed on the 19 Oct stage, 18 passed/0 failed on the new stage; test-closer-t28-honest.sh 39 passed/0 failed on the new stage (13/26 live); test-closer-all.sh on a scratch staged tree ALL 153 passed, 0 failed (live 148 passed, 3 failed). Nothing installed. Install and rollback: ~/.sam/closer/INSTALL-20261022.md. (Was BLOCKED 2026-10-20 on that finding, see audit-fixes-2026-10-19-stage-review.md.)
 Model: Sonnet (a read and compare job; the install is a scripted copy with its own tests).
 Spec: must-do 5, check 6
 Depends on: none
