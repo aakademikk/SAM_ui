@@ -19,7 +19,6 @@ import {
   Radio,
   Play,
   Plus,
-  Lock,
   Loader2,
   Square,
   ChevronRight,
@@ -32,7 +31,7 @@ import { operationsService } from '@/lib/operationsService';
 import { jobsService, type JobEvent } from '@/lib/jobsService';
 import { AgentStreamParser, type AgentStreamState } from '@/lib/agentStream';
 import { MessageBlocks } from '@/components/chat/MessageBlocks';
-import { authService } from '@/lib/authService';
+import { UnlockPrompt } from '@/components/auth/UnlockPrompt';
 
 import type { Operation } from '@/types/operations';
 
@@ -331,6 +330,7 @@ export default function OperationsPage() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [needsStepUp, setNeedsStepUp] = useState(false);
+  const lastLaunchRef = useRef<Operation | null>(null);
 
   const [launchingId, setLaunchingId] = useState<string | null>(null);
   const [activeRun, setActiveRun] = useState<{
@@ -368,6 +368,7 @@ export default function OperationsPage() {
   const handleLaunch = useCallback(
     async (operation: Operation) => {
       if (activeRun || launchingId) return;
+      lastLaunchRef.current = operation;
       setError(null);
       setNeedsStepUp(false);
       setStreamState(null);
@@ -412,16 +413,6 @@ export default function OperationsPage() {
     }
   }, [activeRun]);
 
-  const handleUnlock = useCallback(async () => {
-    try {
-      await authService.stepUp();
-      setNeedsStepUp(false);
-      setError(null);
-    } catch {
-      setError('Unlock failed.');
-    }
-  }, []);
-
   const phase = streamState ? PHASE_LABEL[streamState.phase] : '';
 
   return (
@@ -452,19 +443,19 @@ export default function OperationsPage() {
         </p>
       )}
 
-      {error && (
+      {error && needsStepUp && (
+        <UnlockPrompt
+          message={error}
+          onRetry={async () => {
+            const op = lastLaunchRef.current;
+            if (!op) return false;
+            await handleLaunch(op);
+          }}
+        />
+      )}
+      {error && !needsStepUp && (
         <div className="flex items-center justify-between gap-3 rounded-md border border-red-700/30 bg-red-900/12 px-3 py-2">
           <p className="text-[12px] text-red-300">{error}</p>
-          {needsStepUp && (
-            <button
-              type="button"
-              onClick={handleUnlock}
-              className="flex shrink-0 items-center gap-1.5 rounded-md border border-accent/30
-                         bg-accent/12 px-2.5 py-1 text-[12px] text-accent transition-colors hover:bg-accent/20"
-            >
-              <Lock size={11} /> Unlock
-            </button>
-          )}
         </div>
       )}
 

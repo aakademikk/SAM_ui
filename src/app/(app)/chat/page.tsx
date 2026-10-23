@@ -40,6 +40,8 @@ import { closeKind, cutOffNotice, type CloseStatus } from '@/lib/chatClose';
 import { enterSends, isTouchKeyboard } from '@/lib/composerEnter';
 import { ApiError } from '@/lib/dashboardService';
 import { authService } from '@/lib/authService';
+import { CallError, UnlockPrompt } from '@/components/auth/UnlockPrompt';
+import { classifyCallError, classifyUploadFailure, type CallFailure } from '@/lib/unlockFlow';
 import { isAutoHandoffStart, startAgentTurn, StepUpRequiredError } from '@/lib/chatAgentService';
 import { AgentStreamParser, type AgentPhase } from '@/lib/agentStream';
 import { computeCost, formatCost, formatTokens } from '@/lib/costing';
@@ -317,7 +319,10 @@ function ChatPageInner() {
   const [staged, setStaged] = useState<StagedFile[]>([]);
   const stagedRef = useRef<StagedFile[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [attachError, setAttachError] = useState<string | null>(null);
+  const [attachError, setAttachError] = useState<CallFailure | null>(null);
+  // The files of the last pick, kept so Unlock can re-upload them (the input's
+  // own FileList is cleared the moment the picker closes).
+  const lastPickedRef = useRef<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [phase, setPhase] = useState<AgentPhase>('starting');
   /** Latest server-side phase ping, with ms since process start. `at` is the
@@ -354,7 +359,8 @@ function ChatPageInner() {
   /** A handoff call that failed outright (409 while running, 404, a network
       error) — distinct from chatInfo.handoffError, which the server sets on
       the chat record when the memo turn ran but produced no file. */
-  const [handoffCallError, setHandoffCallError] = useState<string | null>(null);
+  const [handoffCallError, setHandoffCallError] = useState<CallFailure | null>(null);
+  const lastHandoffTierRef = useRef<TierId | null>(null);
   /** T10 (audit B-01/B-03): the chat whose handoff started by itself because
       its context passed 400k, set alongside `handoffWaitingFor` (the same
       waiting state the picker's handoff uses). Only changes the wording
@@ -1306,14 +1312,15 @@ function ChatPageInner() {
   }, []);
 
   const onPickFiles = useCallback(
-    async (picked: FileList | null) => {
-      if (!picked || picked.length === 0) return;
+    async (picked: File[]) => {
+      if (picked.length === 0) return;
+      lastPickedRef.current = picked;
 
       setAttachError(null);
       setUploading(true);
       try {
         const form = new FormData();
-        for (const file of Array.from(picked)) form.append('files', file);
+        for (const file of picked) form.append('files', file);
 
         const response = await fetch('/api/uploads', {
           method: 'POST',
@@ -1327,20 +1334,14 @@ function ChatPageInner() {
         };
 
         if (!response.ok) {
-          // The unlock button resends a pending message, which cannot work
-          // here: the FileList is gone by the time the biometric prompt
-          // returns. Say what to do rather than offering a button that
-          // appears to work and silently does nothing.
-          if (response.status === 401 && body.stepUpRequired) {
-            setNeedsStepUp(true);
-            throw new Error('Unlock first, then pick the file again.');
-          }
-          throw new Error(body.error ?? `Upload failed (${response.status})`);
+          // A step-up failure offers Unlock, which re-uploads lastPickedRef.
+          setAttachError(classifyUploadFailure(response.status, body));
+          return;
         }
 
         setStagedBoth([...stagedRef.current, ...(body.data?.files ?? [])]);
       } catch (err) {
-        setAttachError(err instanceof Error ? err.message : 'Upload failed.');
+        setAttachError({ message: err instanceof Error ? err.message : 'Upload failed.', stepUp: false });
       } finally {
         setUploading(false);
       }
@@ -1833,6 +1834,7 @@ function ChatPageInner() {
   const startHandoff = async (pickedTier: TierId) => {
     if (currentId === 'draft') return;
     const id = currentId;
+    lastHandoffTierRef.current = pickedTier;
     setHandoffBusy(true);
     setHandoffCallError(null);
     try {
@@ -1845,13 +1847,7 @@ function ChatPageInner() {
       // at 400k (T10) goes through the same call.
       beginHandoffWait(id);
     } catch (err) {
-      setHandoffCallError(
-        err instanceof StepUpRequiredError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : 'Could not start handoff.',
-      );
+      setHandoffCallError(classifyCallError(err, 'Could not start handoff.'));
     } finally {
       setHandoffBusy(false);
     }
@@ -2224,9 +2220,15 @@ function ChatPageInner() {
                   </button>
                 ))}
               </div>
-              {handoffCallError && (
-                <p className="mt-3 text-xs text-red-400">{handoffCallError}</p>
-              )}
+              <CallError
+                failure={handoffCallError}
+                onRetry={async () => {
+                  const t = lastHandoffTierRef.current;
+                  if (!t) return false;
+                  setHandoffCallError(null);
+                  await startHandoff(t);
+                }}
+              />
               <div className="mt-4 flex justify-end">
                 <button
                   type="button"
@@ -2371,32 +2373,26 @@ function ChatPageInner() {
           </div>
         )}
 
-        {error && (
+        {error && needsStepUp && (
+          <UnlockPrompt
+            message={error}
+            onRetry={async () => {
+              // Only the chat on screen right now (review finding 4) — a
+              // message held for a different chat stays held for it. With
+              // nothing held, this unlocks only ("Unlocked, try again").
+              const pending = recoverPendingMessage(localStorage, currentIdRef.current);
+              if (!pending) return false;
+              setNeedsStepUp(false);
+              setError(null);
+              await send(pending);
+            }}
+          />
+        )}
+        {error && !needsStepUp && (
           <div className="flex flex-col items-center gap-2">
             <span className="text-xs text-red-400 bg-red-900/20 px-3 py-1.5 rounded-full">
               {error}
             </span>
-            {needsStepUp && (
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    await authService.stepUp();
-                    setNeedsStepUp(false);
-                    setError(null);
-                    // Only the chat on screen right now (review finding 4) —
-                    // a message held for a different chat stays held for it.
-                    const pending = recoverPendingMessage(localStorage, currentIdRef.current);
-                    if (pending) void send(pending);
-                  } catch { /* cancelled */ }
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/20 border
-                           border-accent/40 rounded-lg text-accent text-xs font-medium
-                           hover:bg-accent/30 transition-colors"
-              >
-                <Lock size={12} /> Unlock
-              </button>
-            )}
           </div>
         )}
 
@@ -2512,11 +2508,13 @@ function ChatPageInner() {
                   </button>
                 </span>
               ))}
-              {attachError && (
-                <span className="text-xs text-red-400 bg-red-900/20 px-3 py-1 rounded-full">
-                  {attachError}
-                </span>
-              )}
+              <CallError
+                failure={attachError}
+                onRetry={async () => {
+                  setAttachError(null);
+                  await onPickFiles(lastPickedRef.current);
+                }}
+              />
             </div>
           )}
 
@@ -2528,7 +2526,7 @@ function ChatPageInner() {
               accept={ACCEPT_ATTR}
               className="hidden"
               onChange={(e) => {
-                void onPickFiles(e.target.files);
+                void onPickFiles(Array.from(e.target.files ?? []));
                 // Cleared so picking the same file twice running still fires a
                 // change event the second time.
                 e.target.value = '';

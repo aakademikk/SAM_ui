@@ -11,13 +11,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Bot, Send, Square, Lock, Loader2, Wallet, Clock, ChevronRight } from 'lucide-react';
+import { Bot, Send, Square, Loader2, Wallet, Clock, ChevronRight } from 'lucide-react';
 
 import { fleetService } from '@/lib/fleetService';
 import { jobsService, type JobEvent } from '@/lib/jobsService';
 import { AgentStreamParser, type AgentStreamState } from '@/lib/agentStream';
 import { MessageBlocks } from '@/components/chat/MessageBlocks';
-import { authService } from '@/lib/authService';
+import { UnlockPrompt } from '@/components/auth/UnlockPrompt';
 import { FieldLabel } from '@/components/ui/FieldLabel';
 import { computeRunCost, formatCost, formatTokens } from '@/lib/costing';
 import { modelsForPersona } from '@/lib/fleetModels';
@@ -196,15 +196,6 @@ export default function FleetPage() {
     try { await jobsService.kill(activeRun.jobId); } catch { /* already gone */ }
   }, [activeRun]);
 
-  const handleUnlock = useCallback(async () => {
-    try {
-      await authService.stepUp();
-      setNeedsStepUp(false);
-      setError(null);
-      await handleDispatch();
-    } catch { /* cancelled */ }
-  }, [handleDispatch]);
-
   const selectPersona = useCallback((name: string) => {
     setSelectedPersona(name);
     const allowed = modelsForPersona(name).map((m) => m.id);
@@ -364,22 +355,12 @@ export default function FleetPage() {
         </div>
       </section>
 
-      {error && (
+      {error && needsStepUp && <UnlockPrompt message={error} onRetry={handleDispatch} />}
+      {error && !needsStepUp && (
         <div className="flex items-center gap-2">
           <p className="text-xs text-red-400 bg-red-900/15 border border-red-700/25 rounded px-3 py-1.5">
             {error}
           </p>
-          {needsStepUp && (
-            <button
-              type="button"
-              onClick={handleUnlock}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/20 border
-                         border-accent/40 rounded-lg text-accent text-xs font-medium
-                         hover:bg-accent/30 transition-colors"
-            >
-              <Lock size={12} /> Unlock
-            </button>
-          )}
         </div>
       )}
 

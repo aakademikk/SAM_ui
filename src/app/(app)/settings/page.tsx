@@ -7,6 +7,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useUserPreferencesStore } from '@/store/userPreferencesStore';
 import { authService } from '@/lib/authService';
+import { UnlockPrompt } from '@/components/auth/UnlockPrompt';
+import { isStepUpError } from '@/lib/unlockFlow';
 import {
   VOICE_GROUPS, DEFAULT_VOICE,
   EDGE_VOICE_GROUPS, DEFAULT_EDGE_VOICE,
@@ -235,6 +237,8 @@ function DeviceSection() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The revoke refused for want of a step-up; Unlock runs it once.
+  const [blockedRevoke, setBlockedRevoke] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -249,11 +253,16 @@ function DeviceSection() {
   useEffect(() => { refresh(); }, [refresh]);
 
   const revoke = async (credentialId: string) => {
+    setBlockedRevoke(null);
     try {
       await authService.revokeDevice(credentialId);
       setDevices((prev) => prev.filter((d) => d.credentialId !== credentialId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Revoke failed — step-up required.');
+      if (isStepUpError(err)) {
+        setBlockedRevoke(credentialId);
+        return;
+      }
+      setError(err instanceof Error ? err.message : 'Revoke failed.');
     }
   };
 
@@ -263,6 +272,14 @@ function DeviceSection() {
 
       {loading && <p className="text-xs text-dim-400">Loading...</p>}
       {error && <p className="text-xs text-amber-400">{error}</p>}
+      {blockedRevoke && (
+        <UnlockPrompt
+          message="Biometric unlock required to remove a device."
+          onRetry={async () => {
+            await revoke(blockedRevoke);
+          }}
+        />
+      )}
 
       {devices.length === 0 && !loading && (
         <p className="text-xs text-dim-400">No registered devices.</p>
