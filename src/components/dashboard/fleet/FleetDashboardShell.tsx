@@ -129,12 +129,14 @@ const CSS = `
 /* completed-jobs T8 (must-do 3): like the tile group above, Finished jobs gives up the column's height first (shrink weight 1000 against Job detail and Fleet status at 1) and scrolls inside itself; it keeps the header plus three rows */
 .fd-p[data-panel=finished]{flex:0 1000 auto;min-height:${FINISHED_MIN_H}px;overflow:auto;scrollbar-width:thin;overscroll-behavior:contain}
 .fd-p[data-panel=finished]>section{flex:0 0 auto}
+/* completed-jobs T9: Fleet status and Finished jobs' wrapper adds no box in the column, so both stay flex items of .fd-col-r as in T8 */
+.fd-fleet-stack{display:contents}
 .fd-hero{position:relative;min-height:0;min-width:0;border-radius:12px;overflow:hidden;border:1px solid ${PANEL_BORDER};background:#020805}
-.fd-col-r>.fd-p:not(.fd-focus){transition:opacity .4s}
+.fd-col-r>.fd-p:not(.fd-focus),.fd-col-r>.fd-fleet-stack>.fd-p{transition:opacity .4s}
 .fd-focus{position:absolute;left:0;right:0;top:0;max-height:100%;overflow:auto;scrollbar-width:thin;z-index:8;opacity:0;
   transform:translateX(24px);pointer-events:none;transition:opacity .5s,transform .6s cubic-bezier(.2,.8,.2,1)}
 .fd-main[data-open] .fd-focus{opacity:1;transform:none;pointer-events:auto}
-.fd-main[data-open] .fd-col-r>.fd-p:not(.fd-focus){opacity:0;pointer-events:none}
+.fd-main[data-open] .fd-col-r>.fd-p:not(.fd-focus),.fd-main[data-open] .fd-col-r>.fd-fleet-stack>.fd-p{opacity:0;pointer-events:none}
 .fd-chat-slot{border-radius:12px;border:1px solid ${PANEL_BORDER};background:${PANEL_BG};padding:12px 14px;min-height:150px;display:flex;flex-direction:column}
 /* T18: a transparent, keyboard-reachable hit target over the clock ring (the mockup's .ring-hit) */
 .fd-ring-hit{position:absolute;left:0;top:0;padding:0;margin:0;border:0;border-radius:50%;background:none;cursor:pointer}
@@ -170,11 +172,17 @@ const CSS = `
   .fd-p[data-panel=chat]{margin:0}
   .fd-main:not([data-open])[data-tab=detail] .fd-p[data-panel=detail],
   .fd-main:not([data-open])[data-tab=fleet] .fd-p[data-panel=fleet],
+  .fd-main:not([data-open])[data-tab=fleet] .fd-p[data-panel=finished],
+  .fd-main:not([data-open])[data-tab=fleet] .fd-fleet-stack,
   .fd-main:not([data-open])[data-tab=jobs] .fd-p[data-panel=jobs],
   .fd-main:not([data-open])[data-tab=events] .fd-p[data-panel=events],
   .fd-main:not([data-open])[data-tab=spend] .fd-p[data-panel=spend],
   .fd-main:not([data-open])[data-tab=chat] .fd-p[data-panel=chat]{display:flex}
   .fd-p[data-panel=detail]>section,.fd-p[data-panel=spend]>section{flex:0 0 auto}
+  /* completed-jobs T9 (must-do 2): here every panel is its own cell of .fd-main and the hero spans its rows, so a row of its own for the list would mean moving the hero's span. Instead the wrapper takes Fleet status's cell and is the tab's one scroller: Fleet status, then the list, both at full height (T8's shrink weight and three-row floor reset), so the list is reached by scrolling the tab */
+  .fd-fleet-stack{grid-column:2;grid-row:2;display:none;flex-direction:column;gap:8px;min-height:0;overflow:auto;scrollbar-width:thin}
+  .fd-fleet-stack>.fd-p{flex:0 0 auto;overflow:visible}
+  .fd-fleet-stack>.fd-p[data-panel=finished]{min-height:0;overscroll-behavior:auto}
   .fd-focus{position:relative;transform:none;max-height:none;display:none}
   .fd-main[data-open] .fd-focus{display:block}
 }
@@ -185,6 +193,10 @@ const CSS = `
   /* The Job tab's own row is content-sized (auto) so Fleet keeps its row below; capped here so T15's folded-in widgets scroll inside the Job tab instead of growing the row past Fleet. */
   .fd-main:not([data-open])[data-tab=detail] .fd-p[data-panel=detail]{grid-row:2;max-height:320px;overflow:auto}
   .fd-main:not([data-open])[data-tab=detail] .fd-p[data-panel=fleet]{display:flex;grid-row:3}
+  /* completed-jobs T9 (must-do 2): the wrapper takes row 3 (Fleet status's row before), so the Job tab reads Job detail, Fleet status, then the list, the last two scrolling together */
+  .fd-fleet-stack{grid-row:2/4}
+  .fd-main:not([data-open])[data-tab=detail] .fd-fleet-stack{display:flex;grid-row:3}
+  .fd-main:not([data-open])[data-tab=detail] .fd-p[data-panel=finished]{display:flex}
   .fd-tabs [data-tab=fleet]{display:none}
 }
 /* the full-screen toggle in the hero's top-right corner */
@@ -426,12 +438,15 @@ export default function FleetDashboardShell({ demo: demoProp = false, chatSlot, 
               </div>
             )}
           </div>
-          <div className="fd-p" data-panel="fleet">
-            <FleetStatusModule state={floor} selectedGeneral={openGeneral} onSelectGeneral={onSelectGeneral} />
-          </div>
-          {/* completed-jobs T8 (must-dos 1, 3): the last 10 finished jobs, in the height Job detail and Fleet status leave */}
-          <div className="fd-p" data-panel="finished">
-            <FinishedJobsList jobs={finishedJobs} title="Finished jobs" showGeneral emptyText="No finished jobs yet" />
+          {/* completed-jobs T9 (must-do 2): Fleet status and the list share one wrapper, display:contents in the column and one scrolling cell in the drawer */}
+          <div className="fd-fleet-stack">
+            <div className="fd-p" data-panel="fleet">
+              <FleetStatusModule state={floor} selectedGeneral={openGeneral} onSelectGeneral={onSelectGeneral} />
+            </div>
+            {/* completed-jobs T8 (must-dos 1, 3): the last 10 finished jobs, in the height Job detail and Fleet status leave */}
+            <div className="fd-p" data-panel="finished">
+              <FinishedJobsList jobs={finishedJobs} title="Finished jobs" showGeneral emptyText="No finished jobs yet" />
+            </div>
           </div>
           <div className="fd-p fd-focus" data-panel="focus" aria-hidden={panel.open ? undefined : true}>
             {scheduleOpen ? (
