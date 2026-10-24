@@ -91,3 +91,13 @@ test('check 4 and must-do 11: "No finished jobs yet" when empty, five rows when 
   assert.ok(!loading.includes('No finished jobs yet'));
   assert.equal(count(loading, 'data-finished-row'), 0);
 });
+
+test('T15 check 16: the panel ends with a phone-only spacer the height of the bottom nav, hidden from md', () => {
+  const html = view(rows(5));
+  assert.equal(count(html, 'data-nav-clearance'), 1, 'one spacer');
+  const tag = html.slice(html.lastIndexOf('<div', html.indexOf('data-nav-clearance')), html.indexOf('>', html.indexOf('data-nav-clearance')) + 1);
+  assert.ok(tag.includes('aria-hidden="true"'), 'hidden from assistive tech');
+  assert.ok(tag.includes('md:hidden'), 'the desktop overlay does not get it');
+  assert.ok(tag.includes('3.5rem') && tag.includes('safe-area-inset-bottom'), 'the nav height plus the safe area');
+  assert.ok(html.indexOf('data-nav-clearance') > html.indexOf('data-finished-jobs'), 'after the finished list, at the panel end');
+});

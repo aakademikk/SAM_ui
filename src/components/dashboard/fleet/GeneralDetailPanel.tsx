@@ -239,6 +239,11 @@ export function GeneralDetailView({ general, state, finished, onClose, className
         bare
         className="mt-3.5"
       />
+
+      {/* below md the app's fixed bottom tab bar (TabBar: z-50, 3.5rem plus the safe area) lies over the phone sheet's
+          bottom edge, so the panel ends with room the size of that bar to scroll its last row clear of it (T15 check 16).
+          A spacer, not padding: the sheet zeroes this section's padding. Hidden from md, so the desktop overlay is unchanged. */}
+      <div aria-hidden="true" data-nav-clearance className="h-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:hidden" />
     </section>
   );
 }
