@@ -123,3 +123,34 @@ Stalls: 3 of 900 requests stalled, all HTTP 000 or very slow: poll 84 fleet 134.
 Result: check 10 PASS (memory +0.59%, fleet 14 ms and hephaestus 0 ms handler median, both under 50 ms), with the 3 external stalls recorded above.
 
 Cleanup: throwaway server stopped (pid 1591153), `/tmp/t16-fx` removed (the auth link removed first, harness auth store intact), port 3000 count 1 before and 1 after, nothing on 3101, 4950, 4951. Harness started only to enrol and revoke: temporary passkeys named "SAM ux-fixes local proof (temporary, revoke)" revoked (found false at the end). No token was printed.
+
+## Real-store verdict check, check 20 (T17)
+
+Run 2026-10-24 (about 18:12 to 18:20 UTC) against build/completed-jobs at 021e641 (BUILD_ID 02PXIrH_JDzAk6gzjYNoo, no src file newer than it, so no rebuild). No code changed.
+
+Deviation from the ticket, and why: the server did not run on the real `HOME`. Its boot retention sweep deletes chat-turn directories beyond the newest 128 (the real store holds 212 directories), and the boot reconcile can file live jobs as killed, so a server on the real `~/.sam/jobs` is not read only. `scripts/run-fixture-server.cjs` also refuses the real home by design. What I did instead: `cp -a ~/.sam/jobs /tmp/t17-fx/home/.sam/jobs` (a byte copy taken at the start of the run, 212 job directories, the only read I made of the real store apart from the python comparisons below), a throwaway HOME `/tmp/t17-fx/home` with `.sam/auth` linked to the harness auth store (as T14 to T16), and the server started with the script on 127.0.0.1:3101 first (API fetch) and then on 127.0.0.1:4950 so the harness TLS proxy reached it for the browser. The verdict file was always read from the real `~/.sam/jobs/<id>/closer.json`, so the comparison is against the real file, not the copy. Session: harness passkey enrolled, cookie sent; no bypass. No token was printed.
+
+Fetched `/api/fleet/finished-jobs` (10 rows) and `?general=hephaestus` (5 rows), HTTP 200. Every row in both lists was compared with the real store (the store is live, so ids below are as returned at about 18:15 UTC).
+
+Row with a closer.json (job `job_parkfords-meter-serial-required_20261024-154501`, hephaestus, outcome passed): file verdict `PASS (5/5 checks)`, row verdict `PASS (5/5 checks)`, identical (`python3 -c` comparing the encoded bytes of the file's `verdict` and the route's `verdict`: identical). Same check on all other rows with a record, all identical, in both lists:
+- `job_keystore-config-envlines_20261024-154601`: `PASS (3/3 checks)`
+- `job_tiktok-week3-batch-resume_20261024-155201`: `PASS (5/5 checks)`
+- `job_tiktok-week3-batch_20261024-114740`: `UNKNOWN: died on the seat limit`
+- `job_samui-completed-jobs-implement_20261024-110944`: `UNKNOWN: died on the seat limit`
+- `job_keystore-stage-b_20261024-120420`: `PASS (3/3 checks)`
+The browser at 1440x900 shows the same strings in the Finished jobs list ("PASS (5/5 checks)" on the Parkfords row, "PASS (3/3 checks)" on the Keystore row). Screenshots (uncommitted): `implementation/shots/t17-row-with-record-1440x900.png` (full page, the row near the bottom of the Finished jobs card), `t17-row-with-record-1440x900-row.png` (the row alone), `t17-row-keystore-1440x900.png` and `-row.png`, `t17-fleet-1440x900.png`.
+
+Row with no closer.json: `job_tiktok-timeline-W3-4_20261024-124622` (hephaestus, outcome passed, no closer.json in its real directory): the API row has no `verdict`, and the row in the browser reads "Passed" and "not checked". The same holds for `job_tiktok-timeline-W3-2_20261024-123324`, `job_tiktok-timeline-W3-6_20261024-121546`, `job_tiktok-timeline-W3-3_20261024-115828` (all four are among the ten returned). Screenshot `t17-row-no-record-1440x900.png` and `-row.png`.
+
+Verdict kind against outcome disagreeing: no row where a PASS verdict sits on a failed job, or a FAIL verdict on a passed job, exists among the returned jobs (PASS rows are all outcome passed). The nearest is a different pairing: the two rows with outcome failed and verdict `UNKNOWN: died on the seat limit` (`job_tiktok-week3-batch_20261024-114740` and `job_samui-completed-jobs-implement_20261024-110944`). In the browser both words show on each such row: the text reads "UNKNOWN: died on the seat limit" and "Job: Failed" (checked on the two rows named in the page text, SAM_ui completed-jobs T1-T18 and TikTok week 3). A true PASS or FAIL disagreement is not in the real store; the unit tests cover it.
+
+Check 20: PASS (verdict strings identical on every returned row that has a record; rows without a record show their own outcome and "not checked").
+
+Proof grep, `grep -n 'writeFile\|appendFile\|rm(\|unlink\|rename' src/lib/server/fleet/finishedJobs.ts src/lib/server/fleet/closerRecord.ts src/app/api/fleet/finished-jobs/route.ts`: printed nothing (exit 1).
+
+Job store before and after (marker `/tmp/t17-marker`, made in /tmp before anything started; `find ~/.sam/jobs ~/.sam/closer -type f -newer /tmp/t17-marker | head`):
+- before: nothing listed (0 files); 1626 files under the two trees.
+- after: 2 files listed, both belonging to the build that is running this ticket list, not to this check: `job_samui-completed-jobs-implement-resume_20261024-154701/events.jsonl` and `.../claude-stream.jsonl` (a live running job, still writing). 1626 files after, the same count. The throwaway server used a copy, never the real directories, so it had no path to write there; I wrote nothing under `~/.sam/jobs` or `~/.sam/closer`.
+- The wider mtime signature of the real store changed between the start and the end (the live job above, and any other live job); I did not try to separate those further.
+
+Cleanup: fixture server stopped (pid 1777333; the first on 3101 stopped earlier), harness proxy and its Next server stopped, `/tmp/t17-fx` removed (auth link removed first, harness auth store intact), nothing listening on 3101, 4950, 4951. Port 3000 count 1 before and 1 after (the live service, never contacted). Temporary harness passkey "SAM ux-fixes local proof (temporary, revoke)" revoked (found false at the end). Proof scripts and raw responses in /tmp/t17-proof.
