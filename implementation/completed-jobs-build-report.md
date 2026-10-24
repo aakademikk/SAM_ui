@@ -154,3 +154,120 @@ Job store before and after (marker `/tmp/t17-marker`, made in /tmp before anythi
 - The wider mtime signature of the real store changed between the start and the end (the live job above, and any other live job); I did not try to separate those further.
 
 Cleanup: fixture server stopped (pid 1777333; the first on 3101 stopped earlier), harness proxy and its Next server stopped, `/tmp/t17-fx` removed (auth link removed first, harness auth store intact), nothing listening on 3101, 4950, 4951. Port 3000 count 1 before and 1 after (the live service, never contacted). Temporary harness passkey "SAM ux-fixes local proof (temporary, revoke)" revoked (found false at the end). Proof scripts and raw responses in /tmp/t17-proof.
+
+## T18 verification: gates and coverage
+
+Run 2026-10-24 on build/completed-jobs at 642048d (T17 commit), before this section was committed. No source file edited. Raw logs: /tmp/t18-tsc.log, /tmp/t18-lint.log, /tmp/t18-test.log, /tmp/t18-build.log.
+
+### Gates against the T1 baseline (bf0efc6)
+
+| Gate | T1 baseline | Now | Result |
+|---|---|---|---|
+| `npx tsc --noEmit -p .` | 0 errors | exit 0, no output | equal |
+| `npm run lint` | 0 errors, 6 warnings | exit 0, 0 errors, 6 warnings (DashboardShell, MoneyInWidget, VisualiserWidget, useVoiceWebSocket, fleetMetrics, projectMetrics: the same six, none in a file this build touches) | equal |
+| `npm test` | 857 tests, 854 pass, 0 fail, 3 skipped | 925 tests, 922 pass, 0 fail, 0 cancelled, 3 skipped (exit 0) | 68 more tests, all pass, no failure |
+| `npx next build` | not recorded | exit 0, "Compiled successfully", 6 lint warnings as above | clean |
+
+The 3 skipped names equal the baseline's, character for character in the opening words and reasons: "check 2 (live): a side message sent 8s into a 25s tool call reaches the same turn's answer" (SAM_LIVE_SIDE_MESSAGE=1), "sam-dispatch.next pins every tier to the same model as the live sam-dispatch" (box-only, /home/col/.local/bin/sam-dispatch.next missing), "a job dispatched from chat X ends with a ping linked to /chat?c=X" (SAM_LIVE_DISPATCH_PING=1). No new skip. The test log still prints "failed to connect to the docker API" lines (host has no docker), as before.
+
+Base note: the tickets say e20d7ca; the real base is bf0efc6 (production moved on), used throughout.
+
+### Build commits (`git log --oneline bf0efc6..HEAD`, 16 commits)
+
+```
+642048d Finished jobs: real-store verdict check recorded (T17)
+021e641 Finished jobs: finished-jobs route skips the estate tick, poll time re-measured (T16a)
+fd59da5 Finished jobs: reading cost measured, no cost or stream reads (T16)
+cfd257d Finished jobs: phone sheet clears the bottom nav, phone checks recorded (T15)
+47f3fbe Finished jobs: desktop and laptop browser check results (T14)
+875b585 Finished jobs: fixture store generator and throwaway server runner (T13)
+97d7a22 Finished jobs: General's panel shows its last five finished, Spend today and old fetch removed (T11, T12)
+0be448c Finished jobs: phone list under Fleet status (T10)
+3245caf Finished jobs: drawer placement under Fleet status (T9)
+e9cd735 Finished jobs: desktop list under Fleet status (T8)
+96d8eb0 Finished jobs: client poller, row view helpers and list component (T7)
+b6f8ca6 Finished jobs: demo rows and /api/fleet/finished-jobs route (T6)
+8b1e3e7 Finished jobs: attach closer verdicts to returned rows only (T5)
+a048362 Finished jobs: incremental memoised store scan (T4)
+c49fad9 Finished jobs: closer record reader (T3)
+eb56a29 Finished jobs: row types and pure rules (T2)
+```
+
+Every ticket T2 to T13 has a commit (T11 and T12 share 97d7a22; T1 is the worktree). T14 to T17 each have one too (T16a is 021e641). The T18 commit follows this section.
+
+### Nothing pushed, merged, deployed or restarted
+
+- `git branch -r --contains HEAD`: prints nothing (no remote branch holds the build).
+- Production tree, read-only git only: `git -C /home/col/SAM_ui rev-parse HEAD` is bf0efc613bd49411b42666ddfa5dcbe0c0430a9b on `claude/sam-core-dashboard-sf3639`, the base, unchanged (no commit after bf0efc6). `git -C /home/col/SAM_ui status --short` is NOT empty: 10 staged additions (`A `), all `*.bak-20261024-keystore` files (proxy/gemini-proxy.mjs, src/app/api/{fleet/dispatch,omni/desktop,operations/dispatch,os,push}/route.ts, src/lib/server/auth/session.ts and session.test.ts, src/lib/server/chat/tiers.ts, src/lib/server/jobs/manager.ts). The suffix names the keystore job, not this one; this job ran no command in the production tree except read-only git and never edited it. The ticket's "empty" cannot hold while that other job's staged files are there. Foreman to confirm they are the keystore job's.
+- `systemctl --user show sam-ui.service -p ActiveEnterTimestamp`: `Tue 2026-10-20 22:50:20 BST`, equal to the T1 value (not restarted).
+- Port 3000: one listener, `next-server` pid 1675636, the same pid recorded in T15, never contacted by this job. Nothing listening on 3101, 4950 or 4951 now. `npx next build` and the tests used no port.
+
+### Worktree cleanliness
+
+`git status --short` in the worktree prints nothing. `implementation/shots/` is already ignored: `git check-ignore -v` names `/home/col/SAM_ui/.git/info/exclude` line 7 (`implementation/shots/`), which is the common git dir shared by all worktrees (this worktree's `git rev-parse --git-path info/exclude` resolves to it), so no edit was needed and none was made. `.test-build/` is ignored by `.gitignore:51`; `.next/`, `next-env.d.ts`, `node_modules`, `public/sw.js` and `tsconfig.tsbuildinfo` are also ignored (`git status --ignored`). No other untracked file.
+
+### Coverage: must-dos
+
+| Must-do | Ticket(s) | Recorded result |
+|---|---|---|
+| 1 Desktop list under Fleet status | T8, proved T14 | Check 12 PASS: directly under Fleet status, 10 rows newest first, at 1920x1080, 1680x1050, 1601x801 (column) and the drawer sizes. |
+| 2 Drawer, no new tab | T9, proved T14 | Check 14 PASS: six tabs unchanged at 1366x768, 1280x720, 1500x900, 1440x900; dashboardLayout.ts diff empty. |
+| 3 Scrolls inside, at least 3 rows | T8, proved T14 | Check 13 PASS at column sizes (Job detail 166.5, Fleet status 232.5, within 0.1 px of list-hidden; 3 rows at 1601x801). Drawer 1440x900 is information only: Fleet status is now its natural 232.5 px where production filled its grid cell (T9 decision, see Notes). |
+| 4 Row content, 12 px, 44 px | T2, T7, proved T14, T15 | Check 15 PASS: rows 54.3 px desktop, 50.4 px phone, text 12 to 13 px. Contrast caveat below. |
+| 5 Slug when no summary | T2, T7 | finishedJobRules.test 14 pass, finishedJobsView.test 13 pass. |
+| 6 Row opens /jobs/id | T7, proved T14, T15 | Checks 12, 22, 17 PASS (demo and fixture; fixture job page loaded). |
+| 7 Only finished jobs | T2, T4 | finishedJobRules.test, finishedJobs.test 9 pass. |
+| 8 Order by endedAt | T4 | finishedJobs.test; endedAt strictly descending in the browser runs. |
+| 9 Outcome rule | T2, T4 | finishedJobRules.test 14 pass. |
+| 10 sam-job only, counted general, SAM labelled | T2, T4, T6 | finishedJobs.test, route.test 5 pass; fixture 34 finished, 30 counted. |
+| 11 Last 5 replaces Earlier today | T11, T12, proved T14, T15 | dashboardLayout.test 7 pass (fails on bf0efc6 panel); GeneralDetailPanel.render.test (fails 4 of 10 on bf0efc6 panel); check 16 PASS desktop; phone FAIL then fixed, below. |
+| 12 Rest of panel unchanged | T12, proved T14, T15 | Running, Verified, Workers now present, logic unchanged against bf0efc6 (stat row is now two columns, noted). |
+| 13 Reading cost | T4, proved T16 | Check 8, 9 (T4 tests); check 10 PASS after T16a (first run FAIL on time, below). |
+| 14 Closer verdict, own outcome on disagreement | T3, T5, T7, proved T17 | closerRecord.test 16, finishedJobs.test 14, finishedJobsView.test 13; check 20 PASS on a copy of the store. |
+| 15 No record: outcome and "not checked" | T3, T5, T7 | Same tests; browser rows show "not checked" exactly when no verdict. |
+| 16 Closer read never blocks, returned rows only | T3, T5 | finishedJobs.test (5 new in T5). |
+| 17 Demo never reads the store | T6 | route.test 5, demoFixtures.test 8 pass. |
+| 18 Phone list under Fleet status | T10, proved T15 | Check 22 PASS at 412x915 and 390x844. |
+| 19 "not checked" marker | T7 | Check 23 test; browser rows. |
+| 20 Spend today removed, no /api/fleet/jobs request | T11, T12 | GeneralDetailPanel.render.test; grep count 0. |
+
+### Coverage: spec checks
+
+| Check | Ticket | Recorded result |
+|---|---|---|
+| 1 Fixture store rules | T4 | finishedJobs.test 9 pass, fixture rules covered. |
+| 2 5000 chat directories | T4 | Pass in finishedJobs.test; also run live at 5040 directories in T16. |
+| 3 Slug and summary | T2 | finishedJobRules.test 14 pass. |
+| 4 General's newest 5, 2, 0 | T11, T12 | dashboardLayout.test 7 pass; empty text in the render test. |
+| 5 Closer reader cases | T3, T7 | closerRecord.test 16 pass; both words render (browser: "FAIL: tests Job: Passed"). |
+| 6 No record, record appears, non-closed | T5 | finishedJobs.test 14 pass. |
+| 7 Demo never opens the store | T6 | route.test, demoFixtures.test pass. |
+| 8 File-open counting, 16 in flight | T4 | finishedJobs.test pass. |
+| 9 Deleted directory leaves the map | T4 | finishedJobs.test pass. |
+| 10 Memory and time, 300 polls | T16, T16a | First run: memory +8.33% PASS, time FAIL (fleet median 274 ms, cause getEstate() tick in the route). Fixed in T16a 021e641; re-run PASS: RSS +0.59%, fleet handler median 14 ms (max 41), hephaestus 0 ms. Three of 900 requests stalled 68 to 134 s (loopback LAST-ACK retransmits, `/api/health` stalls too); excluded and reported, outside this code on that evidence. |
+| 11 No cost or stream read | T16 | grep empty; read review written. |
+| 12 Desktop list, 10 rows, click lands | T14 | PASS. |
+| 13 Heights unchanged, 3 rows, scrolls | T14 | PASS at 1920x1080, 1680x1050, 1601x801. 1440x900 is a drawer size, measured as the drawer equivalent (see Notes). |
+| 14 Drawer sizes, six tabs | T14 | PASS. |
+| 15 44 px, 12 px, contrast | T7, T14, T15 | PASS on size. Contrast: plain axe judged nothing (gradient backgrounds, 0 violations but all nodes incomplete); passed only with gradients flattened (46 of 46, 50 of 50 nodes, lowest 6.21:1) plus a gradient-aware DOM probe (lowest 5.32:1 desktop, 6.29:1 phone). Method deviation, stated. |
+| 16 Panel and sheet, Spend gone | T12, T14, T15 | Desktop PASS. Phone first FAILED (bottom nav covered the last row's second line in 20 of 20 sheets), fixed by the spacer in cfd257d, rechecked PASS in 20 of 20. |
+| 17 Phone sheet row opens the job | T15 | PASS (the then-covered fifth row was not tap-tested; after the fix both its lines return the row under elementFromPoint). |
+| 18 Floor scene hash, phone pyramid unchanged | T14, T15 | Desktop floorGolden 7 of 7, floor diff against bf0efc6 empty. Phone unit 84 of 84, but pyramid browser check 12 (P5) FAILS as written, and fails identically on a build of bf0efc6 run back to back (Cerberus, lime pixels from the proof's unrouted demo schedule on SAM's clock ring). Not caused by this build; "pass unchanged" in the strict sense is not met because the proof was already failing on the baseline. |
+| 19 tsc, lint, test, build | T18 | Table above: all pass, no regression. |
+| 20 Real closed job shows its verdict | T17 | PASS: 6 rows with closer.json identical byte for byte, 4 without show outcome and "not checked". Ran on a `cp -a` copy of the store (the boot sweep deletes chat directories on the real home), with the closer.json always read from the real path. A true PASS/FAIL disagreement is not in the real store; unit tests cover it. |
+| 21 Colin confirms on phone and desktop | T20 (after T19) | Not run: human gate, pending. |
+| 22 Phone list under Fleet status | T15 | PASS at 412x915 and 390x844. |
+| 23 "not checked" rendering | T7 | finishedJobsView.test pass. |
+| 24 No Spend today, no request over three polls | T12 | GeneralDetailPanel.render.test pass. |
+
+### Gaps and failures, plainly
+
+- No coverage row is missing. Check 21 is pending by design (T19, T20 are gates; T19 needs Colin's approval).
+- Check 18, pyramid P5 browser failure: present on bf0efc6 too (so the strict wording "pass unchanged" is not achievable); foreman to rule it against the proof, not the build.
+- Check 10 first failed on time (T16), then fixed by T16a and re-run PASS. The 3 stalls (68 to 134 s) are an unresolved host-level cause, outside the build.
+- Check 16 (phone) first failed (nav overlap), fixed in cfd257d, rechecked PASS.
+- Check 20 ran on a copy of the store, not on the live home.
+- Check 15 contrast rests on gradient-flattened axe runs and a DOM probe, not a plain axe pass.
+- 1440x900 is a drawer size, not a column size; checks 12, 13, 15 column measurements ran at 1920x1080, 1680x1050, 1601x801 with 1440x900 as the drawer equivalent. At 1440x900 with the fixture store only one list row is visible before the tab is scrolled.
+- Production tree `git status --short` is not empty (10 staged keystore .bak files from another job); its HEAD is unchanged at bf0efc6.
+- Other open notes from earlier sections: the General sheet is taller and hides the zoomed General behind it (T15); Fleet status in drawers now takes its natural height (T9).
