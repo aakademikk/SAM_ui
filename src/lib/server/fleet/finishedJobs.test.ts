@@ -8,7 +8,11 @@
  * resets the cache. File access is counted by spying on `fs.promises`, the
  * object the module calls through.
  *
- * Spec: must-dos 7, 8, 10, 13; checks 1, 2, 8, 9.
+ * The verdict cases (T5) drop `closer.json` records into fixture directories
+ * and move the clock with mocked `Date`, so "past the memo" is real elapsed
+ * time to the module, for the scan memo and the verdict memory alike.
+ *
+ * Spec: must-dos 7, 8, 10, 13, 14, 15, 16; checks 1, 2, 5, 6, 8, 9.
  */
 
 import assert from 'node:assert/strict';
@@ -21,10 +25,13 @@ import { tempDir } from '@/lib/server/testing/tempDir';
 import type { FinishedJob } from '@/types/finishedJobs';
 import type { GeneralId } from '@/types/floor';
 
-import { MAX_READ_BYTES } from './closerRecord.js';
+import { CLOSER_FILE, MAX_READ_BYTES } from './closerRecord.js';
 import {
   MAX_INFLIGHT_OPENS,
+  MEMO_TTL_MS,
   finishedJobsTestHooks,
+  getFleetFinished,
+  getGeneralFinished,
   resetFinishedJobsCache,
   scanFinishedJobs,
 } from './finishedJobs.js';
@@ -499,4 +506,208 @@ test('a missing store gives empty lists and does not throw', async () => {
   assert.deepEqual(fleet, []);
   assert.deepEqual(byGeneral('hermes'), []);
   assert.equal(finishedJobsTestHooks.cacheSize(), 0);
+});
+
+// ---- Closer verdicts (T5) ----
+
+const V = {
+  a: 'job_v-a_20261020-080100',
+  b: 'job_v-b_20261020-080200',
+  c: 'job_v-c_20261020-080300',
+  d: 'job_v-d_20261020-080400',
+  e: 'job_v-e_20261020-080500',
+} as const;
+
+/** Five finished jobs (two of Hephaestus's, one SAM's), a running job and a chat turn. */
+function verdictStore(prefix: string): string {
+  const root = freshStore(prefix);
+  samJob(root, V.a, done('hephaestus', 'exited', 0, 1));
+  samJob(root, V.b, done('hephaestus', 'failed', 1, 2));
+  samJob(root, V.c, done('cerberus', 'exited', 0, 3));
+  samJob(root, V.d, done('sam', 'killed', null, 4));
+  samJob(root, V.e, done('hermes', 'exited', 0, 5));
+  samJob(root, 'job_v-run_20261020-080600', running('hephaestus'));
+  chatTurn(root, 'job_mgv_0123456789abcdef_1', done(undefined, 'exited', 0, 6));
+  return root;
+}
+
+/** A closer record, as the Job Closer writes it. */
+const closed = (id: string, verdict: string) => ({ jobId: id, status: 'closed', verdictKind: 'x', verdict });
+
+let mtimeSeq = 1_800_000_000;
+
+/** Writes `<dir>/closer.json` with a distinct mtime, so a replaced record is always seen as changed. */
+function writeCloser(root: string, id: string, record: unknown): void {
+  const file = path.join(root, id, CLOSER_FILE);
+  fs.writeFileSync(file, typeof record === 'string' ? record : JSON.stringify(record));
+  mtimeSeq += 10;
+  fs.utimesSync(file, mtimeSeq, mtimeSeq);
+}
+
+/** Every path under the store with its size and mtime, to show the calls write nothing. */
+function listing(root: string): string[] {
+  return (fs.readdirSync(root, { recursive: true }) as string[])
+    .map((rel) => {
+      const st = fs.statSync(path.join(root, rel));
+      return `${rel} ${st.isDirectory() ? 'dir' : st.size} ${st.mtimeMs}`;
+    })
+    .sort();
+}
+
+/** The clock, mocked, so a poll can be moved past the memo. */
+function mockClock(t: TestContext): () => void {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  return () => t.mock.timers.tick(MEMO_TTL_MS + 1);
+}
+
+const verdictById = (rows: FinishedJob[]) => Object.fromEntries(rows.map((r) => [r.id, r.verdict]));
+const closerOpens = (log: FsLog) => log.opens.filter((file) => path.basename(file) === CLOSER_FILE);
+
+test('check 6: with no closer record anywhere every row has verdict null, on every poll', async (t) => {
+  const root = verdictStore('finished-v-none-');
+  const advance = mockClock(t);
+  const before = listing(root);
+
+  for (let poll = 0; poll < 3; poll++) {
+    const fleet = await getFleetFinished();
+    assert.deepEqual(ids(fleet), [V.e, V.d, V.c, V.b, V.a]);
+    assert.ok(fleet.every((r) => r.verdict === null));
+    assert.deepEqual(
+      fleet.map((r) => r.outcome),
+      ['passed', 'stopped', 'passed', 'failed', 'passed'],
+    );
+    const heph = await getGeneralFinished('hephaestus');
+    assert.deepEqual(ids(heph), [V.b, V.a]);
+    assert.ok(heph.every((r) => r.verdict === null));
+    advance();
+  }
+  assert.deepEqual(listing(root), before);
+});
+
+test('check 6: a record dropped in after the job finished shows on the next poll past the memo, on that row only', async (t) => {
+  const root = verdictStore('finished-v-appear-');
+  const advance = mockClock(t);
+  assert.ok((await getFleetFinished()).every((r) => r.verdict === null));
+  assert.deepEqual(await getGeneralFinished('cerberus'), [
+    { id: V.c, name: 'v-c', general: 'cerberus', endedAt: at(3), outcome: 'passed', verdict: null },
+  ]);
+
+  writeCloser(root, V.c, closed(V.c, 'PASS (3/3 checks)'));
+  // A verdict that disagrees with the job's own outcome: both are kept on the row.
+  writeCloser(root, V.a, closed(V.a, '  FAIL: tests  '));
+  const before = listing(root);
+  advance();
+
+  const fleet = await getFleetFinished();
+  assert.deepEqual(verdictById(fleet), {
+    [V.e]: null,
+    [V.d]: null,
+    [V.c]: 'PASS (3/3 checks)',
+    [V.b]: null,
+    [V.a]: 'FAIL: tests',
+  });
+  assert.equal(fleet.find((r) => r.id === V.a)?.outcome, 'passed');
+  assert.deepEqual(verdictById(await getGeneralFinished('cerberus')), { [V.c]: 'PASS (3/3 checks)' });
+  assert.deepEqual(verdictById(await getGeneralFinished('hephaestus')), { [V.b]: null, [V.a]: 'FAIL: tests' });
+
+  // The scan's own rows are left as they were: verdicts go on copies.
+  assert.ok((await scanFinishedJobs()).fleet.every((r) => r.verdict === null));
+  assert.deepEqual(listing(root), before);
+});
+
+test('check 6: a record that is not a valid closed record changes nothing and never rejects', async (t) => {
+  const root = verdictStore('finished-v-invalid-');
+  const advance = mockClock(t);
+  const baseline = await getFleetFinished();
+
+  writeCloser(root, V.a, { jobId: V.a, status: 'unclosed', verdict: 'PASS (1/1 checks)' });
+  writeCloser(root, V.b, { jobId: V.b, verdict: 'FAIL: tests' }); // no status
+  writeCloser(root, V.d, closed(V.d, 'pass (1/1 checks)')); // lower case
+  writeCloser(root, V.e, '{"status": "closed", "verdict": "PA');
+  fs.mkdirSync(path.join(root, V.c, CLOSER_FILE)); // a directory, not a file
+  const before = listing(root);
+
+  for (let poll = 0; poll < 2; poll++) {
+    advance();
+    assert.deepEqual(await getFleetFinished(), baseline);
+    assert.ok((await getGeneralFinished('hephaestus')).every((r) => r.verdict === null));
+  }
+  assert.deepEqual(listing(root), before);
+});
+
+test('a replaced record shows its new verdict; an unchanged one costs one stat and no read', async (t) => {
+  const root = verdictStore('finished-v-change-');
+  const advance = mockClock(t);
+  const file = path.join(root, V.a, CLOSER_FILE);
+  writeCloser(root, V.a, closed(V.a, 'FAIL: tests'));
+  assert.equal(verdictById(await getFleetFinished())[V.a], 'FAIL: tests');
+
+  // Unchanged: a stat of the one valid record, no closer.json opened.
+  const log = spyFs(t);
+  advance();
+  assert.equal(verdictById(await getFleetFinished())[V.a], 'FAIL: tests');
+  assert.deepEqual(log.probes.filter((p) => path.basename(p) === CLOSER_FILE), [file]);
+  assert.deepEqual(closerOpens(log).filter((p) => p === file), []);
+
+  // Replaced with a different verdict: re-read on the next poll.
+  writeCloser(root, V.a, closed(V.a, 'PASS (4/4 checks)'));
+  advance();
+  log.clear();
+  const fleet = await getFleetFinished();
+  assert.equal(verdictById(fleet)[V.a], 'PASS (4/4 checks)');
+  assert.deepEqual(closerOpens(log).filter((p) => p === file), [file]);
+  assert.ok(fleet.filter((r) => r.id !== V.a).every((r) => r.verdict === null));
+
+  // Removed: back to "no record", learnt from the stat alone.
+  fs.rmSync(file);
+  advance();
+  log.clear();
+  assert.equal(verdictById(await getFleetFinished())[V.a], null);
+  assert.deepEqual(closerOpens(log).filter((p) => p === file), []);
+
+  // A job directory that goes is forgotten by the verdict memory too.
+  assert.equal(finishedJobsTestHooks.verdictCacheSize(), 5);
+  fs.rmSync(path.join(root, V.a), { recursive: true });
+  advance();
+  assert.deepEqual(ids(await getFleetFinished()), [V.e, V.d, V.c, V.b]);
+  assert.equal(finishedJobsTestHooks.verdictCacheSize(), 4);
+});
+
+test('closer.json is opened once per returned row only, on a store of 30 finished jobs', async (t) => {
+  const root = freshStore('finished-v-30-');
+  const advance = mockClock(t);
+  const owners = [...GENERALS, 'sam'];
+  const all: string[] = [];
+  for (let i = 0; i < 30; i++) {
+    const id = `job_fin-${String(i).padStart(2, '0')}_20261021-07${String(i).padStart(2, '0')}00`;
+    samJob(root, id, done(owners[i % owners.length], 'exited', 0, i));
+    all.push(id);
+  }
+  // Valid records on the newest job and on one that falls off the fleet list.
+  writeCloser(root, all[29], closed(all[29], 'PASS (2/2 checks)'));
+  writeCloser(root, all[0], closed(all[0], 'FAIL: tests'));
+  const before = listing(root);
+  const log = spyFs(t);
+
+  const fleet = await getFleetFinished();
+  assert.equal(fleet.length, 10);
+  assert.deepEqual(
+    closerOpens(log).sort(),
+    fleet.map((r) => path.join(root, r.id, CLOSER_FILE)).sort(),
+  );
+  assert.equal(fleet[0].verdict, 'PASS (2/2 checks)');
+  assert.ok(!log.opens.some((file) => /stdout\.log|claude-stream\.jsonl|cmd\.sh/.test(file)));
+  assert.ok(log.highWater <= MAX_INFLIGHT_OPENS);
+
+  advance();
+  log.clear();
+  const hermes = await getGeneralFinished('hermes');
+  assert.equal(hermes.length, 5);
+  assert.deepEqual(
+    closerOpens(log).sort(),
+    hermes.map((r) => path.join(root, r.id, CLOSER_FILE)).sort(),
+  );
+  assert.equal(hermes[4].id, all[0]);
+  assert.equal(hermes[4].verdict, 'FAIL: tests');
+  assert.deepEqual(listing(root), before);
 });

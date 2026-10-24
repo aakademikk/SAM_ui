@@ -21,10 +21,18 @@
  *   - The whole scan is memoised for MEMO_TTL_MS, with one shared in-flight
  *     promise, so pollers together cost a single scan.
  *
- * Only `meta.json` and `cmd.sh` are touched. No job output, stream log or
- * cost lookup is read to build these rows. Rows carry `verdict: null` here.
+ * The scan touches only `meta.json` and `cmd.sh`. No job output, stream log
+ * or cost lookup is read to build these rows. Scan rows carry `verdict: null`.
  *
- * Spec: must-dos 7, 8, 10, 13; checks 1, 2, 8, 9.
+ * Verdicts (T5): `getFleetFinished` and `getGeneralFinished` attach the
+ * closer's verdict to the capped rows only (at most 10, or 5), so the closer
+ * record is read for rows being returned and only once `meta.json` has said
+ * the job is finished. Each verdict is remembered with its record's mtime: a
+ * later call costs one `stat` and re-reads only when the mtime has changed.
+ * "No record" is remembered for MEMO_TTL_MS only, so a record that appears
+ * after the job finished shows on the next poll past the scan memo.
+ *
+ * Spec: must-dos 7, 8, 10, 13, 14, 15, 16; checks 1, 2, 5, 6, 8, 9.
  */
 
 import fsp from 'node:fs/promises';
@@ -38,7 +46,7 @@ import {
 } from '@/types/finishedJobs';
 import type { GeneralId } from '@/types/floor';
 
-import { MAX_READ_BYTES } from '@/lib/server/fleet/closerRecord';
+import { CLOSER_FILE, MAX_READ_BYTES, readCloserVerdict } from '@/lib/server/fleet/closerRecord';
 import { countedGeneral, isFinishedMeta, nameOf, outcomeOf } from '@/lib/server/fleet/finishedJobRules';
 
 /** Most files open at once during a scan (must-do 13). */
@@ -81,7 +89,14 @@ export interface FinishedScan {
 
 const SKIP: Entry = { kind: 'skip' };
 
+/**
+ * A row's last closer read: a valid verdict with its record's mtime, or "no
+ * record" with when it was read.
+ */
+type VerdictEntry = { verdict: string; mtimeMs: number } | { verdict: null; readAt: number };
+
 let entries = new Map<string, Entry>();
+let verdicts = new Map<string, VerdictEntry>();
 let lastScan: { at: number; result: FinishedScan } | null = null;
 let inFlight: Promise<FinishedScan> | null = null;
 
@@ -93,6 +108,7 @@ function jobsRoot(): string {
 /** Clears the remembered store and the memo. For tests. */
 export function resetFinishedJobsCache(): void {
   entries = new Map();
+  verdicts = new Map();
   lastScan = null;
   inFlight = null;
 }
@@ -104,6 +120,9 @@ export const finishedJobsTestHooks = {
   },
   cacheSize(): number {
     return entries.size;
+  },
+  verdictCacheSize(): number {
+    return verdicts.size;
   },
 };
 
@@ -142,6 +161,9 @@ async function scanStore(): Promise<FinishedScan> {
   const present = new Set(names.filter((name) => name.startsWith(ID_PREFIX)));
   for (const name of entries.keys()) {
     if (!present.has(name)) entries.delete(name);
+  }
+  for (const name of verdicts.keys()) {
+    if (!present.has(name)) verdicts.delete(name);
   }
 
   const toRead: string[] = [];
@@ -254,4 +276,67 @@ function buildResult(): FinishedScan {
     fleet: sorted.slice(0, FLEET_LIST_CAP).map(row),
     byGeneral: (id) => sorted.filter((job) => job.general === id).slice(0, GENERAL_LIST_CAP).map(row),
   };
+}
+
+/** The fleet list, newest finish first, with closer verdicts attached. */
+export async function getFleetFinished(): Promise<FinishedJob[]> {
+  const { fleet } = await scanFinishedJobs();
+  return attachVerdicts(fleet);
+}
+
+/** One General's last finished jobs, newest first, with closer verdicts attached. */
+export async function getGeneralFinished(id: GeneralId): Promise<FinishedJob[]> {
+  const { byGeneral } = await scanFinishedJobs();
+  return attachVerdicts(byGeneral(id));
+}
+
+/**
+ * Copies of `rows` with `verdict` set from each job's closer record, or null
+ * for "no record". At most MAX_INFLIGHT_OPENS rows are looked up at once.
+ * Never rejects: a row whose lookup fails keeps `verdict: null`.
+ */
+export async function attachVerdicts(rows: FinishedJob[]): Promise<FinishedJob[]> {
+  const root = jobsRoot();
+  const out = rows.map((row): FinishedJob => ({ ...row, verdict: null }));
+  let next = 0;
+  const worker = async () => {
+    while (next < out.length) {
+      const row = out[next++];
+      try {
+        row.verdict = await verdictFor(root, row.id);
+      } catch {
+        row.verdict = null;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(MAX_INFLIGHT_OPENS, out.length) }, worker));
+  return out;
+}
+
+/** One row's verdict: from memory when still current, else one closer read. */
+async function verdictFor(root: string, id: string): Promise<string | null> {
+  const dir = path.join(root, id);
+  const known = verdicts.get(id);
+  if (known?.verdict === null && Date.now() - known.readAt < MEMO_TTL_MS) return null;
+  if (known && known.verdict !== null) {
+    const mtimeMs = await closerMtime(dir);
+    if (mtimeMs === known.mtimeMs) return known.verdict;
+    if (mtimeMs === null) {
+      // The record has gone: "no record", with no open needed to learn it.
+      verdicts.set(id, { verdict: null, readAt: Date.now() });
+      return null;
+    }
+  }
+  const record = await readCloserVerdict(dir);
+  verdicts.set(id, record ?? { verdict: null, readAt: Date.now() });
+  return record?.verdict ?? null;
+}
+
+/** The closer record's mtime from one `stat`, or null when it cannot be read. */
+async function closerMtime(dir: string): Promise<number | null> {
+  try {
+    return (await fsp.stat(path.join(dir, CLOSER_FILE))).mtimeMs;
+  } catch {
+    return null;
+  }
 }
