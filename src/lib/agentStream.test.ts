@@ -96,3 +96,53 @@ test('a sam_side event pushes its own side block, not folded into surrounding te
     { kind: 'side', text: 'side again!' },
   ]);
 });
+
+test('single-shot: a result with no streamed text becomes the answer (2026-08-21 freeze)', () => {
+  const parser = new AgentStreamParser();
+  feed(parser, [
+    { type: 'system', subtype: 'init', session_id: 'sess1' },
+    { type: 'result', result: 'the whole reply' },
+  ]);
+  assert.deepEqual(textBlocks(parser), ['the whole reply']);
+});
+
+test('a result already streamed in full is not duplicated', () => {
+  const parser = new AgentStreamParser();
+  feed(parser, [
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'the full answer' }] } },
+    { type: 'result', result: 'the full answer' },
+  ]);
+  assert.deepEqual(textBlocks(parser), ['the full answer']);
+});
+
+test('hazard 1: mid-turn narration streamed, final text lost, the longer result is kept', () => {
+  const parser = new AgentStreamParser();
+  const full = 'Here is the complete final answer, much longer than the narration before it.';
+  feed(parser, [
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'Let me check.' }] } },
+    {
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }] },
+    },
+    {
+      type: 'user',
+      message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] },
+    },
+    // The final assistant text event never arrives; only the result does.
+    { type: 'result', result: full },
+  ]);
+  const joined = textBlocks(parser).join('\n');
+  assert.ok(joined.includes(full), 'the full answer in result must not be discarded');
+});
+
+test('hazard 2: finish() flushes a last line that has no trailing newline', () => {
+  const parser = new AgentStreamParser();
+  parser.push(
+    JSON.stringify({ type: 'system', subtype: 'init', session_id: 'sess1' }) + '\n',
+  );
+  // No trailing newline on the final result line.
+  parser.push(JSON.stringify({ type: 'result', result: 'last line answer' }));
+  assert.equal(parser.state.done, false, 'line is still buffered before finish()');
+  parser.finish(0);
+  assert.deepEqual(textBlocks(parser), ['last line answer']);
+});
