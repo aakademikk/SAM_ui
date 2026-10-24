@@ -26,7 +26,6 @@ type FinishedRoute = typeof import('./route.js');
 type JobsRoute = typeof import('../jobs/route.js');
 type AuthModule = typeof import('../../../../lib/server/auth/session.js');
 type StoreModule = typeof import('../../../../lib/server/auth/store.js');
-type TelemetryModule = typeof import('../../../../lib/server/telemetry.js');
 type FinishedJob = import('../../../../types/finishedJobs.js').FinishedJob;
 
 const tmpHome = tempDir('finished-jobs-route-');
@@ -95,13 +94,6 @@ before(async () => {
   const sessionOnly = cookies.find((c) => c.startsWith(`${auth.SESSION_COOKIE}=`));
   assert.ok(sessionOnly);
   sessionCookie = sessionOnly.split(';')[0];
-
-  // The shared telemetry estate (the envelope's `tick`) reads the store once,
-  // in its constructor, on whichever route first calls `getEstate()`; on a
-  // running server it already exists. That read is not the finished-jobs
-  // path, so build it here, before any spy, as a running server would have.
-  const telemetry: TelemetryModule = await import('../../../../lib/server/telemetry.js');
-  telemetry.getEstate();
 
   finishedRoute = await import('./route.js');
   jobsRoute = await import('../jobs/route.js');
@@ -239,4 +231,12 @@ test('a request with no session is refused, as /api/fleet/jobs refuses it', asyn
     assert.equal(res.status, old.status, `${query || 'no query'}: same refusal as the old route`);
     assert.equal(res.status, 401);
   }
+});
+
+test('the route module does not import telemetry (no estate tick on this path)', () => {
+  const source = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'api', 'fleet', 'finished-jobs', 'route.ts'), 'utf8');
+  const imports = source.split('\n').filter((line) => /^\s*import\b/.test(line));
+  assert.ok(imports.length > 0);
+  assert.ok(!imports.some((line) => /telemetry/.test(line)), 'no import from telemetry');
+  assert.ok(!/getEstate\s*\(/.test(source.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')), 'no getEstate call');
 });

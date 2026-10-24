@@ -13,10 +13,13 @@
  * `?demo=1` (must-do 17) returns `demoFinishedJobs`'s invented rows instead:
  * the branch comes before any call into `finishedJobs.ts`, so the live job
  * store is never read on that path.
+ *
+ * It does not call `getEstate()` (T16a): the estate tick advance reads every
+ * `meta.json` synchronously, which cost about 270 ms a poll on a 5040-directory
+ * store, so `meta.tick` is a constant 0 here.
  */
 
 import { envelope, failure } from '@/lib/server/respond';
-import { getEstate } from '@/lib/server/telemetry';
 import { requireSession } from '@/lib/server/auth/guard';
 import { demoFinishedJobs } from '@/lib/server/fleet/demoFixtures';
 import { getFleetFinished, getGeneralFinished } from '@/lib/server/fleet/finishedJobs';
@@ -28,6 +31,11 @@ function isGeneralId(value: string): value is GeneralId {
   return value !== 'sam' && (FINISHED_GENERALS as readonly string[]).includes(value);
 }
 
+// The envelope's tick is a constant 0: the estate tick advance reads every
+// meta.json synchronously and this route does not need it; the finished lists
+// have their own memo.
+const TICK = 0;
+
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
@@ -35,7 +43,6 @@ export async function GET(request: Request) {
   if (session instanceof Response) return session;
 
   const startedAt = Date.now();
-  const estate = getEstate();
 
   const url = new URL(request.url);
   const generalParam = url.searchParams.get('general');
@@ -51,11 +58,11 @@ export async function GET(request: Request) {
       { jobs: demoFinishedJobs(Date.now(), general) },
       'sam.fleet.finished-jobs',
       startedAt,
-      estate.tick,
+      TICK,
     );
   }
 
   const jobs = general === undefined ? await getFleetFinished() : await getGeneralFinished(general);
 
-  return envelope({ jobs }, 'sam.fleet.finished-jobs', startedAt, estate.tick);
+  return envelope({ jobs }, 'sam.fleet.finished-jobs', startedAt, TICK);
 }
