@@ -1,5 +1,44 @@
 # Completed-jobs lists: build report
 
+## Summary (foreman, 2026-10-24)
+
+Branch build/completed-jobs in /home/col/SAM_ui-completed-jobs, based on production HEAD bf0efc6, 18 commits (T2 to T18 plus this summary). Not pushed, merged or deployed; sam-ui.service and port 3000 untouched. T19 (deploy) and T20 (Colin's check) are gates and were not started.
+
+Run note: this job was relaunched after dying on the seat usage limit. The resume note said no commits, but the worktree already held T1 to T14 commits and an uncommitted T15 state; those were verified (tsc, tests, report, Status lines) and continued from T15, not redone.
+
+### Drift found (tickets written against e20d7ca, production now bf0efc6)
+
+Every path and function in "Read this first" still exists at bf0efc6 (checked with git cat-file; none moved or renamed). Content drift e20d7ca to bf0efc6 in files this build touches or reads:
+- JobDetailModule.tsx +187 lines (job ticket panel), plus jobTicketView.ts, jobTicketPanel tests, ActiveJobsModule.tsx +10: affects the T8 and T9 height checks, which T14 measured on the new code.
+- FleetDashboardShell.tsx +4, FleetPhoneView.tsx +4, phoneView.ts +1: small placement drift, absorbed in T8 to T10.
+- floorState.ts +38 and types/floor.ts +8: resolveGeneral and the General ids are unchanged in meaning; the ticket's fallback difference still holds.
+- floorGolden.test.ts differs from the ticket's base 789589e by 130 lines, all from production commit bd96059 (usage tile and phone pyramid); the build adds nothing.
+- Ticket text "e20d7ca" read as bf0efc6 throughout. The ticket's 1440x900 "column" size is a drawer size (the column exists above 1600x800); measured at 1920x1080, 1680x1050, 1601x801, plus 1440x900 as drawer.
+This drift check was written up at the relaunch, after T2 to T14 were already built (the first run did not record it); no drift changed a ticket's meaning.
+
+### Per-ticket result
+
+- T1 DONE worktree and baseline. T2 to T13 DONE (types and rules, closer reader, incremental store scan, verdicts, demo rows and route, poller and row component, desktop, drawer and phone placement, panel logic and UI, fixture generator).
+- T14 DONE desktop and laptop checks 12 to 16 and 18: all pass.
+- T15 DONE after a fix. Checks 22, 15, 17 pass. Check 16 first FAILED (the phone bottom nav covered the last finished row of every General sheet); fixed with a 56 px spacer in GeneralDetailPanel.tsx (cfd257d; a src change inside a check ticket, recorded here as a fix) and rechecked in 20 of 20 sheets. Check 18: unit P1 to P9 pass (84 of 84); browser pyramid check 12 (P5) fails for Cerberus, and fails identically on a bf0efc6 build run back to back, so it is the proof's unrouted demo schedule on SAM's clock ring, not this build. "Unchanged" is therefore not strictly met by the proof as written.
+- T16 DONE after a fix. Check 11 pass. Check 10 first FAILED on time (fleet poll median 274 ms against 50 ms) because the route called getEstate(); T16a (021e641) removed that call. Re-measured: RSS +0.59% (limit 10%), fleet median 14 ms, hephaestus 0 ms. 3 of 900 requests stalled 68 to 134 s from loopback TCP retransmits; the evidence puts that outside the route, but the cause is unproven and could affect the live app.
+- T17 DONE with a deviation: check 20 ran on a cp -a copy of the real job store (the server's boot sweep deletes chat directories beyond 128, so the real HOME was not safe). Six rows with a closer.json identical byte for byte; four with none show the outcome and "not checked". No true PASS/FAIL disagreement exists in the real store; unit tests cover it.
+- T18 DONE gates and coverage walk; no coverage row missing. Check 21 (Colin on phone and desktop) is the T20 gate.
+
+### Test numbers against the T1 baseline
+
+- npm test: baseline 857 tests, 854 pass, 0 fail, 3 skipped. Now 925 tests, 922 pass, 0 fail, 3 skipped (same three skipped names), +68 tests. Re-run by the foreman after T18: same.
+- tsc --noEmit: 0 errors, as baseline. Lint: 0 errors, 6 warnings, as baseline. next build: clean.
+
+### For Colin before T19
+
+- Production tree git status is not empty: 10 staged *.bak-20261024-keystore files from the keystore job, not from this build. Production HEAD is still bf0efc6.
+- Phone: the General sheet now opens much taller (top near y 216 at 412x915), hiding the zoomed General on the floor behind it; inside the locked 78% cap but a visible change.
+- Contrast in the lists was proved only with the panel gradients flattened, plus a DOM probe (plain axe cannot judge gradient backgrounds). Lowest ratio 5.32:1.
+- A slip in T16: `sam-enrol --help` run outside the harness printed a real single-use token valid for 10 minutes; it was not used and has expired.
+
+VERDICT: Build T1 to T18 is complete and green (925 tests, 0 fail, tsc and lint at baseline, build clean), with two defects found and fixed on the way; open for Colin are the P5 proof fail that also fails on production and the unexplained loopback stalls; stopped at the T19 gate, nothing pushed or deployed.
+
 ## Browser checks, desktop and laptop (T14)
 
 Run 2026-10-24 against build/completed-jobs at 875b585 (served build reports gitSHA 875b585), fresh `npx next build` (clean, 6 lint warnings, the baseline ones). Local proof harness on 127.0.0.1:4950 (TLS proxy 4951), throwaway passkey enrolled and revoked each run. Two data sources: demo (the Demo toggle) and a T13 fixture store (`make-fixture-store.cjs --chat 50 --jobs 40`, 34 finished, 30 counted). Scripts and raw JSON: /tmp/t14-proof/ (t14.mjs, t14b.mjs, detail-probe.mjs; demo.jsonl, demo-b-run1.jsonl, demo-b.jsonl, fixture.jsonl, fixture-b.jsonl). Screenshots: /home/col/SAM_ui-completed-jobs/implementation/shots/ (t14-demo-* and t14-fixture-*, not committed).
