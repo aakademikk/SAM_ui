@@ -10,8 +10,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { FLEET_LIST_CAP, GENERAL_LIST_CAP } from '@/types/finishedJobs';
+import type { GeneralId } from '@/types/floor';
+
 import {
   DEMO_LOOP_MS,
+  demoFinishedJobs,
   demoFleetPersonaJobs,
   demoFleetSpend,
   demoFloorStateAt,
@@ -129,4 +133,32 @@ test('demoFleetPersonaJobs: the active persona gets a job matching the floor\'s 
   // A persona not currently active still gets its invented history, never the active job's id.
   const cerberusJobs = demoFleetPersonaJobs('cerberus', t);
   assert.ok(!cerberusJobs.some((j) => j.id === floorJobId));
+});
+
+test('demoFinishedJobs: invented rows, newest finish first, capped at 10 for the fleet and 5 per General, never SAM on a General (must-do 17)', () => {
+  const generals: readonly GeneralId[] = ['hermes', 'hephaestus', 'calliope', 'cerberus', 'prometheus'];
+  const fleet = demoFinishedJobs(BASE_T);
+  assert.equal(fleet.length, FLEET_LIST_CAP);
+  const byEnd = [...fleet].sort((a, b) => (a.endedAt < b.endedAt ? 1 : -1));
+  assert.deepEqual(fleet.map((j) => j.id), byEnd.map((j) => j.id), 'newest finish first');
+  assert.ok(fleet.some((j) => j.general === 'sam'), 'SAM\'s own jobs appear on the fleet list');
+  for (const outcome of ['passed', 'failed', 'stopped'] as const) {
+    assert.ok(fleet.some((j) => j.outcome === outcome), `the fleet list shows a ${outcome} row`);
+  }
+  assert.ok(fleet.some((j) => j.verdict === null), 'some rows are not checked');
+  assert.ok(fleet.some((j) => j.verdict === 'PASS (4/4 checks)'));
+  assert.ok(fleet.some((j) => j.outcome === 'passed' && j.verdict === 'FAIL: tests'), 'one verdict disagrees with its outcome');
+
+  const all = new Set(fleet.map((j) => j.id));
+  for (const g of generals) {
+    const rows = demoFinishedJobs(BASE_T, g);
+    assert.equal(rows.length, GENERAL_LIST_CAP, `${g} has a full last five`);
+    assert.ok(rows.every((j) => j.general === g), `${g}'s list holds only its own jobs, never SAM's`);
+    rows.forEach((j) => all.add(j.id));
+  }
+  assert.ok(all.size >= 12, 'at least 12 distinct invented rows');
+  for (const id of all) assert.ok(id.startsWith('demo-'), `${id} is a demo id, never a real job_ id`);
+
+  // A pure function of the clock: a frozen t gives the same rows.
+  assert.deepEqual(demoFinishedJobs(BASE_T), fleet);
 });
