@@ -130,6 +130,11 @@ export class AgentStreamParser {
   ): AgentStreamState {
     if (this.state.done) return this.state;
 
+    // A last line with no trailing newline is still sitting in the buffer.
+    // Parse it first: it may be the result event itself.
+    if (this.buffer.trim()) this.push('\n');
+    if (this.state.done) return this.state;
+
     this.state.done = true;
     this.state.phase = 'done';
 
@@ -209,7 +214,7 @@ export class AgentStreamParser {
             kind: 'error',
             text: event.result?.slice(0, 500) ?? 'The agent reported an error.',
           });
-        } else if (event.result && !this.textStreamedThisRound) {
+        } else if (event.result && this.resultAddsText(event.result)) {
           // A single-shot run streams nothing — the whole reply arrives only in
           // the final result event. Without this the answer is dropped and the
           // chat reads "exited without producing a reply" despite a complete one.
@@ -217,6 +222,9 @@ export class AgentStreamParser {
           // SECOND result's text from being dropped just because an earlier
           // result already produced text — a late-arriving side message is
           // answered by its own result event, with no assistant text before it.
+          // When text did stream this round, the result is still kept if it is
+          // longer than the last text block: a lost final text event leaves only
+          // mid-turn narration behind, and the full answer sits in `result`.
           this.appendText('text', event.result);
         }
         this.textStreamedThisRound = false;
@@ -234,6 +242,25 @@ export class AgentStreamParser {
         // rate_limit_event and friends carry nothing the UI needs yet.
         return;
     }
+  }
+
+  /**
+   * Should the result's text be appended? Always when nothing streamed this
+   * round (single-shot). Otherwise only when it is longer than the last text
+   * block and not already contained in it.
+   */
+  private resultAddsText(result: string): boolean {
+    if (!this.textStreamedThisRound) return true;
+    let lastText = '';
+    for (let i = this.state.blocks.length - 1; i >= 0; i--) {
+      const b = this.state.blocks[i];
+      if (b.kind === 'text') {
+        lastText = b.text;
+        break;
+      }
+    }
+    const r = result.trim();
+    return r.length > lastText.trim().length && !lastText.includes(r);
   }
 
   private applyContent(block: ContentBlock) {
