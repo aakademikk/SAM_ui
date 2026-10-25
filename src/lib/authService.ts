@@ -39,6 +39,13 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
   return record.data as T;
 }
 
+/** Fired after a step-up so the sidebar button re-reads the session. */
+export const AUTH_CHANGED_EVENT = 'sam:auth-changed';
+
+function notifyAuthChanged(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+}
+
 export const authService = {
   /** Check current session state. */
   async checkSession(): Promise<SessionState> {
@@ -108,6 +115,7 @@ export const authService = {
       method: 'POST',
       body: { assertionResponse: authResponse },
     });
+    notifyAuthChanged();
   },
 
   /** List registered devices. */

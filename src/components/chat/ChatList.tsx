@@ -29,10 +29,11 @@ import {
 
 import type { ChatSummary, ChatTier } from '@/types/chat';
 import { formatRelative } from '@/lib/utils';
+import { UnlockPrompt } from '@/components/auth/UnlockPrompt';
+import { classifyCallError } from '@/lib/unlockFlow';
 import { filterChatTitles } from '@/lib/chatListFilter';
 import { readListCollapsed, writeListCollapsed } from '@/lib/chatListCollapse';
 import {
-  StepUpRequiredError,
   archiveChat,
   deleteChat,
   listChats as listChatsFromServer,
@@ -79,6 +80,9 @@ interface RowActions {
   openMenuId: string | null;
   errorId: string | null;
   errorMessage: string | null;
+  /** The row error is a step-up failure: show Unlock, which re-runs `onRetryError`. */
+  errorStepUp: boolean;
+  onRetryError: () => Promise<boolean | void>;
   onToggleMenu: (id: string) => void;
   onArchive: (id: string) => void;
   onRestore: (id: string) => void;
@@ -210,7 +214,13 @@ function ChatRow({
       )}
 
       {actions.errorId === chat.id && actions.errorMessage && (
-        <p className="px-3 pb-2 -mt-1 text-[12px] text-red-400">{actions.errorMessage}</p>
+        actions.errorStepUp ? (
+          <div className="px-3 pb-2 -mt-1">
+            <UnlockPrompt message={actions.errorMessage} onRetry={actions.onRetryError} />
+          </div>
+        ) : (
+          <p className="px-3 pb-2 -mt-1 text-[12px] text-red-400">{actions.errorMessage}</p>
+        )
       )}
     </li>
   );
@@ -310,7 +320,7 @@ export function ChatList({ chats, currentId, onOpen, onNew, open, onClose, onCha
 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+  const [rowError, setRowError] = useState<{ id: string; message: string; stepUp: boolean; action: 'archive' | 'restore' | 'delete' } | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   /** Desktop only: the sidebar folds down to a slim rail. Starts expanded and
@@ -397,13 +407,8 @@ export function ChatList({ chats, currentId, onOpen, onNew, open, onClose, onCha
       // Restore never moves the chat off screen — only archive and delete do.
       if (action !== 'restore' && id === currentId) onCurrentRemoved?.();
     } catch (err) {
-      const message =
-        err instanceof StepUpRequiredError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : `Could not ${action} that chat.`;
-      setRowError({ id, message });
+      const failure = classifyCallError(err, `Could not ${action} that chat.`);
+      setRowError({ id, message: failure.message, stepUp: failure.stepUp, action });
     } finally {
       setBusyId(null);
       setOpenMenuId(null);
@@ -417,6 +422,12 @@ export function ChatList({ chats, currentId, onOpen, onNew, open, onClose, onCha
     openMenuId,
     errorId: rowError?.id ?? null,
     errorMessage: rowError?.message ?? null,
+    errorStepUp: rowError?.stepUp ?? false,
+    onRetryError: async () => {
+      if (!rowError) return false;
+      const { id, action } = rowError;
+      await runAction(id, action);
+    },
     onToggleMenu: (id) => setOpenMenuId((current) => (current === id ? null : id)),
     onArchive: (id) => void runAction(id, 'archive'),
     onRestore: (id) => void runAction(id, 'restore'),

@@ -41,6 +41,8 @@ import { HandsFreeMic } from '@/components/voice/HandsFreeMic';
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { AgentStreamParser, type AgentPhase } from '@/lib/agentStream';
 import { startAgentTurn, StepUpRequiredError } from '@/lib/chatAgentService';
+import { UnlockPrompt } from '@/components/auth/UnlockPrompt';
+import { STEP_UP_MESSAGE } from '@/lib/unlockFlow';
 import { listChats, openChat as openChatOnServer, sendFocus } from '@/lib/chatsService';
 import { jobsService } from '@/lib/jobsService';
 import { closeKind, cutOffNotice, type CloseStatus } from '@/lib/chatClose';
@@ -182,6 +184,8 @@ export default function DashboardChatWidget({
   const [phase, setPhase] = useState<AgentPhase>('done');
   const [error, setError] = useState<string | null>(null);
   const [needsStepUp, setNeedsStepUp] = useState(false);
+  // What Unlock re-runs: the chat that failed to open, or the message that failed to send.
+  const stepUpRetryRef = useRef<{ kind: 'open'; id: string } | { kind: 'send'; text: string; userId: string } | null>(null);
   const [input, setInput] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -371,8 +375,9 @@ export default function DashboardChatWidget({
     } catch (err) {
       if (seq !== openSeqRef.current) return;
       if (err instanceof StepUpRequiredError) {
+        stepUpRetryRef.current = { kind: 'open', id };
         setNeedsStepUp(true);
-        setError('Biometric unlock required before SAM can run anything.');
+        setError(STEP_UP_MESSAGE);
       } else {
         setError(err instanceof Error ? err.message : 'Could not open that chat.');
       }
@@ -554,8 +559,9 @@ export default function DashboardChatWidget({
         setRunning(false);
         setPhase('done');
         if (err instanceof StepUpRequiredError) {
+          stepUpRetryRef.current = { kind: 'send', text: message, userId: `u_${stamp}` };
           setNeedsStepUp(true);
-          setError('Biometric unlock required before SAM can run anything.');
+          setError(STEP_UP_MESSAGE);
         } else {
           setError(err instanceof Error ? err.message : 'Chat failed');
         }
@@ -713,10 +719,27 @@ export default function DashboardChatWidget({
       </div>
 
       {error ? (
-        <p className="dcw-err" role="alert">
-          {error}
-          {needsStepUp ? <a href={currentId ? `/chat?c=${encodeURIComponent(currentId)}` : '/chat'}>Unlock in Chat</a> : null}
-        </p>
+        needsStepUp ? (
+          <UnlockPrompt
+            message={error}
+            onRetry={async () => {
+              const failed = stepUpRetryRef.current;
+              stepUpRetryRef.current = null;
+              if (!failed) return false;
+              if (failed.kind === 'open') {
+                await openChatById(failed.id);
+              } else {
+                // The failed send left its user bubble behind; drop it so the retry does not show it twice.
+                setMessages((prev) => prev.filter((m) => m.id !== failed.userId));
+                setError(null);
+                setNeedsStepUp(false);
+                await send(failed.text);
+              }
+            }}
+          />
+        ) : (
+          <p className="dcw-err" role="alert">{error}</p>
+        )
       ) : null}
 
       {handsFree ? (

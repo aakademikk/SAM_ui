@@ -15,6 +15,7 @@ import { useDevDuplicateCheck } from '@/components/shell/useDevDuplicateCheck';
 import { KeyBar } from './KeyBar';
 import { FieldLabel } from '@/components/ui/FieldLabel';
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
+import { UnlockPrompt } from '@/components/auth/UnlockPrompt';
 import { authService } from '@/lib/authService';
 import { readMessage, sendMessage } from '@/lib/crossTab';
 
@@ -42,6 +43,8 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
   const [authChecked, setAuthChecked] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [needsStepUp, setNeedsStepUp] = useState(false);
+  // The command that was refused for want of a step-up, re-run once by Unlock.
+  const blockedCmdRef = useRef<string | null>(null);
 
   // Check auth on mount
   useEffect(() => {
@@ -134,13 +137,14 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
     try {
       const j = await jobsService.create(cmd.trim());
       setCommand('');
+      setNeedsStepUp(false);
       attachToJob(j.id);
       await refreshJobs();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Command failed';
       // Check if step-up is required
       if (msg.includes('step-up') || msg.includes('stepup')) {
-        setCmdError('Biometric unlock required. Tap Unlock in the sidebar (or Login below), then retry.');
+        blockedCmdRef.current = cmd.trim();
         setNeedsStepUp(true);
       } else if (msg.includes('authenticated') || msg.includes('Not authenticated')) {
         setCmdError('Not logged in. Tap Login below.');
@@ -349,25 +353,16 @@ export function Terminal({ jobId: initialJobId }: TerminalProps) {
 
         {/* Step-up prompt */}
         {needsStepUp && isLoggedIn && (
-          <div className="flex items-center gap-3 p-3 bg-amber-900/10 border border-amber-700/20 rounded-lg">
-            <p className="text-sm text-amber-300/80 flex-1">
-              Biometric unlock needed to run commands.
-            </p>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  await authService.stepUp();
-                  setNeedsStepUp(false);
-                  setCmdError(null);
-                } catch { /* user cancelled */ }
-              }}
-              className="px-4 py-2 bg-accent/20 border border-accent/40 rounded-lg
-                         text-accent text-sm font-medium hover:bg-accent/30 transition-colors shrink-0"
-            >
-              Unlock
-            </button>
-          </div>
+          <UnlockPrompt
+            message="Biometric unlock required to run commands."
+            onRetry={async () => {
+              const blocked = blockedCmdRef.current;
+              blockedCmdRef.current = null;
+              if (!blocked) return false;
+              setCmdError(null);
+              await runCommand(blocked);
+            }}
+          />
         )}
 
         {/* Voice input — requires auth for the transcription endpoint */}

@@ -11,6 +11,7 @@
 
 import { useState } from 'react';
 
+import { UnlockPrompt } from '@/components/auth/UnlockPrompt';
 import { authService } from '@/lib/authService';
 import { viewOfQuestion, type QuestionLike } from '@/lib/questionView';
 import { ANSWER_LETTERS, type AnswerLetter } from '@/lib/answerLetters';
@@ -31,6 +32,8 @@ function when(iso: string | null): string {
 export function QuestionRow({ question }: { question: QuestionLike }) {
   const [current, setCurrent] = useState<QuestionLike>(question);
   const [unlocked, setUnlocked] = useState(false);
+  // The answer refused for want of a step-up; Unlock sends it once.
+  const [blockedAnswer, setBlockedAnswer] = useState<AnswerLetter | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -53,6 +56,7 @@ export function QuestionRow({ question }: { question: QuestionLike }) {
   async function press(answer: AnswerLetter) {
     setBusy(true);
     setMessage(null);
+    setBlockedAnswer(null);
     try {
       const res = await fetch('/api/questions/answer', {
         method: 'POST',
@@ -67,7 +71,7 @@ export function QuestionRow({ question }: { question: QuestionLike }) {
       };
       if (res.status === 401 && json.stepUpRequired) {
         setUnlocked(false);
-        setMessage('Biometric unlock needed.');
+        setBlockedAnswer(answer);
         return;
       }
       if (!res.ok || !json.data || typeof json.data.state !== 'string') {
@@ -124,6 +128,15 @@ export function QuestionRow({ question }: { question: QuestionLike }) {
             </button>
           )}
         </div>
+        {blockedAnswer && (
+          <UnlockPrompt
+            message="Biometric unlock needed."
+            onRetry={async () => {
+              setUnlocked(true);
+              await press(blockedAnswer);
+            }}
+          />
+        )}
         {message && <p className="text-xs text-alarm-400">{message}</p>}
       </div>
     );

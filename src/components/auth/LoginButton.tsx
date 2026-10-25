@@ -11,7 +11,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { LogIn, ShieldCheck, ShieldOff } from 'lucide-react';
-import { authService } from '@/lib/authService';
+import { authService, AUTH_CHANGED_EVENT } from '@/lib/authService';
 
 interface AuthState {
   authenticated: boolean;
@@ -33,6 +33,9 @@ export function LoginButton() {
 
   useEffect(() => {
     refresh();
+    // An inline Unlock elsewhere on the page steps up too; follow it.
+    window.addEventListener(AUTH_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(AUTH_CHANGED_EVENT, refresh);
   }, [refresh]);
 
   const onLogin = async () => {
