@@ -11,21 +11,22 @@
  *
  * A port of the design source's `focusHTML` (engine.js) and `#p-focus`
  * styling (e-hybrid.html): the large bust, "General · <role>", name, Back
- * with its Esc hint, the blurb, the now-line, three stats, the workers
- * running now and the jobs earlier today. Everything shown is real: the
- * workers come from `FloorState` (the same poll the floor draws), names,
- * models and costs from `/api/fleet/jobs` (the same `costFleetJob` costing
- * as the spend scan, Must 15). The mockup's "Median time" and "Models"
- * have no live source, so they are left out rather than invented.
+ * with its Esc hint, the blurb, the now-line, two stats, the workers
+ * running now and the General's last five finished jobs. Everything shown is
+ * real: the workers come from `FloorState` (the same poll the floor draws),
+ * their names and models from each job's own `summary` and `tier`; the last
+ * five finished from the finished-jobs poller (completed-jobs T11, T12),
+ * in the same row format as the fleet list. The mockup's "Median time" and
+ * "Models" have no live source, so they are left out rather than invented.
  */
 
-import { useEffect, useState } from 'react';
-
 import { BUST_PATHS } from '@/lib/busts';
-import { formatCost } from '@/lib/costing';
+import type { FinishedJob } from '@/types/finishedJobs';
+import { GENERAL_LIST_CAP } from '@/types/finishedJobs';
 import type { FloorState, FloorWorker, GeneralId } from '@/types/floor';
-import type { FleetPersonaJob } from '@/types/fleet';
-import { formatJobDetail, formatElapsed } from './JobDetailModule';
+import FinishedJobsList from './FinishedJobsList';
+import { formatJobDetail } from './JobDetailModule';
+import { useFinishedJobs } from './useFinishedJobs';
 
 const GENERAL_INFO: Record<GeneralId, { name: string; role: string; blurb: string }> = {
   hermes: { name: 'Hermes', role: 'Growth', blurb: 'Lead generation, outreach and pipeline.' },
@@ -52,25 +53,6 @@ const C = {
   idle: '#27463a',
 };
 
-/** The `fleet:<persona> (<model>) — <brief>` label's brief half (the convention `/api/fleet/dispatch` sets). */
-const BRIEF_RE = /^fleet:[a-z0-9_-]+(?:\s*\([^)]*\))?\s*[—-]\s*(.+)$/;
-function briefOf(command: string): string | null {
-  const m = command.match(BRIEF_RE);
-  return m ? m[1].trim() : null;
-}
-
-/** HH:MM in UTC, so the times agree with the top bar's UTC clock. */
-function hhmmUtc(iso: string): string {
-  const t = Date.parse(iso);
-  return Number.isFinite(t) ? new Date(t).toISOString().slice(11, 16) : '--:--';
-}
-
-function startOfLocalDay(now: number): number {
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-}
-
 export interface GeneralSummary {
   name: string;
   role: string;
@@ -78,52 +60,33 @@ export interface GeneralSummary {
   busy: boolean;
   workers: FloorWorker[];
   verifiedToday: number;
-  /** Spend on this General's jobs created today, from `/api/fleet/jobs`; null until it has loaded. */
-  spendToday: number | null;
-  /** True when `/api/fleet/jobs`'s capped list may not reach back to midnight, so the spend is a floor, not a total. */
-  spendPartial: boolean;
-  /** Finished jobs created today, newest first (at most four). */
-  earlier: FleetPersonaJob[];
+  /** The General's last five finished jobs, newest first; empty until they have loaded. */
+  finished: FinishedJob[];
 }
 
 /**
- * Pure: everything the panel shows about one General. `jobs` is the
- * `/api/fleet/jobs?persona=` list (newest first, capped by the route), or
- * null while it has not loaded.
+ * Pure: everything the panel shows about one General. `finished` is the
+ * `/api/fleet/finished-jobs?general=` list (newest first, already capped by
+ * the route), or null while it has not loaded.
  */
 export function summariseGeneral(
   state: FloorState | null,
   id: GeneralId,
-  jobs: FleetPersonaJob[] | null,
-  now: number,
-  routeCap = 10,
+  finished: FinishedJob[] | null,
 ): GeneralSummary {
   const info = GENERAL_INFO[id];
   const g = state?.generals[id];
-  const workers = g?.workers ?? [];
-  const live = new Set(workers.map((w) => w.jobId));
-  const dayStart = startOfLocalDay(now);
-  const today = (jobs ?? []).filter((j) => {
-    const t = Date.parse(j.createdAt);
-    return Number.isFinite(t) && t >= dayStart;
-  });
-  const spendToday = jobs ? today.reduce((sum, j) => sum + (j.costUsd ?? 0), 0) : null;
-  // the route returns at most `routeCap` jobs; if all of them are from today, older ones today may be missing
-  const spendPartial = !!jobs && jobs.length >= routeCap && today.length === jobs.length;
-  const earlier = today.filter((j) => !live.has(j.id) && j.status !== 'queued' && j.status !== 'running').slice(0, 4);
+  // the route already sorts and caps; kept here so the panel cannot show more than five or out of order
+  const last = [...(finished ?? [])]
+    .sort((a, b) => Date.parse(b.endedAt) - Date.parse(a.endedAt))
+    .slice(0, GENERAL_LIST_CAP);
   return {
     ...info,
     busy: g ? !g.idle : false,
-    workers,
+    workers: g?.workers ?? [],
     verifiedToday: state?.towers[id] ?? 0,
-    spendToday,
-    spendPartial,
-    earlier,
+    finished: last,
   };
-}
-
-interface JobsEnvelope {
-  data?: { persona: string; jobs: FleetPersonaJob[] };
 }
 
 export interface GeneralDetailPanelProps {
@@ -131,40 +94,29 @@ export interface GeneralDetailPanelProps {
   /** The floor's current state, shared from the shell's single poll. */
   state: FloorState | null;
   onClose: () => void;
-  /** Demo mode (T20): appends `demo=1` to the `/api/fleet/jobs` lookup. */
+  /** Demo mode (T20): appends `demo=1` to the finished-jobs poll, so the live job store is never read. */
   demo?: boolean;
   className?: string;
 }
 
 export default function GeneralDetailPanel({ general, state, onClose, demo = false, className }: GeneralDetailPanelProps) {
-  const [jobs, setJobs] = useState<{ general: GeneralId; list: FleetPersonaJob[] } | null>(null);
+  // this General's last five finished; the poller pauses with the tab and drops rows from another General
+  const { jobs } = useFinishedJobs({ general, demo });
+  return <GeneralDetailView general={general} state={state} finished={jobs} onClose={onClose} className={className} />;
+}
 
-  // names, models and costs for this General's jobs; refreshed while the panel is open
-  useEffect(() => {
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let ctl: AbortController | null = null;
-    const url = `/api/fleet/jobs?persona=${encodeURIComponent(general)}` + (demo ? '&demo=1' : '');
-    const load = async () => {
-      ctl = new AbortController();
-      try {
-        const res = await fetch(url, { cache: 'no-store', signal: ctl.signal });
-        if (res.ok) {
-          const json = (await res.json()) as JobsEnvelope;
-          if (!stopped && json.data && Array.isArray(json.data.jobs)) setJobs({ general, list: json.data.jobs });
-        }
-      } catch {
-        // keep what we had; the next round tries again
-      }
-      if (!stopped) timer = setTimeout(load, 10_000);
-    };
-    void load();
-    return () => { stopped = true; if (timer) clearTimeout(timer); ctl?.abort(); };
-  }, [general, demo]);
+export interface GeneralDetailViewProps {
+  general: GeneralId;
+  state: FloorState | null;
+  /** The finished-jobs poll's rows for this General, or null until it has answered. */
+  finished: FinishedJob[] | null;
+  onClose: () => void;
+  className?: string;
+}
 
-  const list = jobs && jobs.general === general ? jobs.list : null;
-  const s = summariseGeneral(state, general, list, Date.now());
-  const byId = new Map((list ?? []).map((j) => [j.id, j]));
+/** The panel itself, without its poll, so a static render can be given rows. */
+export function GeneralDetailView({ general, state, finished, onClose, className }: GeneralDetailViewProps) {
+  const s = summariseGeneral(state, general, finished);
   const bust = BUST_PATHS[general].large ?? BUST_PATHS[general].small;
   const mask =
     'linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent) center/168px 168px no-repeat,' +
@@ -239,13 +191,9 @@ export default function GeneralDetailPanel({ general, state, onClose, demo = fal
           : 'Idle. No workers running.'}
       </div>
 
-      <div className="mt-3.5 grid grid-cols-3 gap-2 border-t pt-3" style={{ borderColor: C.line }}>
+      <div className="mt-3.5 grid grid-cols-2 gap-2 border-t pt-3" style={{ borderColor: C.line }}>
         <Stat label="Running" value={String(s.workers.length)} />
         <Stat label="Verified" value={String(s.verifiedToday)} />
-        <Stat
-          label="Spend today"
-          value={s.spendToday === null ? '—' : (s.spendPartial ? '≥ ' : '') + formatCost(s.spendToday)}
-        />
       </div>
 
       {s.workers.length > 0 ? (
@@ -253,7 +201,7 @@ export default function GeneralDetailPanel({ general, state, onClose, demo = fal
           <SectionHead title="Workers now" />
           <ul className="flex list-none flex-col gap-0.5 p-0">
             {s.workers.map((w) => {
-              const view = formatJobDetail(w, byId.has(w.jobId) ? { name: briefOf(byId.get(w.jobId)!.command), modelTier: byId.get(w.jobId)!.model || null } : null);
+              const view = formatJobDetail(w);
               const now = w.status === 'running';
               return (
                 <li
@@ -282,42 +230,20 @@ export default function GeneralDetailPanel({ general, state, onClose, demo = fal
         </>
       ) : null}
 
-      {s.earlier.length > 0 ? (
-        <>
-          <SectionHead title="Earlier today" />
-          <ul className="list-none p-0">
-            {s.earlier.map((j, i) => {
-              const ok = j.status === 'exited' && j.exitCode === 0;
-              const label = ok ? 'Done' : j.status === 'killed' || j.status === 'stopped' ? 'Stopped' : 'Failed';
-              const dur = j.endedAt ? formatElapsed(Date.parse(j.endedAt) - Date.parse(j.createdAt)) : null;
-              return (
-                <li
-                  key={j.id}
-                  className="flex items-center justify-between gap-2 py-1.5 text-[12px]"
-                  style={{ borderTop: i ? `1px solid ${C.line}` : undefined }}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate">{briefOf(j.command) ?? `Job ${j.id.slice(0, 8)}`}</span>
-                    <small className="mt-px block truncate text-[12px]" style={{ color: C.faint }}>
-                      {hhmmUtc(j.createdAt)}
-                      {j.model ? ` · ${j.model}` : ''}
-                      {dur ? ` · ${dur}` : ''}
-                      {j.costUsd !== null ? ` · ${formatCost(j.costUsd)}` : ''}
-                    </small>
-                  </span>
-                  <span
-                    className="inline-flex shrink-0 items-center gap-[5px] rounded-full px-2 py-0.5 text-[12px] font-semibold tracking-[0.06em] uppercase"
-                    style={{ color: ok ? C.ok : C.bad, background: ok ? C.okBg : C.badBg }}
-                  >
-                    <i aria-hidden className="inline-block size-[5px] rounded-full" style={{ background: 'currentColor' }} />
-                    {label}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      ) : null}
+      {/* always present: rows once loaded, the one-line text for a General with none, nothing while loading */}
+      <FinishedJobsList
+        jobs={finished === null ? null : s.finished}
+        title="Last 5 finished"
+        showGeneral
+        emptyText="No finished jobs yet"
+        bare
+        className="mt-3.5"
+      />
+
+      {/* below md the app's fixed bottom tab bar (TabBar: z-50, 3.5rem plus the safe area) lies over the phone sheet's
+          bottom edge, so the panel ends with room the size of that bar to scroll its last row clear of it (T15 check 16).
+          A spacer, not padding: the sheet zeroes this section's padding. Hidden from md, so the desktop overlay is unchanged. */}
+      <div aria-hidden="true" data-nav-clearance className="h-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:hidden" />
     </section>
   );
 }

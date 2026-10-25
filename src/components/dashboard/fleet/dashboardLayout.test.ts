@@ -28,7 +28,7 @@ import {
 import { summariseGeneral } from './GeneralDetailPanel.js';
 import { LAPTOP_QUERY } from '../../floor/floorRender.js';
 import type { FloorState, FloorWorker } from '@/types/floor.js';
-import type { FleetPersonaJob } from '@/types/fleet.js';
+import type { FinishedJob } from '@/types/finishedJobs.js';
 
 test('the mockup sizes get the mockup layouts', () => {
   // 1920x1080: the recorded desktop layout, no drawer, not compact
@@ -153,42 +153,49 @@ function floor(): FloorState {
   };
 }
 
-function job(id: string, createdAt: number, extra: Partial<FleetPersonaJob> = {}): FleetPersonaJob {
+function finished(id: string, endedAt: number, extra: Partial<FinishedJob> = {}): FinishedJob {
   return {
-    id, command: `fleet:hephaestus (sonnet) — build ${id}`, status: 'exited', exitCode: 0,
-    createdAt: new Date(createdAt).toISOString(), endedAt: new Date(createdAt + 60_000).toISOString(),
-    model: 'sonnet', costUsd: 0.5, costBasis: 'computed', ...extra,
+    id, name: `build ${id}`, general: 'hephaestus', endedAt: new Date(endedAt).toISOString(),
+    outcome: 'passed', verdict: null, ...extra,
   };
 }
 
-test('summariseGeneral: live workers from the floor, spend and history from today only', () => {
-  const now = new Date(2026, 9, 2, 15, 0, 0).getTime();
-  const today = new Date(2026, 9, 2, 9, 0, 0).getTime();
-  const yesterday = new Date(2026, 9, 1, 22, 0, 0).getTime();
-  const jobs = [
-    job('live-1', today + 5 * 3600_000, { status: 'running', exitCode: null, endedAt: null, costUsd: 0.25 }),
-    job('done-1', today + 3600_000),
-    job('fail-1', today, { exitCode: 1, costUsd: 0.1 }),
-    job('old-1', yesterday, { costUsd: 9 }),
+test('summariseGeneral: live workers from the floor, the last five finished whatever the day (check 4)', () => {
+  const now = Date.UTC(2026, 9, 2, 15, 0, 0);
+  const hour = 3600_000;
+  const day = 24 * hour;
+  // seven on mixed days, given out of order: the newest five reach back three days
+  const seven = [
+    finished('d5', now - 5 * day),
+    finished('d1', now - day - 2 * hour, { outcome: 'failed' }),
+    finished('t1', now - hour),
+    finished('d3', now - 3 * day, { outcome: 'stopped' }),
+    finished('d4', now - 4 * day),
+    finished('t2', now - 6 * hour, { verdict: 'PASS (3/3 checks)' }),
+    finished('d2', now - 2 * day),
   ];
 
-  const s = summariseGeneral(floor(), 'hephaestus', jobs, now);
+  const s = summariseGeneral(floor(), 'hephaestus', seven);
   assert.equal(s.name, 'Hephaestus');
   assert.equal(s.role, 'Delivery');
   assert.equal(s.busy, true);
   assert.equal(s.workers.length, 1);
   assert.equal(s.verifiedToday, 3);
-  assert.ok(s.spendToday !== null && Math.abs(s.spendToday - 0.85) < 1e-9, 'today only: 0.25 + 0.5 + 0.1');
-  assert.equal(s.spendPartial, false);
-  assert.deepEqual(s.earlier.map((j) => j.id), ['done-1', 'fail-1'], 'finished today, newest first, live job excluded');
+  assert.deepEqual(s.finished.map((j) => j.id), ['t1', 't2', 'd1', 'd2', 'd3'], 'newest five by finish time, three days back included');
+  for (const gone of ['spendToday', 'spendPartial', 'earlier']) assert.equal(gone in s, false, `no ${gone} in the summary`);
 
-  const idle = summariseGeneral(floor(), 'hermes', null, now);
+  assert.deepEqual(summariseGeneral(floor(), 'hephaestus', seven.slice(0, 2)).finished.map((j) => j.id), ['d1', 'd5'], 'two: both, newest first');
+  assert.deepEqual(summariseGeneral(floor(), 'hephaestus', []).finished, [], 'none: an empty list');
+
+  // not loaded yet: no rows, and the floor-fed parts still work
+  const loading = summariseGeneral(floor(), 'hephaestus', null);
+  assert.deepEqual(loading.finished, []);
+  assert.equal(loading.busy, true);
+  assert.equal(loading.workers.length, 1);
+  assert.equal(loading.verifiedToday, 3);
+  const idle = summariseGeneral(floor(), 'hermes', null);
   assert.equal(idle.busy, false);
-  assert.equal(idle.spendToday, null, 'unknown until the jobs list loads, never a guessed 0');
-
-  // a full page of today's jobs may not reach back to midnight: the spend is a floor, marked as such
-  const full = Array.from({ length: 10 }, (_, i) => job(`j${i}`, today + i * 60_000));
-  assert.equal(summariseGeneral(floor(), 'hephaestus', full, now).spendPartial, true);
+  assert.deepEqual(idle.workers, []);
 });
 
 test('T11: selectJob closes any panel and shows the Job tab', () => {

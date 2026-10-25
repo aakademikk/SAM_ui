@@ -46,6 +46,7 @@ import type { FloorState, FloorWorker, GeneralId, ScheduledJob } from '@/types/f
 
 import ActiveJobsModule from './ActiveJobsModule';
 import DemoModeToggle from './DemoModeToggle';
+import FinishedJobsList from './FinishedJobsList';
 import FleetStatusModule from './FleetStatusModule';
 import GeneralDetailSheet, { BottomSheet } from './GeneralDetailSheet';
 import JobDetailModule from './JobDetailModule';
@@ -56,6 +57,7 @@ import SpendByHourModule from './SpendByHourModule';
 import StageEventsModule from './StageEventsModule';
 import { resolveJobId } from './jobSelection';
 import { LIFECYCLE, findFloorWorker, heroCaption, lifecycleSteps, phoneSheetReducer, scrollBehaviorFor, stageTimeline } from './phoneView';
+import { useFinishedJobs } from './useFinishedJobs';
 
 export interface FleetPhoneViewProps {
   /** Demo mode (T20): passed to every data source. */
@@ -186,6 +188,9 @@ export default function FleetPhoneView({ demo: demoProp = false, chatSlot, chatW
     return () => stopPolling();
   }, [bootstrap, startPolling, stopPolling]);
 
+  /* completed-jobs T10: the fleet's finished-jobs list under Fleet status (polls every 10 s, paused while hidden) */
+  const { jobs: finishedJobs } = useFinishedJobs({ demo });
+
   /* the shell unmounts the ambient background while this view is up (audit D-01) */
   useEffect(() => registerFleetView(), []);
 
@@ -300,6 +305,10 @@ export default function FleetPhoneView({ demo: demoProp = false, chatSlot, chatW
         <div data-slot="below-job">{belowJobSlot ?? <SidebarWidgets demo={demo} />}</div>
         <div data-panel="fleet">
           <FleetStatusModule state={floor} selectedGeneral={openGeneral} onSelectGeneral={onSelectGeneral} />
+        </div>
+        {/* completed-jobs T10 (must-do 18): the desktop's last 10 finished jobs, directly under Fleet status; scrolls with the page as Fleet status does */}
+        <div data-panel="finished">
+          <FinishedJobsList jobs={finishedJobs} title="Finished jobs" showGeneral emptyText="No finished jobs yet" />
         </div>
         <div data-panel="events">
           <StageEventsModule state={floor} maxEntries={4} />

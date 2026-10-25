@@ -16,6 +16,9 @@
  * `demoFleetSpend`/`demoFleetPersonaJobs` (T20b) are the demo-mode
  * analogue of `/api/fleet/spend` and `/api/fleet/jobs`'s own live scans —
  * neither reads the live job store.
+ *
+ * `demoFinishedJobs` (completed-jobs T6) is the demo-mode analogue of
+ * `/api/fleet/finished-jobs`'s store scan; it does no I/O either.
  */
 
 import type {
@@ -28,6 +31,13 @@ import type {
   ScheduledJob,
 } from '@/types/floor';
 import type { FleetPersonaJob, FleetSpend } from '@/types/fleet';
+import {
+  FLEET_LIST_CAP,
+  GENERAL_LIST_CAP,
+  type FinishedGeneral,
+  type FinishedJob,
+  type FinishedOutcome,
+} from '@/types/finishedJobs';
 
 const GENERAL_IDS: readonly GeneralId[] = [
   'hermes',
@@ -421,4 +431,78 @@ export function demoFleetPersonaJobs(persona: GeneralId, t: number): FleetPerson
   });
 
   return jobs;
+}
+
+// ---------------------------------------------------------------------------
+// Demo finished jobs (completed-jobs T6, must-do 17): the demo-mode analogue
+// of `/api/fleet/finished-jobs`'s store scan. Never reads the live job store.
+// ---------------------------------------------------------------------------
+
+interface DemoFinishedSpec {
+  slug: string;
+  general: FinishedGeneral;
+  name: string;
+  minutesAgo: number;
+  outcome: FinishedOutcome;
+  verdict: string | null;
+}
+
+const DAY_MIN = 24 * 60;
+
+/**
+ * Five per General and three of SAM's, spread over a few days so some rows
+ * carry a date. A mix of outcomes, closer-style verdicts and "not checked",
+ * and one row (`demo-fin-hermes-openers`) whose verdict disagrees with its
+ * own outcome, so the mismatch styling shows in demo mode too.
+ */
+const DEMO_FINISHED: readonly DemoFinishedSpec[] = [
+  { slug: 'bakery-quote-form', general: 'hephaestus', name: 'Quote form for a demo bakery site', minutesAgo: 4, outcome: 'passed', verdict: 'PASS (4/4 checks)' },
+  { slug: 'morning-briefing', general: 'sam', name: 'Morning briefing for the demo office', minutesAgo: 11, outcome: 'passed', verdict: null },
+  { slug: 'headers-check', general: 'cerberus', name: 'Security headers check, demo client sites', minutesAgo: 19, outcome: 'failed', verdict: 'FAIL: tests' },
+  { slug: 'hermes-openers', general: 'hermes', name: 'Follow-up openers for a demo lead list', minutesAgo: 33, outcome: 'passed', verdict: 'FAIL: tests' },
+  { slug: 'app-ad-set', general: 'calliope', name: 'Three ad variants for a demo app launch', minutesAgo: 47, outcome: 'passed', verdict: 'PASS (3/3 checks)' },
+  { slug: 'model-benchmark', general: 'prometheus', name: 'Benchmark two models on demo ticket builds', minutesAgo: 62, outcome: 'stopped', verdict: null },
+  { slug: 'plumber-lighthouse', general: 'hephaestus', name: 'Lighthouse pass for a demo plumber site', minutesAgo: 78, outcome: 'failed', verdict: null },
+  { slug: 'store-tidy', general: 'sam', name: 'Tidy the demo job store', minutesAgo: 95, outcome: 'passed', verdict: 'PASS (2/2 checks)' },
+  { slug: 'inbox-triage', general: 'hermes', name: 'Inbox triage, demo overnight replies', minutesAgo: 120, outcome: 'passed', verdict: null },
+  { slug: 'dependency-audit', general: 'cerberus', name: 'Weekly dependency audit, demo repos', minutesAgo: 150, outcome: 'passed', verdict: 'PASS (5/5 checks)' },
+  { slug: 'launch-captions', general: 'calliope', name: 'Launch captions for a demo cafe', minutesAgo: 200, outcome: 'stopped', verdict: null },
+  { slug: 'prompt-trial', general: 'prometheus', name: 'Prompt trial on demo lead summaries', minutesAgo: 260, outcome: 'passed', verdict: 'PASS (6/6 checks)' },
+  { slug: 'roofer-prototype', general: 'hephaestus', name: 'Prototype landing page for a demo roofer', minutesAgo: 300, outcome: 'passed', verdict: null },
+  { slug: 'weekly-digest', general: 'sam', name: 'Weekly digest for the demo team', minutesAgo: 380, outcome: 'failed', verdict: null },
+  { slug: 'reply-sort', general: 'hermes', name: 'Sort replies from a demo outreach run', minutesAgo: 420, outcome: 'stopped', verdict: null },
+  { slug: 'login-review', general: 'cerberus', name: 'Login flow review, demo portal', minutesAgo: 500, outcome: 'passed', verdict: null },
+  { slug: 'brand-voice', general: 'calliope', name: 'Brand voice notes for a demo florist', minutesAgo: 600, outcome: 'failed', verdict: 'FAIL: tests' },
+  { slug: 'cost-model', general: 'prometheus', name: 'Cost model for demo batch jobs', minutesAgo: 700, outcome: 'passed', verdict: null },
+  { slug: 'gallery-page', general: 'hephaestus', name: 'Gallery page for a demo garden studio', minutesAgo: DAY_MIN + 60, outcome: 'passed', verdict: 'PASS (3/3 checks)' },
+  { slug: 'lead-list-clean', general: 'hermes', name: 'Clean a demo lead list', minutesAgo: DAY_MIN + 160, outcome: 'passed', verdict: 'PASS (2/2 checks)' },
+  { slug: 'backup-audit', general: 'cerberus', name: 'Backup restore drill, demo server', minutesAgo: DAY_MIN + 260, outcome: 'stopped', verdict: null },
+  { slug: 'newsletter-draft', general: 'calliope', name: 'Newsletter draft for a demo gym', minutesAgo: DAY_MIN + 360, outcome: 'passed', verdict: null },
+  { slug: 'search-trial', general: 'prometheus', name: 'Search trial over demo notes', minutesAgo: 2 * DAY_MIN + 120, outcome: 'failed', verdict: null },
+  { slug: 'menu-page', general: 'hephaestus', name: 'Menu page for a demo bistro', minutesAgo: 2 * DAY_MIN + 200, outcome: 'passed', verdict: null },
+  { slug: 'intro-emails', general: 'hermes', name: 'Intro emails for a demo trade fair', minutesAgo: 3 * DAY_MIN + 60, outcome: 'failed', verdict: null },
+  { slug: 'cert-expiry', general: 'cerberus', name: 'Certificate expiry sweep, demo domains', minutesAgo: 3 * DAY_MIN + 90, outcome: 'passed', verdict: 'PASS (1/1 checks)' },
+  { slug: 'video-script', general: 'calliope', name: 'Short video script for a demo dentist', minutesAgo: 3 * DAY_MIN + 180, outcome: 'passed', verdict: null },
+  { slug: 'eval-harness', general: 'prometheus', name: 'Evaluation harness for demo prompts', minutesAgo: 4 * DAY_MIN + 30, outcome: 'stopped', verdict: null },
+];
+
+/**
+ * The demo-mode analogue of `getFleetFinished`/`getGeneralFinished`: with no
+ * `general`, the last FLEET_LIST_CAP rows across the five Generals and SAM;
+ * with one, that General's last GENERAL_LIST_CAP (never SAM's). Newest finish
+ * first, each `endedAt` a fixed offset back from the clock `t`.
+ */
+export function demoFinishedJobs(t: number, general?: GeneralId): FinishedJob[] {
+  const rows: FinishedJob[] = DEMO_FINISHED.filter((spec) => general === undefined || spec.general === general).map(
+    (spec) => ({
+      id: `demo-fin-${spec.slug}`,
+      name: spec.name,
+      general: spec.general,
+      endedAt: new Date(t - spec.minutesAgo * 60_000).toISOString(),
+      outcome: spec.outcome,
+      verdict: spec.verdict,
+    }),
+  );
+  rows.sort((a, b) => (a.endedAt === b.endedAt ? (a.id < b.id ? 1 : -1) : a.endedAt < b.endedAt ? 1 : -1));
+  return rows.slice(0, general === undefined ? FLEET_LIST_CAP : GENERAL_LIST_CAP);
 }
