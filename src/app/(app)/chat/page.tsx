@@ -2257,10 +2257,10 @@ function ChatPageInner() {
 
         {messages.length === 0 && !(currentId !== 'draft' && chats.some((c) => c.id === currentId && c.historyExpired)) && (
           <div className="flex flex-col items-center justify-center h-full text-center py-20">
-            <div className="glass-strong flex flex-col items-center gap-3 rounded-2xl px-10 py-8">
+            <div className="glass-strong flex max-w-full flex-col items-center gap-3 rounded-2xl px-6 py-8 md:px-10">
               <Cpu size={32} className="text-accent/40" />
               <h2 className="text-lg font-bold text-dim-200">SAM</h2>
-              <p className="text-sm text-dim-400">IS EVERYWHERE</p>
+              <p className="break-words text-sm text-dim-300">Sam Online. What you saying G</p>
             </div>
           </div>
         )}
