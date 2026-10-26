@@ -10,8 +10,8 @@
  * this runs the same CLI with the same file and bash reach.
  *
  * The environment guard below is the one from the fleet dispatch route and
- * must stay identical: the Next.js process loads `.env.local`, so `ANTHROPIC_*`
- * leak into any child and would silently route an Anthropic run to DeepSeek.
+ * must stay identical: the launcher puts `ANTHROPIC_*` in the Next.js
+ * process environment, so they leak into any child and would silently route an Anthropic run to DeepSeek.
  * Every key is either a value or an explicit null, in both directions.
  */
 

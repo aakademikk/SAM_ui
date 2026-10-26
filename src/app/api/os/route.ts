@@ -1,7 +1,3 @@
-import fsp from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-
 import { envelope, failure, readJson } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
 import { requireSession } from '@/lib/server/auth/guard';
@@ -16,10 +12,10 @@ export const dynamic = 'force-dynamic';
  * to loopback (Brave Shields, Chrome Local Network Access), so the PWA now
  * calls this same-origin route and the *server* forwards to the bridge over
  * the encrypted tailnet. Browser never holds the bridge token; the server
- * adds it.
+ * adds it (OS_BRIDGE_PHONE_TOKEN, from the keystore through the launcher).
  *
  * Mirrors POST /api/omni/desktop — same auth, same op-allowlist, same
- * token-from-disk pattern — pointed at the phone instead of the desktop.
+ * token-from-environment pattern — pointed at the phone instead of the desktop.
  *
  * `op` is an allowlist, not a path fragment. A caller can never name a bridge
  * route that this file does not already know about, and the phone's tailnet
@@ -27,7 +23,6 @@ export const dynamic = 'force-dynamic';
  */
 
 const BRIDGE = process.env.SAM_PHONE_BRIDGE_URL ?? 'http://100.78.229.65:8765';
-const TOKEN_PATH = path.join(os.homedir(), '.sam', 'os-bridge-phone-token');
 const TIMEOUT_MS = 6000;
 
 /** op -> [method, bridge path]. Anything not listed here cannot be reached. */
@@ -46,18 +41,11 @@ const OPS: Record<string, ['GET' | 'POST', string]> = {
   wake: ['POST', '/os/wake'],
 };
 
-let cachedToken: string | null = null;
-
-async function bridgeToken(): Promise<string | null> {
-  if (cachedToken) return cachedToken;
-  try {
-    // Generated at build time into the APK and written here at setup; this
-    // only reads the server's copy.
-    cachedToken = (await fsp.readFile(TOKEN_PATH, 'utf-8')).trim();
-    return cachedToken || null;
-  } catch {
-    return null;
-  }
+/** Read per request (not at module load): the build runs without the launcher. */
+function bridgeToken(): string | null {
+  // Generated at build time into the APK and stored in the keystore; this
+  // only reads the server's copy from the environment.
+  return (process.env.OS_BRIDGE_PHONE_TOKEN ?? '').trim() || null;
 }
 
 export async function POST(request: Request) {
@@ -82,7 +70,7 @@ export async function POST(request: Request) {
   const route = OPS[op];
   if (!route) return failure(`Unknown phone op '${op}'.`, 400);
 
-  const token = await bridgeToken();
+  const token = bridgeToken();
   if (!token) return failure('Phone bridge token not found — is the SAM app configured?', 503);
 
   const [method, bridgePath] = route;

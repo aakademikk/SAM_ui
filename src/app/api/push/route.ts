@@ -1,5 +1,5 @@
 /**
- * GET    /api/push         → VAPID public key (session required)
+ * GET    /api/push         → VAPID public key from PUSH_VAPID_PUBLIC_KEY (session required)
  * POST   /api/push         → save a Web Push subscription (session required)
  * DELETE /api/push         → remove a Web Push subscription
  *
@@ -23,7 +23,6 @@ import { requireSession } from '@/lib/server/auth/guard';
 export const dynamic = 'force-dynamic';
 
 const SUBS_PATH = path.join(os.homedir(), '.sam', 'push-subs.json');
-const VAPID_PATH = path.join(os.homedir(), '.sam', 'push-vapid.json');
 const MAX_SUBS = 16;
 
 function sameOrigin(request: Request): boolean {
@@ -72,13 +71,10 @@ export async function GET(request: Request) {
   const startedAt = Date.now();
   const estate = getEstate();
 
-  let publicKey = '';
-  try {
-    const raw = await fsp.readFile(VAPID_PATH, 'utf8');
-    publicKey = (JSON.parse(raw) as { publicKey?: string }).publicKey ?? '';
-  } catch {
-    return failure('VAPID keys not provisioned.', 503);
-  }
+  // PUSH_VAPID_PUBLIC_KEY comes from the central keystore through the launcher
+  // (with-secrets --as sam-ui). Read per request, not at module load, so the
+  // build (which runs without the launcher) never captures it.
+  const publicKey = (process.env.PUSH_VAPID_PUBLIC_KEY ?? '').trim();
   if (!publicKey) return failure('VAPID keys not provisioned.', 503);
 
   return envelope({ publicKey }, 'sam.push.vapid', startedAt, estate.tick);

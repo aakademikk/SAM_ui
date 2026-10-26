@@ -113,3 +113,78 @@ test('T1: verify() still fails closed for a credentialId that never existed', as
   assert.equal(await auth.verifySession(cookieHeader), null);
   assert.equal(await auth.verifyStepUp(cookieHeader), null);
 });
+
+/* -------------------------------------------------------------------------- */
+/* Keystore T38: the session key file is created and held at mode 0600         */
+/* -------------------------------------------------------------------------- */
+
+const keyPath = path.join(home, '.sam', 'auth', 'session-key');
+const globalForKey = globalThis as unknown as { __samSessionKey?: Uint8Array };
+const modeOf = (p: string) => fs.statSync(p).mode & 0o777;
+
+/** Forget the in-memory key so the next sign/verify goes back to the disk path. */
+function forgetCachedKey(): void {
+  delete globalForKey.__samSessionKey;
+}
+
+async function mintCookies(): Promise<string> {
+  await store
+    .getCredentialStore()
+    .add({
+      credentialId: 'key-mode-credential',
+      publicKey: new Uint8Array([1, 2, 3, 4]),
+      counter: 0,
+      transports: ['internal'],
+      deviceName: 'test-device',
+      createdAt: new Date().toISOString(),
+    })
+    .catch(() => undefined); // already added by an earlier case
+  return toCookieHeader(
+    await auth.createSessionCookies({
+      sub: 'key-mode-credential',
+      device: 'test-device',
+      iat: Math.floor(Date.now() / 1000),
+    }),
+  );
+}
+
+test('T38: a newly created session key file is mode 0600', async () => {
+  fs.rmSync(keyPath, { force: true });
+  forgetCachedKey();
+  await mintCookies();
+  assert.equal(fs.readFileSync(keyPath).length, 32, 'a 32-byte key must be persisted');
+  assert.equal(modeOf(keyPath).toString(8), '600');
+});
+
+test('T38: an existing 0664 key is tightened to 0600 on load, bytes unchanged, old cookie still verifies', async () => {
+  const cookieHeader = await mintCookies();
+  const before = fs.readFileSync(keyPath);
+  fs.chmodSync(keyPath, 0o664);
+  assert.equal(modeOf(keyPath).toString(8), '664', 'precondition: the key is loose');
+  const mtimeBefore = fs.statSync(keyPath).mtimeMs;
+
+  forgetCachedKey(); // simulate a restart: the key is reloaded from disk
+  const payload = await auth.verifySession(cookieHeader);
+
+  assert.equal(modeOf(keyPath).toString(8), '600');
+  assert.ok(Buffer.from(before).equals(fs.readFileSync(keyPath)), 'key bytes must be unchanged');
+  assert.equal(fs.statSync(keyPath).mtimeMs, mtimeBefore, 'the file must not be rewritten');
+  assert.ok(payload, 'a cookie signed before the restart must still verify (no sign-out)');
+});
+
+test('T38: an already-0600 key is left alone', async () => {
+  const before = fs.readFileSync(keyPath);
+  forgetCachedKey();
+  await mintCookies();
+  assert.equal(modeOf(keyPath).toString(8), '600');
+  assert.ok(Buffer.from(before).equals(fs.readFileSync(keyPath)));
+});
+
+test('T38: a wrong-length 0664 key file is replaced and ends at 0600', async () => {
+  fs.writeFileSync(keyPath, Buffer.from('short'));
+  fs.chmodSync(keyPath, 0o664);
+  forgetCachedKey();
+  await mintCookies();
+  assert.equal(fs.readFileSync(keyPath).length, 32);
+  assert.equal(modeOf(keyPath).toString(8), '600');
+});

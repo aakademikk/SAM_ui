@@ -1,7 +1,3 @@
-import fsp from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-
 import { envelope, failure, readJson } from '@/lib/server/respond';
 import { getEstate } from '@/lib/server/telemetry';
 import { requireSession } from '@/lib/server/auth/guard';
@@ -29,7 +25,6 @@ export const dynamic = 'force-dynamic';
  */
 
 const BRIDGE = process.env.SAM_OS_BRIDGE_URL ?? 'http://127.0.0.1:8790';
-const TOKEN_PATH = path.join(os.homedir(), '.sam', 'os-bridge-token');
 const TIMEOUT_MS = 6000;
 
 /**
@@ -40,7 +35,7 @@ const TIMEOUT_MS = 6000;
  * forge it), so it routes to that machine's bridge. Anything unmapped — the
  * server itself, the phone for desktop-class actions — falls back to this
  * box's own bridge. Shared token: every desktop bridge holds the same
- * os-bridge-token, so one secret works for all of them.
+ * OS_BRIDGE_TOKEN, so one secret works for all of them.
  */
 const CLIENT_BRIDGES = new Map<string, string>();
 for (const entry of (process.env.SAM_CLIENT_BRIDGES ?? '').split(',')) {
@@ -65,18 +60,11 @@ const OPS: Record<string, ['GET' | 'POST', string]> = {
   wake: ['GET', '/os/wake'],
 };
 
-let cachedToken: string | null = null;
-
-async function bridgeToken(): Promise<string | null> {
-  if (cachedToken) return cachedToken;
-  try {
-    // Written 0600 by the bridge on first run; the service generates it, this
-    // only reads it.
-    cachedToken = (await fsp.readFile(TOKEN_PATH, 'utf-8')).trim();
-    return cachedToken || null;
-  } catch {
-    return null;
-  }
+/** Read per request (not at module load): the build runs without the launcher. */
+function bridgeToken(): string | null {
+  // The bridge service generates the token; the keystore holds the copy that
+  // reaches this process as OS_BRIDGE_TOKEN through the launcher.
+  return (process.env.OS_BRIDGE_TOKEN ?? '').trim() || null;
 }
 
 export async function POST(request: Request) {
@@ -91,7 +79,7 @@ export async function POST(request: Request) {
   const route = OPS[op];
   if (!route) return failure(`Unknown desktop op '${op}'.`, 400);
 
-  const token = await bridgeToken();
+  const token = bridgeToken();
   if (!token) return failure('Desktop bridge token not found — is the voice service running?', 503);
 
   const [method, bridgePath] = route;

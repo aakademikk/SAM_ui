@@ -637,7 +637,7 @@ export interface CreateArgsOptions {
   /**
    * Environment overlaid on `process.env`. A `null` value *removes* the
    * variable — needed to stop an inherited key (e.g. `ANTHROPIC_BASE_URL`
-   * from `.env.local`) silently redirecting a child to the wrong provider.
+   * from the launcher's environment) silently redirecting a child to the wrong provider.
    */
   env?: Record<string, string | null>;
   /**
@@ -928,7 +928,7 @@ class JobManager {
         env: mergeEnv({
           SAM_EXIT_FILE: exitCodePath(record.id),
           SAM_CGROUP_FILE: cgroupFilePath(record.id),
-          // `.env.local` puts ANTHROPIC_* on process.env, so a raw child would
+          // The launcher puts ANTHROPIC_* on process.env, so a raw child would
           // inherit them — typing `claude` in the Terminal would silently route
           // to DeepSeek. Strip them so the CLI talks to Claude, matching the Max
           // chat tier and fleet dispatch.

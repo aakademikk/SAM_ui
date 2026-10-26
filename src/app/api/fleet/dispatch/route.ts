@@ -5,8 +5,8 @@
  * chat agent route but with `--agent` and a `--model` override. Step-up
  * (biometric) auth is required — a General has file and bash reach.
  *
- * Environment guard: the Next.js process loads `.env.local`, so `ANTHROPIC_*`
- * are inherited by any child. A dispatch that inherits them silently routes to
+ * Environment guard: the launcher (`with-secrets --as sam-ui`) puts `ANTHROPIC_*`
+ * in the Next.js process environment, so they are inherited by any child. A dispatch that inherits them silently routes to
  * DeepSeek regardless of `--model`. So the environment is always stated in
  * full, never left to inheritance — every key is either a value or an explicit
  * null, in both directions:

@@ -37,3 +37,4 @@
 
 .env.local.template	assigned-secret	Template only — ships placeholder values, never a real credential
 src/lib/server/chat/tiers.ts	assigned-secret	ANTHROPIC_AUTH_TOKEN is a sentinel; the loopback Gemini proxy ignores it
+src/lib/server/push/keystoreRoutes.test.ts	assigned-secret	Test fixture: OS_BRIDGE_PHONE_TOKEN set to a literal marked fake, never a real token (Colin 2026-10-26)

@@ -58,7 +58,11 @@ export function geminiProxyUrl(): string {
   return process.env.SAM_GEMINI_PROXY_URL ?? GEMINI_PROXY_URL;
 }
 
-/** True when the Gemini tier has somewhere to point at. */
+/**
+ * True when the Gemini tier has somewhere to point at. A boolean only: the key
+ * itself is used by the gemini-proxy service, never by this process (sam-ui is
+ * granted the name in the consumer map for this check alone).
+ */
 export function geminiTierAvailable(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);
 }
@@ -139,8 +143,9 @@ export function deepseekTierAvailable(): boolean {
 /**
  * Environment overlay for a tier.
  *
- * The Next.js process loads `.env.local`, so `ANTHROPIC_BASE_URL` and friends
- * are already in `process.env` and would be inherited by any child. That means
+ * The launcher (`with-secrets --as sam-ui`) puts `ANTHROPIC_AUTH_TOKEN` and
+ * `ANTHROPIC_BASE_URL` in `process.env`, so they would be inherited by any
+ * child. That means
  * the *max* tier has to explicitly delete them, or a spawned `claude` silently
  * runs against DeepSeek while the UI claims otherwise.
  */

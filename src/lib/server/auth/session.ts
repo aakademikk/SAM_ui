@@ -32,7 +32,16 @@ function loadOrCreateKey(): Uint8Array {
   try {
     // Try to load existing key from disk.
     const raw = fs.readFileSync(KEY_PATH);
-    if (raw.length === 32) return new Uint8Array(raw);
+    if (raw.length === 32) {
+      // Keystore T38: a key created by older code is 0664. Tighten it in
+      // place; the bytes are never rewritten, so no session is signed out.
+      try {
+        if ((fs.statSync(KEY_PATH).mode & 0o077) !== 0) fs.chmodSync(KEY_PATH, 0o600);
+      } catch {
+        // Can't tighten (not the owner?) — the key still loads.
+      }
+      return new Uint8Array(raw);
+    }
   } catch {
     // Key doesn't exist yet — create and persist it.
   }
@@ -40,7 +49,10 @@ function loadOrCreateKey(): Uint8Array {
   const key = generateKey();
   try {
     fs.mkdirSync(path.dirname(KEY_PATH), { recursive: true });
-    fs.writeFileSync(KEY_PATH, key);
+    // `mode` only applies when the file is created, so chmod covers an
+    // existing wrong-length file being overwritten.
+    fs.writeFileSync(KEY_PATH, key, { mode: 0o600 });
+    fs.chmodSync(KEY_PATH, 0o600);
   } catch {
     // Can't persist — key lives only in memory this session.
   }
