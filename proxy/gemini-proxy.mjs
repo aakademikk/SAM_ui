@@ -15,50 +15,30 @@
  *     as the Anthropic SSE event sequence, so the CLI sees a normal stream
  *     and the tool-call round-trip stays deterministic (no streaming
  *     function-call ambiguity).
- *   - `GEMINI_API_KEY` is read from process env, falling back to a small
- *     `.env.local` parse so the systemd unit needs no EnvironmentFile quirks.
+ *   - `GEMINI_API_KEY` is read from the process environment only. The unit
+ *     starts the proxy under `with-secrets --as gemini-proxy`, which puts the
+ *     key there; there is no file fallback and no path override.
  *
  * No credential values are ever logged.
  */
 
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 
 const PORT = Number(process.env.SAM_GEMINI_PROXY_PORT ?? 8788);
-const ENV_PATH = process.env.SAM_UI_ENV_FILE ?? '/home/col/SAM_ui/.env.local';
 
 /* ── Env ─────────────────────────────────────────────────────────────────── */
 
-/** process env wins; otherwise pull KEY=VALUE lines out of .env.local. */
+/** The process environment only (the keystore launcher put the key there). */
 function loadEnv() {
-  const env = { ...process.env };
-  try {
-    const text = readFileSync(ENV_PATH, 'utf8');
-    for (const line of text.split('\n')) {
-      const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
-      if (!m) continue;
-      let [, key, value] = m;
-      value = value.trim();
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      }
-      if (!(key in env)) env[key] = value;
-    }
-  } catch {
-    /* file missing — rely on the process environment alone */
-  }
-  return env;
+  return { ...process.env };
 }
 
 const env = loadEnv();
 const GEMINI_API_KEY = env.GEMINI_API_KEY;
 
 if (!GEMINI_API_KEY) {
-  console.error('[gemini-proxy] GEMINI_API_KEY not found in env or ' + ENV_PATH);
+  console.error('[gemini-proxy] GEMINI_API_KEY not set: start this under ~/.sam/bin/with-secrets --as gemini-proxy');
   process.exit(1);
 }
 
