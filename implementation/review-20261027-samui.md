@@ -4,7 +4,7 @@ Branch `cloud/review-20261027`, cut from `origin/claude/sam-core-dashboard-sf363
 Read-only review: no source, test, ticket or spec file was changed. No live request was made, no
 server was started against real data, and no push, message or phone script was run.
 
-Status: DRAFT (steps 1 to 3 done; step 4 and the test baseline still running). Pushed per section.
+Status: COMPLETE. All four steps were read; no file in scope was skipped.
 
 ## Baseline
 
@@ -60,8 +60,7 @@ data, command injection or path traversal, any High/Critical dependency advisory
   and the comment "reads stay open (matches the long-standing dashboard posture)".
 - Fix: add `requireSession` to `GET`.
 
-**S3. Blocking (bundling to be confirmed by the build check in "For SAM to check"). Real vault
-index shipped in a client bundle.**
+**S3. Blocking. Real vault index shipped in a public client bundle.**
 `src/components/visualiser/VaultGraphVisualiser.tsx:1,35,122`, data `src/data/vault-graph.json`
 - What: a `'use client'` component does `import snapshotJson from '@/data/vault-graph.json'` and puts
   it in state. The JSON is a real export: 339 notes with titles and paths, the `vault` field holds
@@ -69,7 +68,9 @@ index shipped in a client bundle.**
   `10_Clients/` (committed in `35b0d2e`, 2026-08-14, and `06d6250`, 2026-08-25). A client import
   puts the JSON in a `/_next/static` chunk, and static chunks are served with no session. It is
   also in the git history of this repo.
-- Evidence: `node -e` over the file: keys `generatedAt,vault,hub,counts,folders,nodes,edges`, 339
+- Evidence: a local offline `next build` (telemetry off, exit 0) put it in
+  `.next/static/chunks/9658-d10e4bf33a3773d1.js`: `grep -rl "03 - Personal" .next/static` matches
+  that chunk. `node -e` over the source file: keys `generatedAt,vault,hub,counts,folders,nodes,edges`, 339
   nodes, contains `03 - Personal` and `10_Clients` (no emails, phone numbers or keys found by the
   sub-reviewer's scan; names not reproduced here).
 - Fix: commit an anonymised or synthetic snapshot and load the real graph only from the
@@ -371,4 +372,691 @@ state.**
   client name never matches.
 - Fix: strip the extension and the ` - <suffix>` part.
 
-(Client-side correctness findings from step 3 and step 4 are added in the next section.)
+### Client-side findings (steps 3 and 4)
+
+Read by sub-reviewers; each item was checked against the code by the reviewer unless marked UNPROVEN.
+
+**S34. Medium. The Demo switch does not reach the dashboard chat widget or the wake word.**
+`src/components/dashboard/fleet/FleetView.tsx:78-87`, `src/app/(app)/page.tsx:11`
+- What: `src/app/(app)/page.tsx` renders `<FleetView />` with no `demo` prop. The Demo button flips
+  only the shells' own `demoOverride`, so `DashboardChatWidget demo={demo}` and
+  `useWakeWord(onWake, ownChat && !demo)` always see `false`. With Demo on, the tiles show
+  invented data while the chat panel and phone sheet still list and show real chat titles and
+  text, and "Hey Sam" still listens. That breaks the demo screen-share promise (Must 19).
+- Fix: hold the demo state in `FleetView` and pass it to the shell, the widget and `useWakeWord`.
+
+**S35. Medium. Mute mid-turn does not stop the answer being read aloud.**
+`src/app/(app)/chat/page.tsx:919`
+- What: `if (!muted && spoken) void speak(...)` inside the stream's `finalise` keeps the `muted`
+  value from when the stream was attached.
+- Fix: read a `mutedRef` in `finalise`.
+
+**S36. Medium. Push-to-talk race leaves the mic recording, then sends all of it.**
+`src/components/chat/ChatVoiceWidget.tsx:164,193-292,479-481`
+- What: `stopRecording` acts only when the recorder is already `recording`; a release while
+  `getUserMedia` is pending does nothing, the recorder then starts and stays on until the next
+  press, and `onstop` sends the whole clip to the voice agent. The button uses mouse events only,
+  which on touch fire back to back after the finger lifts.
+- Fix: a "wanted" ref cleared on release and checked when `getUserMedia` resolves; pointer events.
+
+**S37. Medium. Dashboard chat widget opens streams and speaks after it has unmounted.**
+`src/components/dashboard/fleet/DashboardChatWidget.tsx:338-387,480-484,503-572`
+- What: cleanup closes only the stream open at that instant; awaits that resolve later still call
+  `attach()` or schedule reconnects, opening streams nothing closes, and hands-free mode speaks the
+  answer from a closed phone sheet. Together with S13, a hands-free "okay ..." heard from the room
+  can confirm a pending SMS (`DashboardChatWidget.tsx:510` sends every transcript through
+  `tryOsIntent`; UNPROVEN in practice).
+- Fix: an `aliveRef` checked after every await and in every timer.
+
+**S38. Medium. Fleet and Operations pages treat a dropped stream as the job ending.**
+`src/app/(app)/fleet/page.tsx:172-182`, `src/app/(app)/operations/page.tsx:383-392`
+- What: the `jobsService.stream` handle is discarded (never closed on unmount), and a `closed`
+  event with `status:'lost'` runs `finish(null)` and clears `activeRun`, re-enabling Dispatch while
+  the General is still running. A second dispatch then runs the same brief twice.
+- Fix: keep the handle in a ref, close it on unmount, reconnect on `lost` as the chat page does.
+
+**S39. Low. Other client issues (each checked by reading).**
+- `src/app/(app)/practice/page.tsx:178-213,235-273`: no "still on this session" check after
+  awaits; audio and a stream can start after End or after leaving the page. `:207-213` treats a
+  `lost` brief-load stream as loaded and opens the mic early.
+- `src/app/(app)/fleet/page.tsx:133-151,542`: replay allowed during a live run, both write one view;
+  `:563` regex `\([a-z]+\)` does not match versioned model ids.
+- `src/app/(app)/chat/page.tsx:681-688,1107,1118`: chat transcripts kept in localStorage after
+  sign-out or revocation; nothing clears `sam-chat-*`.
+- `src/components/terminal/Terminal.tsx:170-201` with `KeyBar.tsx:36-39`: key-bar keys act on
+  `pointerdown`; Esc/Tab write into a controlled input and are wiped by React; Ctrl-C calls
+  `onKill` (kill, not `\x03`) with no confirm, and does nothing when the launcher input is not
+  mounted.
+- `src/components/dashboard/widgets/MoneyInWidget.tsx:91-98` and `DailyTasksWidget.tsx:123-132`:
+  delete buttons are `opacity-0` until hover, so on a phone they are invisible live targets with no
+  confirm or undo.
+- `src/components/shell/BuildWatch.tsx:28-31`: the auto-reload "busy" check looks only at
+  `textarea`, so a typed Terminal command (`<input>`) is lost on a deploy reload.
+- `src/components/shell/BootSequence.tsx:273-276,293`: timers not cleared; `onDone` can navigate
+  after unmount.
+- `src/components/dashboard/fleet/JobDetailModule.tsx:229-259`: `meta` not cleared on job change,
+  so a failed lookup shows the previous job's name and model.
+- `src/components/dashboard/fleet/{KpiTiles,SpendByHourModule,StageEventsModule}.tsx`: live figures
+  stay until the first demo response after switching Demo on.
+- `src/components/shell/useDevDuplicateCheck.ts:15-54`: counter in render body never decrements
+  (false dev warnings); `history.pushState` patched in production too.
+- `src/lib/speech.ts:336-351,386-400`: a second handle reassigns the shared audio element's
+  `onended`, so the first `done` never settles and "speaking" can stick.
+- `src/lib/micStream.ts:44-51`, `src/components/voice/VoiceRecordButton.tsx:108-115`: mic tracks
+  not stopped when AudioContext setup throws; unmount mid-recording still uploads the clip
+  (UNPROVEN).
+- `src/components/floor/ringRender.test.ts:327-329`: the cache-poisoning assertion cannot fail.
+- `src/components/avatar/AvatarReceptionist.tsx:62-140`: Simli client is given null media refs
+  (component not mounted today).
+- `src/components/visualiser/VaultGraphVisualiser.tsx:662,938`: with reduced motion the graph
+  never changes colour.
+- `src/app/sw.ts:85-92`: `/offline` fallback is likely not precached (`next.config.mjs` adds no
+  `additionalPrecacheEntries`); UNPROVEN.
+- UNPROVEN, timing: `HandsFreeMic.tsx:187-241` drops speech if `onTranscribe` changes mid-utterance;
+  `PdfView.tsx:164-187` timeout does not cover parsing; `FloorCanvas.tsx:1001-1067` polls have no
+  timeout; `ScreenWakeLock.tsx:28-57` overlapping requests leak a lock;
+  `src/store/dashboardStore.ts:138-177` a slow poll can overwrite a just-saved change;
+  `src/lib/jobsService.ts:171-175` can emit a second `closed: lost`.
+
+## KNOWN (already in the 2026-10-19 audit)
+
+The audit's own row list lives in the vault (`SAM_ui_Audit_2026-10-19.md`), which is not in this
+repo; only the spec, tickets and stage review were available. Cross-checked against those:
+
+- A-01/C-16 (T6, DONE): job dirs and the 128 count cap. S11 is next to it: T6 exempts sam-job dirs
+  only, so `/api/fleet/dispatch` and operations jobs still fall under the chat-turn cap. Reported
+  as new because T6's fix does not cover them.
+- C-02 (T11, DONE): atomic, mtime-checked vault writes. S8 is a different defect (content injection
+  through the same writer), not the atomicity issue T11 fixed.
+- A-06 / T16 (DONE): `stagedOrLive`. `scheduleTrigger.test.ts:75-79` and `samPush.test.ts:35`
+  still prefer a staged copy whenever it exists, so T16's policy is not applied everywhere (Low).
+- T1 (A-06 part 1): still STAGED, waiting at GATE 2026-10-22 (stage review finding: `BLOCKED: none`
+  read as a block). Not re-reviewed here; the closer is outside this repo.
+- T18 (spec must-do 16): still open. `origin/main` is `7922771` (2026-09-20) and is 200 commits
+  behind `origin/claude/sam-core-dashboard-sf3639` (`4a05709`), still a fast-forward.
+- T9, T12 pending human checks (390 px banner, browser check with no canvas under the fleet view)
+  and the T10 one-week check booked for 2026-10-27 were not verifiable here.
+
+None of S1 to S39 matches a row named in the 2026-10-19 spec or tickets. S1, S2 and S10 are reads
+the code comments say were deliberately left open after the 2026-09-20 audit's finding 6; they are
+reported because they read private data with no login.
+
+## Checked and fine
+
+- Secrets: `gitleaks v8.21.2 detect --log-opts="--all" --redact` over the full history (history
+  unshallowed, all 7 remote branches and tags fetched): 285 commits scanned, no leaks. Same tool over
+  the working tree (`--no-git`): no leaks. Extra pattern search over all history (private key
+  headers, `AIza`, `sk-`, `ghp_`, `xox*-`, `tskey-`, JWT shapes): one hit, `a7e3e72`
+  `.sam-ui-commit-allow`, which is a comment naming the pattern, not a value. No `.env` file is
+  tracked or was ever added; only `.env.local.template` (placeholder names). `.gitignore` covers
+  `.env`, `.env*.local`, `backup-keys.env`, `*.pem`.
+- Source maps and bundle: no `productionBrowserSourceMaps`; the build produced 0 `.map` files under
+  `.next/static`. No `NEXT_PUBLIC_` variable anywhere. No client chunk contains the names of server
+  secrets (`OS_BRIDGE*`, `ELEVENLABS_API_KEY`, `SIMLI_API_KEY`, `GEMINI_API_KEY`,
+  `ANTHROPIC_AUTH_TOKEN`). The one client import from `@/lib/server` is type-only. A client chunk
+  holds the constant `/home/col/ai-memory-vault` (from `src/lib/workItems.ts`), harmless beside S3.
+- Session cookies: `HttpOnly; Secure; SameSite=Lax; Path=/`, HS256 JWT with a 32-byte key at
+  `~/.sam/auth/session-key` (0600, dir 0700), revocation checked on every verify, step-up bound to
+  the desktop presence epoch. Step-up window chosen from the client-reported
+  `authenticatorAttachment` (12 h for cross-platform) is documented and accepted; worth knowing
+  that a phone can claim cross-platform.
+- Every API route was checked for its guard: all routes that run a command, start a job, read the
+  vault or a file, send a push or message, or touch a bridge require at least the session; job,
+  chat turn, dispatch, upload, chat archive/delete, device revoke and gated answers require
+  step-up. Unauthenticated by design: the five WebAuthn routes, `/api/build`, `/api/health` (S10).
+  Unauthenticated and not by design: S1, S2, S10 (usage).
+- Command execution: `POST /api/jobs` runs a shell command by design (step-up, audited).
+  Everything else uses `execFile`/`spawn` with argv and `shell:false`; `systemd-run` gets
+  `--expand-environment=no` and the payload as `"$@"`; unit names are validated before
+  `systemctl`; `closer_answer.py` gets regex-checked ids and a scrubbed env. Only S15 (option
+  parsing) remains.
+- Paths: `resolveVaultFile` checks lexical form, repeated URL decoding, dot parts, allowed types and
+  real paths after symlinks; attachments must resolve inside the uploads root and be regular files;
+  upload names are basenamed and regenerated; brief ids, chat ids (UUID), question/job ids and
+  ticket job ids are pattern-checked. Only S17 (job id) is unchecked.
+- Vault-served HTML/SVG/PDF get `sandbox` CSP, `nosniff`, PDF as attachment; the iframe is
+  `allow-scripts` without `allow-same-origin`; markdown has no raw HTML; mermaid is
+  `securityLevel: 'strict'`; outside links are http(s) with noopener.
+- Service worker click handling refuses cross-origin targets; answer actions are `a`/`b` only.
+- WebAuthn: challenges single-use with TTL, `userVerification: 'required'`, counters updated,
+  enrolment token hashed, timing-safe, single-use, 10-minute TTL; register options refuse without
+  a token.
+- `/api/os` and `/api/omni/desktop` use fixed op allowlists and server-held tokens; no user host
+  can be chosen (S25 aside).
+- `chatStore` and `sideMessageLog` guard `__proto__`-style ids; chat store writes are atomic.
+- SSE stream route: abort registered before replay, enqueue guarded, backpressure close,
+  per-tick auth re-check, serial ticks (S23 aside).
+
+## For SAM to check
+
+1. S15: on the box, `claude -p '--version'` (harmless). If it prints a version, user text after
+   `-p` is parsed as options and S15 becomes Blocking for `/api/practice/turn`.
+2. S7: which pages can be published on a same-site origin (`*.tail2eadff.ts.net`, funnel). If any,
+   S7 is directly exploitable against `POST /api/jobs` while a step-up cookie is live.
+3. S6: decide whether SMS, call, email and desktop `open` should need step-up.
+4. S20 and S19: read `sam-job`'s `systemd-run --setenv` list; check whether
+   `/home/col/.cache/fewer-pings/` exists on the box.
+5. S17: a route test with `params: { id: '../..' }`, or check how Next 15 decodes `%2F` in a
+   dynamic segment.
+6. S25: whether `tailscale serve` replaces or appends `X-Forwarded-For`.
+7. S27: whether sam-ui's environment carries `ANTHROPIC_API_KEY` or `CLAUDE_CONFIG_DIR`.
+8. S14: open Cache Storage `sam-apis` on the phone after viewing a chat.
+9. S4: after the `next` bump, confirm `/_next/image` behaviour; S3: rewrite or purge the snapshot
+   (it is also in git history).
+10. Make `sweepRetention.test.ts` (S22) independent of `systemctl` so CI and cloud sessions finish.
+
+## Files read
+
+Total: 493 files (step 1: 67; step 2: 242; step 3: 48; step 4: 136).
+Not read: none in scope. Partial: `src/data/vault-graph.json` (one 94 KB line) was parsed and
+pattern-scanned rather than read by eye.
+
+<details><summary>Step 1</summary>
+
+- `proxy/gemini-proxy.mjs`
+- `src/app/api/auth/authenticate/options/route.ts`
+- `src/app/api/auth/authenticate/verify/route.ts`
+- `src/app/api/auth/devices/route.ts`
+- `src/app/api/auth/register/options/route.ts`
+- `src/app/api/auth/register/verify/route.ts`
+- `src/app/api/auth/session/route.ts`
+- `src/app/api/auth/stepup/route.ts`
+- `src/app/api/avatar/session/route.ts`
+- `src/app/api/avatar/tts/route.ts`
+- `src/app/api/build/route.ts`
+- `src/app/api/chat/agent/route.ts`
+- `src/app/api/chat/tts/route.ts`
+- `src/app/api/chats/[id]/handoff/route.ts`
+- `src/app/api/chats/[id]/route.ts`
+- `src/app/api/chats/[id]/side/route.ts`
+- `src/app/api/chats/adopt/route.ts`
+- `src/app/api/chats/focus/route.ts`
+- `src/app/api/chats/route.ts`
+- `src/app/api/dashboard/layout/route.ts`
+- `src/app/api/dashboard/money/route.ts`
+- `src/app/api/dashboard/projects/route.ts`
+- `src/app/api/dashboard/system/route.ts`
+- `src/app/api/dashboard/tasks/route.ts`
+- `src/app/api/dashboard/usage/route.ts`
+- `src/app/api/fleet/dispatch/route.ts`
+- `src/app/api/fleet/finished-jobs/route.test.ts`
+- `src/app/api/fleet/finished-jobs/route.ts`
+- `src/app/api/fleet/floor/route.test.ts`
+- `src/app/api/fleet/floor/route.ts`
+- `src/app/api/fleet/job-tickets/route.test.ts`
+- `src/app/api/fleet/job-tickets/route.ts`
+- `src/app/api/fleet/jobs/route.test.ts`
+- `src/app/api/fleet/jobs/route.ts`
+- `src/app/api/fleet/registry/route.ts`
+- `src/app/api/fleet/runs/route.ts`
+- `src/app/api/fleet/schedule/route.ts`
+- `src/app/api/fleet/spend/route.test.ts`
+- `src/app/api/fleet/spend/route.ts`
+- `src/app/api/health/route.ts`
+- `src/app/api/jobs/[id]/input/route.ts`
+- `src/app/api/jobs/[id]/route.ts`
+- `src/app/api/jobs/[id]/stream/route.test.ts`
+- `src/app/api/jobs/[id]/stream/route.ts`
+- `src/app/api/jobs/route.ts`
+- `src/app/api/notifications/route.ts`
+- `src/app/api/omni/desktop/route.ts`
+- `src/app/api/omni/email/route.ts`
+- `src/app/api/operations/[id]/variables/route.ts`
+- `src/app/api/operations/dispatch/route.ts`
+- `src/app/api/operations/route.ts`
+- `src/app/api/os/route.ts`
+- `src/app/api/practice/briefs/route.ts`
+- `src/app/api/practice/turn/route.ts`
+- `src/app/api/push/route.ts`
+- `src/app/api/questions/answer/route.test.ts`
+- `src/app/api/questions/answer/route.ts`
+- `src/app/api/questions/route.ts`
+- `src/app/api/status/route.ts`
+- `src/app/api/uploads/route.ts`
+- `src/app/api/vault/contacts/route.ts`
+- `src/app/api/vault/file/route.ts`
+- `src/app/api/vault/graph/route.ts`
+- `src/app/api/vault/meta/route.ts`
+- `src/app/api/vault/recent/route.ts`
+- `src/app/api/voice/transcribe/route.ts`
+- `src/instrumentation.ts`
+
+</details>
+<details><summary>Step 2 (src/lib)</summary>
+
+- `src/lib/agentStream.test.ts`
+- `src/lib/agentStream.ts`
+- `src/lib/answerLetters.ts`
+- `src/lib/authService.ts`
+- `src/lib/buildCheck.test.ts`
+- `src/lib/buildCheck.ts`
+- `src/lib/busts.ts`
+- `src/lib/cardMeta.test.ts`
+- `src/lib/cardMeta.ts`
+- `src/lib/chatAgentService.ts`
+- `src/lib/chatClose.test.ts`
+- `src/lib/chatClose.ts`
+- `src/lib/chatFollow.test.ts`
+- `src/lib/chatFollow.ts`
+- `src/lib/chatHandoff.test.ts`
+- `src/lib/chatHandoff.ts`
+- `src/lib/chatListCollapse.test.ts`
+- `src/lib/chatListCollapse.ts`
+- `src/lib/chatListFilter.test.ts`
+- `src/lib/chatListFilter.ts`
+- `src/lib/chatLocal.test.ts`
+- `src/lib/chatLocal.ts`
+- `src/lib/chatOpen.test.ts`
+- `src/lib/chatOpen.ts`
+- `src/lib/chatSideMessage.test.ts`
+- `src/lib/chatSideMessage.ts`
+- `src/lib/chatTier.test.ts`
+- `src/lib/chatTier.ts`
+- `src/lib/chatsService.ts`
+- `src/lib/client/micAnalyser.ts`
+- `src/lib/composerEnter.test.ts`
+- `src/lib/composerEnter.ts`
+- `src/lib/contextCeiling.ts`
+- `src/lib/costing.ts`
+- `src/lib/crossTab.ts`
+- `src/lib/dashboardService.ts`
+- `src/lib/desktopBridge.ts`
+- `src/lib/fleetModels.ts`
+- `src/lib/fleetService.ts`
+- `src/lib/jobsService.ts`
+- `src/lib/micStream.ts`
+- `src/lib/notificationTarget.ts`
+- `src/lib/operationsService.ts`
+- `src/lib/osBridge.ts`
+- `src/lib/osIntentRunner.test.ts`
+- `src/lib/osIntentRunner.ts`
+- `src/lib/osIntents.ts`
+- `src/lib/pendingSend.test.ts`
+- `src/lib/pendingSend.ts`
+- `src/lib/personalityEngine.ts`
+- `src/lib/practiceService.ts`
+- `src/lib/practiceStream.ts`
+- `src/lib/preferencesBoot.test.ts`
+- `src/lib/preferencesBoot.ts`
+- `src/lib/questionView.test.ts`
+- `src/lib/questionView.ts`
+- `src/lib/rates.ts`
+- `src/lib/samActivity.ts`
+- `src/lib/screeningEvents.test.ts`
+- `src/lib/screeningEvents.ts`
+- `src/lib/server/auth/auditLog.ts`
+- `src/lib/server/auth/enrolmentToken.ts`
+- `src/lib/server/auth/guard.ts`
+- `src/lib/server/auth/rateLimit.ts`
+- `src/lib/server/auth/session.test.ts`
+- `src/lib/server/auth/session.ts`
+- `src/lib/server/auth/store.ts`
+- `src/lib/server/auth/webauthn.ts`
+- `src/lib/server/chat/adoptAuth.test.ts`
+- `src/lib/server/chat/agentCwd.ts`
+- `src/lib/server/chat/autoHandoff.test.ts`
+- `src/lib/server/chat/chatActions.test.ts`
+- `src/lib/server/chat/chatActions.ts`
+- `src/lib/server/chat/chatIdAuth.test.ts`
+- `src/lib/server/chat/chatStore.test.ts`
+- `src/lib/server/chat/chatStore.ts`
+- `src/lib/server/chat/contextCeiling.test.ts`
+- `src/lib/server/chat/expiredHistory.test.ts`
+- `src/lib/server/chat/focus.ts`
+- `src/lib/server/chat/focusAuth.test.ts`
+- `src/lib/server/chat/handoff.test.ts`
+- `src/lib/server/chat/handoff.ts`
+- `src/lib/server/chat/importRegistry.test.ts`
+- `src/lib/server/chat/importRegistry.ts`
+- `src/lib/server/chat/samuiSessions.ts`
+- `src/lib/server/chat/sessionLock.ts`
+- `src/lib/server/chat/sideMessage.test.ts`
+- `src/lib/server/chat/sideMessage.ts`
+- `src/lib/server/chat/sideMessageLog.ts`
+- `src/lib/server/chat/startTurn.test.ts`
+- `src/lib/server/chat/startTurn.ts`
+- `src/lib/server/chat/streamInput.ts`
+- `src/lib/server/chat/tiers.ts`
+- `src/lib/server/chat/titles.test.ts`
+- `src/lib/server/chat/titles.ts`
+- `src/lib/server/chat/transcripts.test.ts`
+- `src/lib/server/chat/transcripts.ts`
+- `src/lib/server/chat/turnPing.test.ts`
+- `src/lib/server/chat/turnPing.ts`
+- `src/lib/server/chat/turnPingThreshold.test.ts`
+- `src/lib/server/claudeBin.ts`
+- `src/lib/server/claudeCosts.test.ts`
+- `src/lib/server/claudeCosts.ts`
+- `src/lib/server/contacts.ts`
+- `src/lib/server/fleet/buildLog.test.ts`
+- `src/lib/server/fleet/buildLog.ts`
+- `src/lib/server/fleet/closerRecord.test.ts`
+- `src/lib/server/fleet/closerRecord.ts`
+- `src/lib/server/fleet/costLedger.ts`
+- `src/lib/server/fleet/demoFixtures.test.ts`
+- `src/lib/server/fleet/demoFixtures.ts`
+- `src/lib/server/fleet/demoScan.test.ts`
+- `src/lib/server/fleet/demoScan.ts`
+- `src/lib/server/fleet/finishedJobRules.test.ts`
+- `src/lib/server/fleet/finishedJobRules.ts`
+- `src/lib/server/fleet/finishedJobs.test.ts`
+- `src/lib/server/fleet/finishedJobs.ts`
+- `src/lib/server/fleet/fixtures/kitchen-v3-phone-flow-tickets.md`
+- `src/lib/server/fleet/fixtures/status-words-tickets.md`
+- `src/lib/server/fleet/floorState.test.ts`
+- `src/lib/server/fleet/floorState.ts`
+- `src/lib/server/fleet/jobActionLogger.test.ts`
+- `src/lib/server/fleet/jobCosts.ts`
+- `src/lib/server/fleet/jobTicketPanel.test.ts`
+- `src/lib/server/fleet/jobTicketPanel.ts`
+- `src/lib/server/fleet/registry.ts`
+- `src/lib/server/fleet/samDispatchBrief.test.ts`
+- `src/lib/server/fleet/samDispatchRebase.test.ts`
+- `src/lib/server/fleet/samDispatchStageInstruction.test.ts`
+- `src/lib/server/fleet/samDispatchTier.test.ts`
+- `src/lib/server/fleet/samJobEvents.test.ts`
+- `src/lib/server/fleet/samStage.test.ts`
+- `src/lib/server/fleet/schedule.test.ts`
+- `src/lib/server/fleet/schedule.ts`
+- `src/lib/server/fleet/scheduleTrigger.test.ts`
+- `src/lib/server/fleet/streamTail.test.ts`
+- `src/lib/server/fleet/streamTail.ts`
+- `src/lib/server/fleet/ticketJob.test.ts`
+- `src/lib/server/fleet/ticketJob.ts`
+- `src/lib/server/fleet/ticketsFile.test.ts`
+- `src/lib/server/fleet/ticketsFile.ts`
+- `src/lib/server/fleetMetrics.ts`
+- `src/lib/server/healthScore.test.ts`
+- `src/lib/server/hostMetrics.ts`
+- `src/lib/server/jobRunMetrics.ts`
+- `src/lib/server/jobs/manager.ts`
+- `src/lib/server/jobs/readFrames.test.ts`
+- `src/lib/server/jobs/reconcileUnit.test.ts`
+- `src/lib/server/jobs/sideChannel.test.ts`
+- `src/lib/server/jobs/streamOrphan.test.ts`
+- `src/lib/server/jobs/sweepBuilds.test.ts`
+- `src/lib/server/jobs/sweepRetention.test.ts`
+- `src/lib/server/livePaths.test.ts`
+- `src/lib/server/livePaths.ts`
+- `src/lib/server/moneyState.ts`
+- `src/lib/server/omni/email.ts`
+- `src/lib/server/operations.ts`
+- `src/lib/server/practice/briefs.ts`
+- `src/lib/server/practice/sessions.ts`
+- `src/lib/server/projectMetrics.ts`
+- `src/lib/server/push/dispatchPing.test.ts`
+- `src/lib/server/push/keystoreRoutes.test.ts`
+- `src/lib/server/push/notifications.test.ts`
+- `src/lib/server/push/notifications.ts`
+- `src/lib/server/push/notificationsRoute.test.ts`
+- `src/lib/server/push/samPush.test.ts`
+- `src/lib/server/questions/answer.ts`
+- `src/lib/server/questions/questions.test.ts`
+- `src/lib/server/questions/questions.ts`
+- `src/lib/server/respond.ts`
+- `src/lib/server/serialTick.test.ts`
+- `src/lib/server/serialTick.ts`
+- `src/lib/server/shutdown.ts`
+- `src/lib/server/taskMetrics.ts`
+- `src/lib/server/taskState.ts`
+- `src/lib/server/telemetry.ts`
+- `src/lib/server/testing/boxOnly.ts`
+- `src/lib/server/testing/fakeClaude.test.ts`
+- `src/lib/server/testing/fakeClaude.ts`
+- `src/lib/server/testing/stagedOrLive.test.ts`
+- `src/lib/server/testing/stagedOrLive.ts`
+- `src/lib/server/testing/tempDir.ts`
+- `src/lib/server/uploads.ts`
+- `src/lib/server/usage/fleetUsage.test.ts`
+- `src/lib/server/usage/quotaLog.test.ts`
+- `src/lib/server/usage/usageAlertRunner.test.ts`
+- `src/lib/server/usage/usageAlertRunner.ts`
+- `src/lib/server/usage/usageAlerts.test.ts`
+- `src/lib/server/usage/usageAlerts.ts`
+- `src/lib/server/usage/usageCollect.test.ts`
+- `src/lib/server/usage/usageCollect.ts`
+- `src/lib/server/usage/usageReadings.test.ts`
+- `src/lib/server/usage/usageReadings.ts`
+- `src/lib/server/usage/usageRuns.test.ts`
+- `src/lib/server/usage/usageRuns.ts`
+- `src/lib/server/usage/usageSweep.test.ts`
+- `src/lib/server/usage/usageSweep.ts`
+- `src/lib/server/vaultFiles.test.ts`
+- `src/lib/server/vaultFiles.ts`
+- `src/lib/server/vaultGraph.ts`
+- `src/lib/server/vaultGraphBuild.test.ts`
+- `src/lib/server/vaultMeta.test.ts`
+- `src/lib/server/vaultMeta.ts`
+- `src/lib/server/vaultMetrics.ts`
+- `src/lib/server/vaultServe.test.ts`
+- `src/lib/server/vaultServe.ts`
+- `src/lib/server/vaultWrite.test.ts`
+- `src/lib/server/vaultWrite.ts`
+- `src/lib/server/voice/recognizer.ts`
+- `src/lib/server/voice/recognizerWorker.test.ts`
+- `src/lib/server/voice/tts.ts`
+- `src/lib/server/voice/voiceLineBody.test.ts`
+- `src/lib/server/voice/voiceLineBody.ts`
+- `src/lib/server/workArea/recent.test.ts`
+- `src/lib/server/workArea/recent.ts`
+- `src/lib/sidebarCollapse.test.ts`
+- `src/lib/sidebarCollapse.ts`
+- `src/lib/speech.test.ts`
+- `src/lib/speech.ts`
+- `src/lib/speechClean.test.ts`
+- `src/lib/swAnswer.test.ts`
+- `src/lib/swAnswer.ts`
+- `src/lib/swPush.test.ts`
+- `src/lib/swPush.ts`
+- `src/lib/swWorkArea.ts`
+- `src/lib/tabId.test.ts`
+- `src/lib/tabId.ts`
+- `src/lib/unlockFlow.ts`
+- `src/lib/usageParse.test.ts`
+- `src/lib/useAuthGate.test.ts`
+- `src/lib/useAuthGate.ts`
+- `src/lib/useWakeWord.ts`
+- `src/lib/utils.ts`
+- `src/lib/voiceData.test.ts`
+- `src/lib/voiceData.ts`
+- `src/lib/voiceService.ts`
+- `src/lib/wakeSeq.test.ts`
+- `src/lib/wakeSeq.ts`
+- `src/lib/webglContextLoss.test.ts`
+- `src/lib/webglContextLoss.ts`
+- `src/lib/workItems.test.ts`
+- `src/lib/workItems.ts`
+
+</details>
+<details><summary>Step 3</summary>
+
+- `src/app/(app)/chat/page.tsx`
+- `src/app/(app)/classic/page.tsx`
+- `src/app/(app)/error.tsx`
+- `src/app/(app)/fleet/[persona]/page.tsx`
+- `src/app/(app)/fleet/page.tsx`
+- `src/app/(app)/jobs/[id]/page.tsx`
+- `src/app/(app)/jobs/page.tsx`
+- `src/app/(app)/layout.tsx`
+- `src/app/(app)/notifications/NotificationRow.test.ts`
+- `src/app/(app)/notifications/NotificationRow.tsx`
+- `src/app/(app)/notifications/QuestionRow.test.ts`
+- `src/app/(app)/notifications/QuestionRow.tsx`
+- `src/app/(app)/notifications/page.tsx`
+- `src/app/(app)/operations/page.tsx`
+- `src/app/(app)/page.tsx`
+- `src/app/(app)/practice/page.tsx`
+- `src/app/(app)/register/page.tsx`
+- `src/app/(app)/settings/page.tsx`
+- `src/app/(app)/status/page.tsx`
+- `src/app/(app)/terminal/page.tsx`
+- `src/app/global-error.tsx`
+- `src/app/globals.css`
+- `src/app/intro/page.tsx`
+- `src/app/layout.tsx`
+- `src/app/offline/page.tsx`
+- `src/app/render/icon/page.tsx`
+- `src/app/sw.ts`
+- `src/app/swRoutes.test.ts`
+- `src/data/vault-graph.json`
+- `src/hooks/useLiveClock.ts`
+- `src/hooks/useVisualiserState.ts`
+- `src/hooks/useVoiceWebSocket.ts`
+- `src/store/dashboardStore.ts`
+- `src/store/tileLayoutStore.ts`
+- `src/store/userPreferencesStore.test.ts`
+- `src/store/userPreferencesStore.ts`
+- `src/types/avatar.ts`
+- `src/types/chat.test.ts`
+- `src/types/chat.ts`
+- `src/types/dashboard.ts`
+- `src/types/finishedJobs.ts`
+- `src/types/fleet.ts`
+- `src/types/floor.ts`
+- `src/types/jobs.ts`
+- `src/types/operations.ts`
+- `src/types/practice.ts`
+- `src/types/usage.ts`
+- `src/types/vaultGraph.ts`
+
+</details>
+<details><summary>Step 4 (src/components)</summary>
+
+- `src/components/auth/LoginButton.tsx`
+- `src/components/auth/UnlockPrompt.test.ts`
+- `src/components/auth/UnlockPrompt.tsx`
+- `src/components/avatar/AvatarReceptionist.tsx`
+- `src/components/avatar/index.ts`
+- `src/components/background/ParallaxBackground.tsx`
+- `src/components/chat/ChatList.tsx`
+- `src/components/chat/ChatVoiceWidget.tsx`
+- `src/components/chat/MessageBlocks.test.ts`
+- `src/components/chat/MessageBlocks.tsx`
+- `src/components/chat/WorkDivider.tsx`
+- `src/components/chat/WorkPanel.tsx`
+- `src/components/chat/workWidth.test.ts`
+- `src/components/chat/workWidth.ts`
+- `src/components/dashboard/ControlDeck.tsx`
+- `src/components/dashboard/DashboardShell.tsx`
+- `src/components/dashboard/StatCardGrid.tsx`
+- `src/components/dashboard/TopBar.tsx`
+- `src/components/dashboard/WidgetFrame.tsx`
+- `src/components/dashboard/fleet/ActiveJobsModule.tsx`
+- `src/components/dashboard/fleet/DashboardChatWidget.test.ts`
+- `src/components/dashboard/fleet/DashboardChatWidget.tsx`
+- `src/components/dashboard/fleet/DemoModeToggle.tsx`
+- `src/components/dashboard/fleet/FinishedJobsList.tsx`
+- `src/components/dashboard/fleet/FleetDashboardShell.tsx`
+- `src/components/dashboard/fleet/FleetPhoneView.tsx`
+- `src/components/dashboard/fleet/FleetStatusModule.tsx`
+- `src/components/dashboard/fleet/FleetView.tsx`
+- `src/components/dashboard/fleet/GeneralDetailPanel.render.test.ts`
+- `src/components/dashboard/fleet/GeneralDetailPanel.tsx`
+- `src/components/dashboard/fleet/GeneralDetailSheet.tsx`
+- `src/components/dashboard/fleet/HiddenTiles.tsx`
+- `src/components/dashboard/fleet/JobDetailModule.tsx`
+- `src/components/dashboard/fleet/KpiTiles.tsx`
+- `src/components/dashboard/fleet/SchedulePanel.test.ts`
+- `src/components/dashboard/fleet/SchedulePanel.tsx`
+- `src/components/dashboard/fleet/SidebarWidgets.tsx`
+- `src/components/dashboard/fleet/SpendByHourModule.tsx`
+- `src/components/dashboard/fleet/StageEventsModule.tsx`
+- `src/components/dashboard/fleet/activeJobs.test.ts`
+- `src/components/dashboard/fleet/dashboardChat.ts`
+- `src/components/dashboard/fleet/dashboardLayout.test.ts`
+- `src/components/dashboard/fleet/dashboardLayout.ts`
+- `src/components/dashboard/fleet/finishedJobsView.test.ts`
+- `src/components/dashboard/fleet/finishedJobsView.ts`
+- `src/components/dashboard/fleet/jobDetail.test.ts`
+- `src/components/dashboard/fleet/jobSelection.test.ts`
+- `src/components/dashboard/fleet/jobSelection.ts`
+- `src/components/dashboard/fleet/jobTicketPanel.render.test.ts`
+- `src/components/dashboard/fleet/jobTicketView.test.ts`
+- `src/components/dashboard/fleet/jobTicketView.ts`
+- `src/components/dashboard/fleet/phoneView.test.ts`
+- `src/components/dashboard/fleet/phoneView.ts`
+- `src/components/dashboard/fleet/spendByHour.test.ts`
+- `src/components/dashboard/fleet/stageEvents.test.ts`
+- `src/components/dashboard/fleet/tileLayout.test.ts`
+- `src/components/dashboard/fleet/tileLayout.ts`
+- `src/components/dashboard/fleet/useFinishedJobs.ts`
+- `src/components/dashboard/widgetRegistry.tsx`
+- `src/components/dashboard/widgets/ActiveProjectsWidget.tsx`
+- `src/components/dashboard/widgets/DailyTasksWidget.tsx`
+- `src/components/dashboard/widgets/MoneyInWidget.tsx`
+- `src/components/dashboard/widgets/SystemHealthWidget.tsx`
+- `src/components/dashboard/widgets/UsageLimitsWidget.tsx`
+- `src/components/dashboard/widgets/shared.ts`
+- `src/components/dashboard/widgets/usageFormat.test.ts`
+- `src/components/dashboard/widgets/usageFormat.ts`
+- `src/components/floor/FloorCanvas.tsx`
+- `src/components/floor/busts.test.ts`
+- `src/components/floor/busts.ts`
+- `src/components/floor/figureHit.test.ts`
+- `src/components/floor/figureHit.ts`
+- `src/components/floor/floorGolden.test.ts`
+- `src/components/floor/floorPacing.test.ts`
+- `src/components/floor/floorPacing.ts`
+- `src/components/floor/floorRender.test.ts`
+- `src/components/floor/floorRender.tickets.test.ts`
+- `src/components/floor/floorRender.ts`
+- `src/components/floor/phoneGeometry.ts`
+- `src/components/floor/phonePyramid.test.ts`
+- `src/components/floor/ringRender.test.ts`
+- `src/components/floor/ringRender.ts`
+- `src/components/shell/AppShell.tsx`
+- `src/components/shell/BootSequence.tsx`
+- `src/components/shell/BuildWatch.tsx`
+- `src/components/shell/InstallButton.tsx`
+- `src/components/shell/MoreMenuSheet.tsx`
+- `src/components/shell/PreferencesApplier.test.ts`
+- `src/components/shell/PreferencesApplier.tsx`
+- `src/components/shell/PushNotifications.tsx`
+- `src/components/shell/ScreenWakeLock.tsx`
+- `src/components/shell/ScreeningToggle.tsx`
+- `src/components/shell/ServiceWorkerRegistration.tsx`
+- `src/components/shell/Sidebar.tsx`
+- `src/components/shell/SignedOutOverlay.tsx`
+- `src/components/shell/TabBar.tsx`
+- `src/components/shell/ambientGate.test.ts`
+- `src/components/shell/ambientGate.ts`
+- `src/components/shell/tabBar.test.ts`
+- `src/components/shell/useDevDuplicateCheck.ts`
+- `src/components/shell/useVisualViewport.ts`
+- `src/components/terminal/KeyBar.tsx`
+- `src/components/terminal/Terminal.tsx`
+- `src/components/ui/FieldLabel.tsx`
+- `src/components/ui/Gauge.tsx`
+- `src/components/ui/Indicators.tsx`
+- `src/components/ui/Skeleton.tsx`
+- `src/components/ui/Sparkline.tsx`
+- `src/components/visualiser/SamBackground.tsx`
+- `src/components/visualiser/VaultGraphVisualiser.tsx`
+- `src/components/visualiser/VisualiserWidget.tsx`
+- `src/components/voice/HandsFreeMic.tsx`
+- `src/components/voice/VoiceRecordButton.tsx`
+- `src/components/work/HtmlFrame.test.ts`
+- `src/components/work/HtmlFrame.tsx`
+- `src/components/work/ItemCards.tsx`
+- `src/components/work/ItemView.tsx`
+- `src/components/work/MarkdownView.test.ts`
+- `src/components/work/MarkdownView.tsx`
+- `src/components/work/MediaView.test.ts`
+- `src/components/work/MediaView.tsx`
+- `src/components/work/MermaidBlock.tsx`
+- `src/components/work/PdfView.tsx`
+- `src/components/work/RecentItems.tsx`
+- `src/components/work/WebsiteLink.tsx`
+- `src/components/work/fullScreen.test.ts`
+- `src/components/work/fullScreen.ts`
+- `src/components/work/itemState.test.ts`
+- `src/components/work/itemState.ts`
+- `src/components/work/mermaidFallback.test.ts`
+- `src/components/work/pdfLinks.test.ts`
+- `src/components/work/pdfLinks.ts`
+- `src/components/work/recentView.test.ts`
+- `src/components/work/recentView.ts`
+- `src/components/work/wikilinks.test.ts`
+- `src/components/work/wikilinks.ts`
+
+</details>
