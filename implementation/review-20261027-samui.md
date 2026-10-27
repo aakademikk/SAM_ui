@@ -14,7 +14,14 @@ Node v22.22.0 (`~/.local/node/bin` does not exist in this container). Dependenci
 | Check | Result |
 |---|---|
 | `npm run typecheck` | exit 0, 0 errors |
-| `npm test` | pending |
+| `npm test` (full) | did not finish: hung on `sweepRetention.test.js` (S22) and was stopped at the 30 min limit; 698 tests had reported ok before the hang, 0 not ok |
+| `npm test` minus `sweepRetention.test.js` (150 files) | exit 1: 950 tests, 837 pass, 62 fail, 51 skipped (box-only), 0 cancelled, no TEMP LEAK |
+
+All 62 failures are in the seven files that start real turns through `systemd-run --user --scope`
+(autoHandoff 10, chatActions 10, handoff 6, importRegistry 6, sideMessage 17, startTurn 9,
+sideChannel 5). This container has `systemd-run` but no user bus (`Failed to connect to bus: No
+medium found`), so these are environmental, not code findings. The tickets record 854-855 pass /
+0 fail on the box (T16/T17).
 
 ## How the reading was done
 
