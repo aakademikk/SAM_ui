@@ -40,6 +40,7 @@ export interface ClickDeps {
 }
 
 export const ANSWER_PATH = '/api/questions/answer';
+export const PACK_APPROVE_PATH = '/api/pack/approve';
 
 /** The existing body-tap behaviour, moved here unchanged. */
 async function openOrFocus(target: string, deps: ClickDeps): Promise<void> {
@@ -107,6 +108,44 @@ async function answer(
   if (status === 401 || status >= 500) await reshow();
 }
 
+/**
+ * A pack ping carries a questionId and no jobId. Action `a` approves the held
+ * pack. 404 means it is an ordinary question with no job: open the url as a body
+ * tap would. 401, 5xx or a network failure re-show the notification.
+ */
+async function approvePack(questionId: string, saved: ClickNotification, deps: ClickDeps): Promise<void> {
+  const reshow = () =>
+    deps.showNotification(saved.title, {
+      body: saved.body,
+      tag: saved.tag,
+      data: saved.data,
+      actions: saved.actions,
+      icon: saved.icon,
+      badge: saved.badge,
+      renotify: false,
+    });
+
+  let status: number;
+  try {
+    const res = await deps.fetch(PACK_APPROVE_PATH, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json', 'x-answer-via': 'push' },
+      body: JSON.stringify({ questionId }),
+    });
+    status = res.status;
+  } catch {
+    await reshow();
+    return;
+  }
+
+  if (status === 404) {
+    await openOrFocus(saved.data?.url || '/', deps);
+    return;
+  }
+  if (status === 401 || status >= 500) await reshow();
+}
+
 export function handleClick(event: ClickEvent, deps: ClickDeps): void {
   const n = event.notification;
   // Copy the fields now; the notification is closed straight after.
@@ -132,7 +171,16 @@ export function handleClick(event: ClickEvent, deps: ClickDeps): void {
 
   const jobId = saved.data?.jobId;
   const questionId = saved.data?.questionId;
-  if (typeof jobId !== 'string' || !jobId || typeof questionId !== 'string' || !questionId) {
+  const hasQuestion = typeof questionId === 'string' && questionId !== '';
+  const hasJob = typeof jobId === 'string' && jobId !== '';
+
+  // Pack ping: a questionId and no jobId. `a` approves; `b` just opens the url.
+  if (hasQuestion && !hasJob && action === 'a') {
+    event.waitUntil(approvePack(questionId as string, saved, deps));
+    return;
+  }
+
+  if (!hasJob || !hasQuestion) {
     event.waitUntil(openOrFocus(saved.data?.url || '/', deps));
     return;
   }
