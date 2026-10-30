@@ -131,6 +131,70 @@ test('swAnswer: a/b without jobId or questionId falls back to a body tap', async
   assert.deepEqual(log.opened, [`${ORIGIN}/jobs/job_x`]);
 });
 
+const packData = { url: '/notifications', questionId: 'pack_2026-11-02', ts: 1 };
+
+test('swAnswer: pack ping (questionId, no jobId): action a posts to the pack route, 200 opens no window and shows nothing', async () => {
+  const { log, done } = rig({ action: 'a', status: 200, data: packData });
+  await done();
+  assert.equal(log.closed, 1);
+  assert.equal(log.fetches.length, 1);
+  const f = log.fetches[0];
+  assert.equal(f.input, '/api/pack/approve');
+  assert.equal(f.init.method, 'POST');
+  assert.equal(f.init.credentials, 'same-origin');
+  const h = f.init.headers as Record<string, string>;
+  assert.equal(h['x-answer-via'], 'push');
+  assert.equal(h['content-type'], 'application/json');
+  assert.deepEqual(JSON.parse(f.init.body as string), { questionId: 'pack_2026-11-02' });
+  assert.equal(log.opened.length, 0);
+  assert.equal(log.shown.length, 0);
+});
+
+test('swAnswer: pack ping: 404 falls back to opening the url, shows nothing', async () => {
+  const { log, done } = rig({ action: 'a', status: 404, data: packData });
+  await done();
+  assert.equal(log.fetches.length, 1);
+  assert.equal(log.fetches[0].input, '/api/pack/approve');
+  assert.deepEqual(log.opened, [`${ORIGIN}/notifications`]);
+  assert.equal(log.shown.length, 0);
+});
+
+for (const [name, o] of [
+  ['500', { status: 500 }],
+  ['401', { status: 401 }],
+  ['network error', { throws: true }],
+] as const) {
+  test(`swAnswer: pack ping ${name}: same notification shown again, no window`, async () => {
+    const { log, done } = rig({ action: 'a', data: packData, ...o });
+    await done();
+    assert.equal(log.fetches.length, 1);
+    assert.equal(log.shown.length, 1);
+    const s = log.shown[0];
+    assert.equal(s.title, 'SAM asks');
+    assert.equal(s.options.tag, 'q-q_0123abcd');
+    assert.equal(s.options.renotify, false);
+    assert.deepEqual(s.options.actions, actions);
+    assert.deepEqual(s.options.data, packData);
+    assert.equal(log.opened.length + log.focused.length + log.navigated.length, 0);
+  });
+}
+
+test('swAnswer: pack ping: action b opens the url and posts nothing', async () => {
+  const { log, done } = rig({ action: 'b', data: packData });
+  await done();
+  assert.equal(log.closed, 1);
+  assert.equal(log.fetches.length, 0);
+  assert.deepEqual(log.opened, [`${ORIGIN}/notifications`]);
+  assert.equal(log.shown.length, 0);
+});
+
+test('swAnswer: a job question still posts to the answer route, not the pack route', async () => {
+  const { log, done } = rig({ action: 'a' });
+  await done();
+  assert.equal(log.fetches.length, 1);
+  assert.equal(log.fetches[0].input, '/api/questions/answer');
+});
+
 function win(url: string, log: { focused: string[]; navigated: string[] }): ClickWindow {
   return {
     url,

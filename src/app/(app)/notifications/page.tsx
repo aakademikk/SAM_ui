@@ -24,6 +24,7 @@ import { rowView, type QuestionLike } from '@/lib/questionView';
 import { cn } from '@/lib/utils';
 
 import { NotificationRow, toggleExpanded } from './NotificationRow';
+import { PackApproveRow } from './PackApproveRow';
 import { QuestionRow } from './QuestionRow';
 
 /** Mirrors `NotificationEntry` in `src/lib/server/push/notifications.ts` —
@@ -139,7 +140,8 @@ export default function NotificationsPage() {
               >
                 {(() => {
                   const view = rowView(entry, questions);
-                  return view.question ? <QuestionRow question={view.question} /> : null;
+                  if (view.question) return <QuestionRow question={view.question} />;
+                  return entry.questionId && !entry.jobId ? <PackApproveRow questionId={entry.questionId} /> : null;
                 })()}
               </NotificationRow>
             </li>
